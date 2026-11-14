@@ -99,3 +99,15 @@ push refs/heads/main "$zero" "$merged" > /dev/null || fail "pre-push: refused de
 out="$(IRIS_UNCHECKED="CI only" push refs/heads/main "$head" "$merged")" || fail "pre-push: refused with IRIS_UNCHECKED set"
 grep -qF "CI only" <<< "$out" || fail "pre-push: didn't repeat IRIS_UNCHECKED's reason"
 push refs/heads/main "$merged" "$zero" > /dev/null || fail "pre-push: refused a commit a full pass checked"
+
+# A digest map line naming an author's container never reaches main, even
+# checked and with IRIS_UNCHECKED set: the review batch copies it and pins
+# its digest alone first. A branch may carry one, as a PR does.
+mkdir -p "$repo/lib"
+printf '%s\n' 'declare -gA IRIS_ENV_DIGESTS=(' "    [ct/2]=ghcr.io/alice-lab/iris-env@sha256:$(printf 'a%.0s' {1..64})" ')' > "$repo/lib/katana.sh"
+git -C "$repo" add lib/katana.sh; commit -m "author line"
+record
+author="$(git -C "$repo" rev-parse HEAD)"
+out="$(IRIS_UNCHECKED="CI only" push refs/heads/main "$author" "$merged")" && fail "pre-push: let an author's container line to main"
+grep -qF "ct/2" <<< "$out" || { fail "pre-push: refusal doesn't name the version:"; echo "$out" | sed 's/^/  /'; }
+push refs/heads/side "$author" "$merged" > /dev/null || fail "pre-push: refused an author's container line on a branch"

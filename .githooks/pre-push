@@ -6,7 +6,12 @@
 #     becomes, not as each side was before the merge;
 #   - if it changes the files bin/katana-test tests (its header lists
 #     them), a passing bin/katana-test must have tested them exactly as the
-#     commit holds them (bin/katana-test --tested).
+#     commit holds them (bin/katana-test --tested);
+#   - its lib/katana.sh's digest map must name no workflow author's
+#     container, ghcr.io/<login>/iris-env@sha256:<hex>, which a PR may
+#     carry but main never does: bin/review-batch copies it into IRIS's
+#     package and pins its digest alone before the push. Nothing lets
+#     this one through.
 # The dev clone pulls main next. Pushes to any other branch go through, so
 # CI can run on unchecked work.
 #
@@ -22,6 +27,14 @@ zero=0000000000000000000000000000000000000000
 status=0
 while read -r _ local_sha remote_ref remote_sha; do
     [ "$remote_ref" = refs/heads/main ] && [ "$local_sha" != "$zero" ] || continue
+
+    authors="$(git show "$local_sha:lib/katana.sh" 2> /dev/null | tr -d '\r' |
+        sed -nE 's|^    \[([^]]+)\]=ghcr\.io/.*@sha256:.*$|\1|p')"
+    if [ -n "$authors" ]; then
+        echo "pre-push: ${local_sha:0:7}'s digest map names a workflow author's container for ${authors//$'\n'/, }." >&2
+        echo "  bin/review-batch copies it into IRIS's package and pins its digest alone; push the commit its --apply makes." >&2
+        status=1
+    fi
 
     if [ -x "$check_passed" ] && ! "$check_passed" "$local_sha"; then
         if [ -n "$IRIS_UNCHECKED" ]; then
