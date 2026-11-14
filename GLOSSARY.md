@@ -92,6 +92,10 @@ _Avoid_: App, template
 A form whose script carries its workflow's entry script, so a researcher can edit it for one run, and runs it in an environment. The `hello-world` form is not one.
 _Avoid_: Python form, real form
 
+**Page template**:
+The HTML every workflow page is written from, `templates/workflow-page.html`: fixed sections for what the workflow does, its workflow owner, how to run it, the data it needs and how to cite it, with placeholders the scaffold and the workflow author fill. "Template" alone means this, never a form.
+_Avoid_: Page skeleton, boilerplate
+
 **Two-click launch**:
 The path from catalogue to running job: one click on the workflow's IRIS page, one click to submit its form.
 _Avoid_: One-click run

@@ -20,10 +20,13 @@
   <div class="breadcrumb"><a href="../../">IRIS</a> / <a href="../../#workflows">Workflows</a> / <a href="../../#microct-lab">X-ray MicroCT Lab</a> / microCT 2D Segmentation</div>
   <span class="wf-domain imaging">Imaging</span>
   <h1 class="wf-title">microCT 2D Segmentation (U-Net)</h1>
-  <p class="wf-desc">Label a few slices of a microCT volume, and IRIS trains a 2D U-Net on them and segments the whole volume slice by slice. Each run is recorded, so you can compare runs with different settings side by side.</p>
-  <p class="wf-owner">Workflow owner: <a href="https://github.com/PatrickTung" target="_blank">Patrick Tung</a></p>
+  <p class="wf-desc" id="what">Label a few slices of a microCT volume, and IRIS trains a 2D U-Net on them and segments the whole volume slice by slice. Each run is recorded, so you can compare runs with different settings side by side.</p>
+  <div id="owner">
+    <p class="wf-owner">Workflow owner: <a href="https://github.com/PatrickTung" target="_blank">Patrick Tung</a> · <a href="mailto:patrick.tung@unsw.edu.au">patrick.tung@unsw.edu.au</a></p>
+    <p class="wf-review">IRIS reviewed this workflow for safety and fit, not for its science: its workflow owner answers for its method and its results, so ask them about either.</p>
+  </div>
 
-  <div class="launch">
+  <div class="launch" id="run">
     <div>
       <a href="https://kod.restech.unsw.edu.au/pun/sys/OpenComposer/microct-2d-segmentation" class="run-btn" target="_blank">▶&nbsp; Run on Katana</a>
       <span class="run-note">Opens the form in Katana OnDemand. Pick your dataset folder and submit: the other fields have working defaults.</span>
@@ -42,7 +45,7 @@
     <div class="col">
       <div class="col-when">Once per dataset</div>
       <h3>1 · Stage</h3>
-      <p>Put the volume and your labelled slices in one dataset folder, then send it to your scratch with Globus from your browser.</p>
+      <p>Lay out one dataset folder as in <a href="#data">The data it needs</a>, then send it to your scratch with Globus from your browser.</p>
       <p><a href="../../guide/#stage">Staging a dataset</a></p>
     </div>
     <div class="col">
@@ -59,16 +62,19 @@
     </div>
   </div>
 
-  <details>
-    <summary>How to lay out and copy your dataset</summary>
-    <p>Lay out the dataset folder and copy it to your scratch as in <a href="../../guide/#stage">Staging a dataset</a>. For this workflow:</p>
+  <details id="data">
+    <summary>The data it needs</summary>
+    <p>One dataset folder holding one volume and its labelled training slices:</p>
     <ul>
+      <li><code>volume/</code> holds every <code>.nc</code> file of the volume, read in file-name order.</li>
+      <li><code>train/images/</code> holds 2D TIFF slices of the volume, each exported at the volume's size and bit depth.</li>
+      <li><code>train/labels/</code> holds one label slice per image, with the same file name and size: 0 is unlabelled, then 1, 2, 3 and so on per class.</li>
       <li>Label 5 to 30 slices. The number of classes is read from your labels, up to 255.</li>
-      <li>Export each training image at the volume's size and bit depth.</li>
     </ul>
+    <p>The form checks this layout before it submits. Lay out and copy the folder to your scratch as in <a href="../../guide/#stage">Staging a dataset</a>.</p>
   </details>
 
-  <details>
+  <details id="fields">
     <summary>What each form field does</summary>
     <!-- Memory and walltime defaults: timing run 9544838 (6 GB), unsw-restech/iris#29; dev acceptance run 9577519 (V100, 16 min, 50 epochs), unsw-restech/iris#46, after which the 2 h default stays (Patrick, 2026-10-21). 12 h on any node: the form's walltime help and unsw-restech/iris#24. -->
     <table class="param-table">
@@ -142,13 +148,13 @@
     <summary>Something went wrong</summary>
     <ul>
       <li><strong>The form won't submit.</strong> Its warning names the rule your dataset folder broke, and your values are kept. Fix the folder and submit again. A stray <code>.DS_Store</code> or <code>Thumbs.db</code> in one of the <code>train/</code> folders counts as a file-name mismatch: delete it.</li>
-      <li><strong>The job stopped at once with "the IRIS imaging environment is missing".</strong> Nothing is wrong with your data. Email patrick.tung@unsw.edu.au with the job ID.</li>
+      <li><strong>The job stopped at once with "the IRIS imaging environment is missing".</strong> Nothing is wrong with your data. Email the <a href="#owner">workflow owner</a> with the job ID.</li>
       <li><strong>The job stopped before training with an <code>ERROR:</code> line about your dataset.</strong> It names the file and what's wrong: a training image at a different size or bit depth from the volume, a label slice that doesn't match its image, label values that aren't whole numbers from 0, more than 255 classes, or labels that are all 0.</li>
       <li><strong>The job ran out of walltime.</strong> Submit again with more walltime. <strong>Load parameters</strong> in <strong>History</strong> keeps your other settings.</li>
       <li><strong>The job ran out of GPU memory.</strong> Lower the batch size under advanced options, or the patch size.</li>
       <li><strong><code>iris-view</code> says there is no label volume.</strong> The run hasn't finished, or it failed: read the end of its <code>runs/&lt;job ID&gt;.OU</code>.</li>
       <li><strong>The job output doesn't end with the <code>iris-view</code> line.</strong> The job stopped at its first error, which is the last thing in the output. The same commands are printed near the start of the output, before training, so the run directory they name may be incomplete.</li>
-      <li><strong>Anything else.</strong> Email patrick.tung@unsw.edu.au with the job ID and the end of the job output.</li>
+      <li><strong>Anything else.</strong> Email the <a href="#owner">workflow owner</a> with the job ID and the end of the job output.</li>
     </ul>
   </details>
 </div>
