@@ -21,17 +21,16 @@ run_button() {
 # workflows: live-seg, in service, and old-seg, wholly demoted to
 # Unmaintained. Each flag leaves one step of the demotion undone.
 make_tree() {
-    local tree="$scratch/$1" flag form=_archive
+    local tree="$scratch/$1" flag form=_archive manifest=_archive
     shift
     site_tree "$tree" live-seg:ct-lab:active old-seg:ct-lab:unmaintained
     run_button live-seg >> "$tree/workflows/live-seg/index.html"
     echo 'title: Live seg' > "$tree/workflows/live-seg/form.yml.erb"
-    mkdir -p "$tree/.github"
-    echo '/workflows/live-seg/ @jdoe' > "$tree/.github/CODEOWNERS"
+    echo 'name: Live seg' > "$tree/workflows/live-seg/manifest.yml"
     for flag in "$@"; do
         case "$flag" in
             tier-row) sed -i '/^| \*\*Unmaintained\*\*/d' "$tree/CONTRIBUTING.md" ;;
-            codeowners-line) echo '/workflows/old-seg/ @jdoe' >> "$tree/.github/CODEOWNERS" ;;
+            manifest-in-place) manifest=workflows ;;
             banner) sed -i '/unmaintained-banner/d' "$tree/workflows/old-seg/index.html" ;;
             card) sed -i '/^  <\/div>/i\    <a href="workflows/old-seg/" class="workflow-card">Old seg</a>' "$tree/index.html" ;;
             run-button) run_button old-seg >> "$tree/workflows/old-seg/index.html" ;;
@@ -41,6 +40,8 @@ make_tree() {
     done
     mkdir -p "$tree/$form/old-seg"
     echo 'title: Old seg' > "$tree/$form/old-seg/form.yml.erb"
+    mkdir -p "$tree/$manifest/old-seg"
+    printf '%s\n' 'name: Old seg' 'owner:' '  name: Jane Doe' '  github: jdoe' > "$tree/$manifest/old-seg/manifest.yml"
 }
 
 # demotion <pass|fail> <name> [<flag>...]: the check over a tree built
@@ -60,4 +61,4 @@ demotion fail tier-row tier-row
 demotion fail banner banner
 demotion fail banner-and-run-button banner run-button
 demotion fail page page
-demotion fail codeowners-line codeowners-line
+demotion fail manifest-in-place manifest-in-place

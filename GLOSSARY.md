@@ -29,7 +29,7 @@ The ResTech member who approves proposals, reviews and merges workflows, and bui
 _Avoid_: Admin, owner, reviewer
 
 **Workflow owner**:
-The workflow author answerable for keeping one workflow working, named on its page. A workflow whose owner stops answering is taken out of service.
+The workflow author answerable for keeping one workflow working, named on its page and in its manifest, which is how they are mentioned on every PR that touches its folder. A workflow whose owner stops answering is taken out of service.
 _Avoid_: Maintainer, contributor
 
 **Proposal**:

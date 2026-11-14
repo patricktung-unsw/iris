@@ -629,7 +629,8 @@ check "Run and verified workflows cite a job" tier_jobs
 # commits still lead somewhere, carries the unmaintained-banner. Demoting
 # one takes the Run button off the page, the card off the catalogue, the
 # form into _archive/<slug>/, so OpenComposer stops serving it, and its
-# line out of CODEOWNERS, since it has no workflow owner; this fails
+# manifest with it, since it has no workflow owner left to mention on a
+# PR (.github/workflows/owner-mention.yml reads workflows/); this fails
 # until every step is done, whichever of the row or the banner came first.
 # tests/bin/test_unmaintained.sh runs it on fixture trees.
 unmaintained() {
@@ -652,11 +653,11 @@ unmaintained() {
             echo "index.html: $slug is Unmaintained, but has a catalogue card"
         [ -e "workflows/$slug/form.yml.erb" ] &&
             echo "workflows/$slug/form.yml.erb: $slug is Unmaintained; move its form to _archive/$slug/"
-        tr -d '\r' 2>/dev/null < .github/CODEOWNERS | grep -qE "^/workflows/$slug/ " &&
-            echo ".github/CODEOWNERS: $slug is Unmaintained; remove its /workflows/$slug/ line"
+        [ -e "workflows/$slug/manifest.yml" ] &&
+            echo "workflows/$slug/manifest.yml: $slug is Unmaintained; move its manifest to _archive/$slug/"
     done
 }
-check "unmaintained workflows have no Run button, card, live form or CODEOWNERS line" unmaintained
+check "unmaintained workflows have no Run button, card, live form or manifest" unmaintained
 
 # The guide owns staging and viewing (CONTRIBUTING.md, Page): its data mover host,
 # scratch quota, WinSCP note, Globus link (app.globus.org) and Katana scratch
@@ -691,34 +692,39 @@ avoid_names() {
 }
 check "name uses a glossary Avoid word (see GLOSSARY.md)" avoid_names
 
-# Every catalogue workflow with a form names its workflow owner on its
-# page, under the description, as <p class="wf-owner"> linking their GitHub
-# profile, and .github/CODEOWNERS has a "/workflows/<slug>/ @<login>" line
-# so that owner reviews changes to its folder. hello-world is onboarding,
-# and Planned workflows have no form. Every /workflows/ line names a folder
-# with a form.
+# Every catalogue workflow with a form names its workflow owner in its
+# manifest (bin/manifest-owner gives the shape) and on its page, under the
+# description, as <p class="wf-owner"> linking their GitHub profile, with
+# the same login and name in both. .github/workflows/owner-mention.yml
+# mentions the manifest's owner on a PR that touches the folder, which
+# reaches them without write access, as CODEOWNERS can't (#136), so no
+# CODEOWNERS file GitHub reads holds a /workflows/ line. hello-world is
+# onboarding, and Planned workflows have no form.
+# tests/bin/test_workflow_owner.sh runs it on fixture trees.
 workflow_owner() {
-    local f d owners p login
-    owners=$(tr -d '\r' 2>/dev/null < .github/CODEOWNERS)
-    grep -oE '^/workflows/[^ ]*' <<< "$owners" | while IFS= read -r p; do
-        [[ "$p" =~ ^/workflows/[a-z0-9-]+/$ ]] && [ -f ".${p}form.yml.erb" ] ||
-            echo ".github/CODEOWNERS: $p is not a workflow folder with a form (/workflows/<slug>/)"
+    local f d page login name m_login m_name
+    for f in .github/CODEOWNERS CODEOWNERS docs/CODEOWNERS; do
+        tr -d '\r' 2>/dev/null < "$f" | grep -nE '^[^#]*workflows/' | sed "s|^|$f:|;s|\$| (a workflow's owner goes in its manifest.yml, not CODEOWNERS)|"
     done
     for f in workflows/*/form.yml.erb; do
         d=$(dirname "$f")
         [ "$d" = workflows/hello-world ] && continue
-        login=$(tr -d '\r' 2>/dev/null < "$d/index.html" |
-            sed -nE 's|.*<p class="wf-owner">Workflow owner: <a href="https://github\.com/([A-Za-z0-9-]+)".*|\1|p' | head -n1)
-        if [ -z "$login" ]; then
-            echo "$d/index.html: no workflow owner (<p class=\"wf-owner\">Workflow owner: <a href=\"https://github.com/<login>\" ...)"
-        elif ! grep -qE "^/$d/ +@" <<< "$owners"; then
-            echo ".github/CODEOWNERS: no \"/$d/ @$login\" line"
-        elif ! grep -E "^/$d/ " <<< "$owners" | grep -qE " @$login( |$)"; then
-            echo ".github/CODEOWNERS: /$d/ does not name @$login, the owner on its page"
-        fi
+        page=$(tr -d '\r' 2>/dev/null < "$d/index.html" |
+            sed -nE 's|.*<p class="wf-owner">Workflow owner: <a href="https://github\.com/([A-Za-z0-9-]+)"[^>]*>([^<]*)</a>.*|\1\t\2|p' | head -n1)
+        IFS=$'\t' read -r login name <<< "$page"
+        [ -n "$login" ] ||
+            echo "$d/index.html: no workflow owner (<p class=\"wf-owner\">Workflow owner: <a href=\"https://github.com/<login>\" target=\"_blank\"><name></a></p>)"
+        bin/manifest-owner "$d/manifest.yml" 2>&1 || continue
+        m_login=$(bin/manifest-owner "$d/manifest.yml" github)
+        m_name=$(bin/manifest-owner "$d/manifest.yml" name)
+        [ -n "$login" ] || continue
+        [ "$login" = "$m_login" ] ||
+            echo "$d: the page's workflow owner is $login, the manifest's is $m_login"
+        [ "$name" = "$m_name" ] ||
+            echo "$d: the page names the workflow owner \"$name\", the manifest \"$m_name\""
     done
 }
-check "workflow owner on the page and in CODEOWNERS" workflow_owner
+check "workflow owner in the manifest and on the page" workflow_owner
 
 # A workflow page lists its citable versions by DOI, date and commit, never
 # as a version number (ADR-0002): one line each in its "Cite this workflow"
