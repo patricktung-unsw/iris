@@ -1,16 +1,19 @@
 #!/bin/bash
 # bin/envpull's side on the data mover, sent on stdin to `bash -s`:
 #
-#   bash -s -- <list|pull|remove|login> <env>/<n>|- <environments folder>
+#   bash -s -- <list|pull|own|remove|login> <env>/<n>|- <folder>
 #       <system clone> <registry> <tools version>
 #       [map:<env>/<n>=<digest>]... [pin:<env>/<n>=<slug>]...
 #
-# map: words are lib/katana.sh's digest map, pin: words the forms of the
-# checkout bin/envpull ran from. The system clone's forms and the tools
-# version pin versions too. See bin/envpull for what each mode does.
+# <folder> is the environments folder, or for own the author's own folder
+# with %u for this USER. map: words are lib/katana.sh's digest map, pin:
+# words the forms of the checkout bin/envpull ran from. The system clone's
+# forms and the tools version pin versions too. See bin/envpull for what
+# each mode does.
 
 mode="$1" target="$2" folder="$3" clone="$4" registry="$5" tools="$6"
 shift 6
+folder="${folder//%u/$USER}"
 # Copies of lib/katana.sh's iris_is_env_version pattern and iris_form_pins,
 # since this runs on the data mover over stdin and can't source the clone.
 version='^[a-z0-9-]+/[1-9][0-9]*$'
@@ -54,53 +57,79 @@ login() {
     export APPTAINER_DOCKER_USERNAME="${line%%:*}" APPTAINER_DOCKER_PASSWORD="${line#*:}"
 }
 
+# A copy of lib/katana.sh's iris_is_author_env pattern: an author's
+# container, published by CI on their fork (#138).
+author='^ghcr\.io/[a-z0-9]([a-z0-9-]*[a-z0-9])?/iris-env@sha256:[0-9a-f]{64}$'
+
 # no_digest <env>/<n>: prints why the map gives the version no digest to
-# pull it by, "unpublished" or "not in lib/katana.sh's digest map", or
-# nothing if it gives one.
+# pull it by, "unpublished", "author" for an author's container, which only
+# own pulls, or "not in lib/katana.sh's digest map", or nothing if it
+# gives one.
 no_digest() {
     case "${digest[$1]-}" in
         sha256:*) ;;
         unpublished) echo unpublished ;;
-        *) echo "not in lib/katana.sh's digest map" ;;
+        *) if [[ "${digest[$1]}" =~ $author ]]; then
+               [ "$mode" = own ] || echo author
+           else
+               echo "not in lib/katana.sh's digest map"
+           fi ;;
     esac
 }
 
 # get <env>/<n> <strict>: pulls the version unless its file is there. An
-# unpublished version is skipped, and fails only if <strict> is 1.
+# unpublished version, or an author's outside own, is skipped, and fails
+# only if <strict> is 1. In own, a file whose digest file disagrees is
+# replaced.
 get() {
-    local v="$1" d="${digest[$1]-}" file="$folder/$1.sif" dir="$folder/${1%/*}" why have part dpart tmp
+    local v="$1" d="${digest[$1]-}" file="$folder/$1.sif" dir="$folder/${1%/*}" ref why have part dpart tmp
     why="$(no_digest "$v")"
     if [ "$why" = unpublished ]; then
         echo "$v: unpublished, skipped: CI hasn't published it, so its digest in lib/katana.sh is 'unpublished'."
+        return "$2"
+    elif [ "$why" = author ]; then
+        echo "$v: published under an author's own account, ${d%@*}, skipped: the review batch copies it into $registry first. Its author pulls it into their own folder with bin/envpull --own $v."
         return "$2"
     elif [ -n "$why" ]; then
         echo "$v: $why, so it can't be pulled."
         return 1
     fi
+    # The container by digest alone, and the digest alone for the digest
+    # file, the same for an author's container once it is copied.
+    case "$d" in
+        sha256:*) ref="$registry@$d" ;;
+        *) ref="$d" d="${d##*@}" ;;
+    esac
     if [ -e "$file" ]; then
         have="$(cat "$folder/$v.digest" 2>/dev/null)"
         if [ "$have" = "$d" ]; then
             echo "$v: present, $file at $d."
             return 0
         fi
-        echo "$v: $file is there, but its digest file holds '${have:-nothing}', not $d. Nothing pulled; replacing it needs Patrick's go-ahead naming that file."
-        return 1
+        if [ "$mode" != own ]; then
+            echo "$v: $file is there, but its digest file holds '${have:-nothing}', not $d. Nothing pulled; replacing it needs Patrick's go-ahead naming that file."
+            return 1
+        fi
+        echo "$v: $file is there at '${have:-nothing}'; replacing it with $d, which the digest map now names."
     fi
     login || return 1
     mkdir -p "$dir" || return 1
     part="$dir/.${v##*/}.sif.part" dpart="$dir/.${v##*/}.digest.part" tmp="$dir/.${v##*/}.tmp"
     mkdir -p "$tmp" || return 1
-    echo "$v: pulling $registry@$d"
+    echo "$v: pulling $ref"
     # build, not pull, for --mksquashfs-args: the data mover caps each user
     # at 4 GB, and Katana's apptainer.conf gives mksquashfs every CPU
     # (procs = 0), whose buffers went over it and got it killed (2026-11-10).
     if ! APPTAINER_TMPDIR="$tmp" apptainer build --disable-cache --force \
-        --mksquashfs-args "-processors 4 -mem 1G" "$part" "docker://$registry@$d"; then
+        --mksquashfs-args "-processors 4 -mem 1G" "$part" "docker://$ref"; then
         rm -rf -- "$tmp" "$part"
         echo "$v: the pull failed; nothing written. Until the package is public, a pull needs $token."
         return 1
     fi
     rm -rf -- "$tmp"
+    # Only own replaces a file, and takes the old one out first, so a kill
+    # leaves the state a first pull's kill does.
+    [ ! -e "$file" ] || rm -f -- "$file" || return 1
     # Each file goes in by rename, the digest file first: killed between
     # the two, the folder holds a digest file and no container file, which
     # the next run pulls again, never a container file without its digest,
@@ -134,7 +163,7 @@ case "$mode" in
             fi
         done
         ;;
-    pull)
+    pull|own)
         get "$target" 1 || status=1 ;;
     login)
         # Says only what login() decides, never any part of the file's line,

@@ -46,7 +46,11 @@ IRIS_TOOLS_ENV_VERSION=tools/1
 # that can't source bash reads it with a regex. <digest> is sha256:<64 hex>,
 # or "unpublished" until CI first publishes the version: CI builds every
 # unpublished version and prints the line to put here instead
-# (envs/README.md). A version's digest never changes once written.
+# (envs/README.md). On a workflow author's fork, CI publishes it under the
+# author's own GitHub account instead, and the line it prints names that
+# container in full, ghcr.io/<login>/iris-env@sha256:<64 hex>, until the
+# review batch copies it by digest into IRIS_ENV_REGISTRY and writes the
+# digest alone (#138). A version's digest never changes once written.
 declare -gA IRIS_ENV_DIGESTS=(
     [microct/1]=sha256:c1022d8514acbdb80dc038a72ac193699fb1a4b7a75fa1b2905c7b41fd04eb4f
     [tools/1]=sha256:02aec588cda0544f122b12a0ddeb6cd8e34a83724ed643b2712de46e4d3677ed
@@ -62,27 +66,43 @@ declare -gA IRIS_LAB_ENVS=(
 
 # iris_is_env_version <word>: whether <word> names an environment version,
 # <env>/<n> with <n> counting from 1. iris_is_env_digest <word>: whether
-# <word> is a digest map value, sha256:<64 hex> or unpublished.
+# <word> is a digest map value, sha256:<64 hex>, unpublished, or an
+# author's container, ghcr.io/<login>/iris-env@sha256:<64 hex>, <login>
+# lowercase and never the org's, whose own containers are their digest
+# alone. iris_is_author_env <word>: whether it is an author's container.
 # iris_form_pins <form>: the versions a form pins, one a line, from its
 # "  IRIS_ENV_VERSION=<env>/<n>" lines. bin/envpull-dm.sh, which runs on
 # the data mover and can't source this file, keeps its own copies of the
 # first and last.
 iris_is_env_version() { [[ "$1" =~ ^[a-z0-9-]+/[1-9][0-9]*$ ]]; }
-iris_is_env_digest() { [[ "$1" =~ ^(sha256:[0-9a-f]{64}|unpublished)$ ]]; }
+iris_is_author_env() {
+    [[ "$1" =~ ^ghcr\.io/[a-z0-9]([a-z0-9-]*[a-z0-9])?/iris-env@sha256:[0-9a-f]{64}$ ]] &&
+        [[ "$1" != "$IRIS_ENV_REGISTRY@"* ]]
+}
+iris_is_env_digest() { [[ "$1" =~ ^(sha256:[0-9a-f]{64}|unpublished)$ ]] || iris_is_author_env "$1"; }
 iris_form_pins() { tr -d '\r' < "$1" | sed -nE 's/^  IRIS_ENV_VERSION=(.*)$/\1/p'; }
 
 # iris_env_file <env>/<n> [<folder>]: prints the version's container file
 # in <folder>, IRIS_ENVS_FOLDER unless given.
 iris_env_file() { echo "${2:-$IRIS_ENVS_FOLDER}/$1.sif"; }
 
+# iris_own_envs_folder [<user>]: prints a workflow author's own environments
+# folder, in their own scratch, where containers are cached (AGENTS.md):
+# <user>'s, USER's unless given. It holds the container files of versions
+# CI published under the author's own account, laid out as the
+# environments folder is, which bin/envpull --own fills and a job from the
+# author's own clone runs (#138).
+iris_own_envs_folder() { echo "/srv/scratch/${1:-$USER}/.envs"; }
+
 # iris_env_ref <env>/<n>: prints the version's container by digest alone,
-# <registry>@sha256:<hex>, the form Apptainer and docker pull; fails with
-# one line on stderr if the version isn't in the digest map or is
-# unpublished.
+# <registry>@sha256:<hex>, the form Apptainer and docker pull, an author's
+# container as the map writes it; fails with one line on stderr if the
+# version isn't in the digest map or is unpublished.
 iris_env_ref() {
     local digest="${IRIS_ENV_DIGESTS[$1]-}"
     case "$digest" in
         sha256:*) echo "$IRIS_ENV_REGISTRY@$digest" ;;
+        ghcr.io/*@sha256:*) echo "$digest" ;;
         unpublished) echo "$1 is not published yet: its digest in lib/katana.sh is 'unpublished'" >&2; return 1 ;;
         *) echo "$1 is not in lib/katana.sh's digest map" >&2; return 1 ;;
     esac

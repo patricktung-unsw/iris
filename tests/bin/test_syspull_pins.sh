@@ -67,6 +67,11 @@ git -C "$clone" -c user.name=t -c user.email=t@t commit -qm unmapped
 expect 1 "microct/3, pinned by mri: not in HEAD's digest map"
 expect 1 "microct/2, pinned by seg: unpublished in HEAD's digest map"
 git -C "$clone" rm -rq workflows/mri
+# An author's container, from CI on their fork (#138), is not in the org's
+# package until the review batch copies it, whatever file is on Katana.
+sed -i "s|^    \[microct/2\]=.*|    [microct/2]=ghcr.io/an-author/iris-env@$b|" "$clone/lib/katana.sh"
+git -C "$clone" -c user.name=t -c user.email=t@t commit -qam author
+expect 1 "microct/2, pinned by seg: published under an author's own account, ghcr.io/an-author/iris-env, so the review batch hasn't copied it into"
 
 # A commit from before containers, whose lib/katana.sh has no helpers,
 # pins nothing.

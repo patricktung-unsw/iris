@@ -45,6 +45,9 @@ for v in $(printf '%s\n' "${!pinned[@]}" | sort); do
     elif [ "$d" = unpublished ]; then
         echo "$v, pinned by ${pinned[$v]}: unpublished in $commit's digest map, so there is no container to pull."
         status=1
+    elif [[ "$d" == ghcr.io/* ]]; then
+        echo "$v, pinned by ${pinned[$v]}: published under an author's own account, ${d%@*}, so the review batch hasn't copied it into $IRIS_ENV_REGISTRY."
+        status=1
     elif [ ! -f "$file" ]; then
         echo "$v, pinned by ${pinned[$v]}: no $file."
         status=1

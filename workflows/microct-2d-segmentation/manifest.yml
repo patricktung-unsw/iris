@@ -1,4 +1,6 @@
 name: microCT 2D Segmentation (U-Net)
+# The WorkflowHub entry's tags, which bin/workflowhub reads; OpenComposer ignores them.
+tags: microCT, segmentation, U-Net, deep learning, imaging, HPC
 category: Imaging
 icon: bi-layers
 description: |

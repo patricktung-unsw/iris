@@ -16,5 +16,5 @@ Proposal: #<!-- only if the contribute page's #proposal list says you need one; 
 - [ ] The workflow has a synthetic-dataset test under `workflows/<slug>/tests/`, like the reference workflow's `test_synthetic.py`; the shared library's tests are in `lib/tests/`, not copied.
 - [ ] Its page documents the dataset layout its form's `check:` validates, and names me as its workflow owner.
 - [ ] Its run proof, `workflows/<slug>/run-proof.json`, written by `bin/run-proof`, is from a run from my test instance, on my own clone, after the folder's last change.
-- [ ] Packages it needs beyond its lab's environment are in that environment's next version in this PR, or it needs none.
+- [ ] Packages it needs beyond its lab's environment are in that environment's next version in this PR, or it needs none. That version's digest map line names the public container my fork's CI published, `ghcr.io/<login>/iris-env@sha256:<hex>`, which my run used, or it is a layer left `unpublished` until IRIS's package is public (#132).
 - [ ] I confirm my contribution is licensed under Apache-2.0, the licence IRIS uses (inbound = outbound; there is no separate agreement to sign).

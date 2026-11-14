@@ -1,13 +1,15 @@
 # Environment containers (ADR-0008, envs/README.md). Every version that
 # lib/katana.sh's digest map lists as unpublished is built from its recipe
 # in envs/, as a layer or fresh as envs/build-kind.sh decides (ADR-0010),
-# checked by envs/check-container.sh the same way for either kind, and, on
-# main only, published to ghcr.io/unsw-restech/iris-env tagged <env>-<n>. GHCR starts
-# a new package as private, which needs no org owner. The run's summary
-# prints the digest line to put in lib/katana.sh in place of unpublished;
-# once it is there, no later run builds that version again. On any other
-# branch the same build and checks run, and nothing is published. Nothing
-# builds on Katana.
+# checked by envs/check-container.sh the same way for either kind, and
+# published by envs/publish-container.sh: on unsw-restech/iris's main to
+# ghcr.io/unsw-restech/iris-env, and on any branch of a workflow author's
+# fork to their own account's ghcr.io/<owner>/iris-env (#138), tagged
+# <env>-<n>. GHCR starts a new package as private, which needs no org
+# owner. The run's summary prints the digest line to put in lib/katana.sh
+# in place of unpublished; once it is there, no later run builds that
+# version again. On any other branch of unsw-restech/iris the same build
+# and checks run, and nothing is published. Nothing builds on Katana.
 name: containers
 on:
   push:
@@ -77,24 +79,8 @@ jobs:
           Xvfb :99 -ac -screen 0 1280x1024x24 > /dev/null 2>&1 &
           sleep 2
           DISPLAY=:99 envs/check-container.sh "$LOCAL" "$VERSION"
+      # On unsw-restech/iris, main publishes to the org's package; on a
+      # fork, every branch publishes to its owner's (envs/publish-container.sh).
       - name: Publish
-        if: github.ref == 'refs/heads/main'
-        shell: bash
-        run: |
-          . lib/katana.sh
-          ref="$IRIS_ENV_REGISTRY:${VERSION/\//-}"
-          docker tag "$LOCAL" "$ref"
-          docker push "$ref"
-          digest=$(docker inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$ref" |
-              sed -n "s|^$IRIS_ENV_REGISTRY@||p" | head -n1)
-          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "No digest for $ref after the push."; exit 1; }
-          echo "Published $ref as $IRIS_ENV_REGISTRY@$digest"
-          {
-              echo "Published \`$ref\` as \`$IRIS_ENV_REGISTRY@$digest\`."
-              echo
-              echo "In lib/katana.sh's digest map, replace \`[$VERSION]=unpublished\` with:"
-              echo
-              echo '```'
-              echo "    [$VERSION]=$digest"
-              echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+        if: github.ref == 'refs/heads/main' || github.repository != 'unsw-restech/iris'
+        run: envs/publish-container.sh "$LOCAL" "$VERSION"

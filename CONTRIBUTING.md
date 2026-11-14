@@ -45,7 +45,7 @@ iris/
 ├── _archive/<slug>/                  # Retired OpenComposer forms, never served by OpenComposer
 ├── .github/workflows/check.yml       # CI: runs bin/check on every push and pull request
 ├── .github/workflows/ready.yml       # CI: labels a pull request ready once check passes, and outside-folder if bin/outside-folder flags it
-├── .github/workflows/containers.yml  # CI: builds and checks each unpublished environment version; publishes it from main
+├── .github/workflows/containers.yml  # CI: builds and checks each unpublished environment version; publishes it from main, and on a fork under its owner's account
 ├── .github/ISSUE_TEMPLATE/proposal.yml  # Issue form for a workflow author's proposal
 ├── .github/pull_request_template.md  # The checklist a workflow PR is ready for review on
 ├── .githooks/commit-msg              # Refuses AI attribution, git's conflict list or a glossary Avoid word in a commit message; AGENTS.md turns the hooks on
@@ -56,7 +56,7 @@ iris/
 │   ├── check                         # Every check to pass before committing
 │   ├── check-passed                  # Record the tree a full bin/check passed on; say whether a commit's tree passed (pre-push runs it)
 │   ├── ciwait                        # Wait for a pushed commit's CI run, check or containers (desktop)
-│   ├── envpull                       # Pull the containers live forms pin onto Katana; list those nothing pins (desktop)
+│   ├── envpull                       # Pull the containers live forms pin onto Katana; list those nothing pins; --own pulls an author's into their own scratch (desktop)
 │   ├── envpull-dm.sh                 # envpull's side on the data mover
 │   ├── envrun                        # Run a command in an environment version's container: bin/check's Python tests (desktop, CI)
 │   ├── outside-folder                # List what a PR changes beyond its workflow's folder, its card and its lab's recipe (the ready workflow runs it)
@@ -78,7 +78,7 @@ iris/
 │   ├── run-proof                     # Write a workflow's run proof from a test-instance run (Katana); check a PR's proofs (bin/check runs it)
 │   ├── syspull                       # Show, then deploy, what a pull brings the system clone (desktop)
 │   ├── tracked-tree                  # Print the tree a commit of every uncommitted edit would hold (check-passed and katana-test run it)
-│   └── workflowhub-microct-2d-segmentation  # Walkthrough registering it on WorkflowHub; copy it for another workflow (desktop)
+│   └── workflowhub                   # Walkthrough registering a workflow on WorkflowHub and minting its citable versions, from its manifest (desktop)
 ├── envs/                             # Environment containers: the core list, each environment's packages and versions, CI's build and checks (see its README)
 ├── lib/
 │   ├── iris-job.sh                   # Run-time steps every imaging job sources (container check, run dir, commit, container start), from its workflow's copy
@@ -157,14 +157,24 @@ _#136 fills this step: the owner goes in the workflow's `manifest.yml`, and a sm
 
 ### 4. New environment versions
 
-_#138 fills this step: CI on your fork builds your new version and publishes it under your own GitHub account, so you prove your workflow in it without waiting for the maintainer. Until then the maintainer publishes it from `main`._
-
-You need a proposal for new packages first ([When you need a proposal](#when-you-need-a-proposal)). Then, in your PR, change your lab's environment recipe (`envs/<env>/requirements.in`) and make its next version, *n+1*, as `envs/README.md` describes: its lock, `envs/<env>/<n+1>/requirements.lock`, and `[<env>/<n+1>]=unpublished` in `lib/katana.sh`'s digest map. Your form pins *n+1* in its `IRIS_ENV_VERSION`, and your PR points your lab's lab table entry at it, so the maintainer's review of your PR is the maintainer moving the lab. A lab that shares another lab's environment keeps its entry until the maintainer moves that lab ([ADR-0010](docs/adr/0010-an-environment-version-may-change-its-labs-pins.md)).
+CI on your fork builds your new version and publishes it under your own GitHub account, so you prove your workflow in it without waiting for the maintainer. You need a proposal for new packages first ([When you need a proposal](#when-you-need-a-proposal)). Then, in your PR, change your lab's environment recipe (`envs/<env>/requirements.in`) and make its next version, *n+1*, as `envs/README.md` describes: its lock, `envs/<env>/<n+1>/requirements.lock`, and `[<env>/<n+1>]=unpublished` in `lib/katana.sh`'s digest map. Your form pins *n+1* in its `IRIS_ENV_VERSION`, and your PR points your lab's lab table entry at it, so the maintainer's review of your PR is the maintainer moving the lab. A lab that shares another lab's environment keeps its entry until the maintainer moves that lab ([ADR-0010](docs/adr/0010-an-environment-version-may-change-its-labs-pins.md)).
 
 - **A version that only adds packages is the cheap case**: its lock keeps every line of the one before, so it is built as one layer on it.
 - **A version that changes or removes a package** is not declined: it is built fresh rather than as a layer, `bin/check` prints a `NOTE:` naming what it changes and removes, and it needs the maintainer's review ([ADR-0010](docs/adr/0010-an-environment-version-may-change-its-labs-pins.md)). It is still the lab's next version, never a second environment.
 
-Either way, the lab's other workflows keep the version they pin until their owners prove them in the new one. _#150 fills in which of them would pass: the version's CI run reports it. Until then nothing does._ Until it is published, `bin/check` can't run your tests in it, so say in the PR what you ran them in.
+Then build it and pin it, all on your fork:
+
+1. **Push the branch**, with Actions on for your fork ([CI and `ready`](#7-ci-and-ready)). The `containers` workflow builds every unpublished version with the checks every version gets (`envs/README.md`) and publishes yours to your own account's package, `ghcr.io/<your login>/iris-env`, tagged `<env>-<n+1>`, your login lowercased. Its run's summary prints the digest map line, `    [<env>/<n+1>]=ghcr.io/<your login>/iris-env@sha256:<hex>`.
+2. **Pin it**: put that line in `lib/katana.sh` in place of `[<env>/<n+1>]=unpublished`, and commit and push it. The digest is the version: CI never builds it again, and `bin/check` runs your workflow's tests in that container, on your fork and on your own machine.
+3. **Make the package public**: under **Packages** on your GitHub profile, open `iris-env`, then **Package settings**, **Change visibility**, **Public**. Your PR's CI and the review batch pull it from there.
+4. **Put it on Katana**: `bin/envpull --own <env>/<n+1>`, from your clone, pulls it by digest through the data mover into your own scratch, `/srv/scratch/<zID>/.envs/<env>/<n+1>.sif`. `bin/envpull` reaches the data mover as `ssh katana-dm`, so give your SSH config a `Host katana-dm` entry for `kdm.restech.unsw.edu.au` with your zID as `User`. A run from your own clone, the test instance's, finds the container there when the IRIS environments folder has none, and a researcher's run from IRIS never looks there. The lookup is in the library's job side, so a library copy made before it finds only the environments folder: copy the library again first ([The library's two sides](#the-librarys-two-sides)).
+5. **Prove your workflow in it** on the test instance ([Test instance](#5-test-instance)): its job output's `Environment :` line names the version and its digest, and its run proof records them.
+
+A change to the lock after that is a rebuild with a new digest: put the version back to `unpublished`, push, pin the new line, run `bin/envpull --own` again, which replaces your own file, and prove the workflow again. The review batch copies the container you proved, by that digest, into IRIS's package, `ghcr.io/unsw-restech/iris-env`, and writes its digest alone in the map ([Review batch](#8-review-batch)); it never rebuilds it.
+
+Until IRIS's package is public ([#132](https://github.com/unsw-restech/iris/issues/132)), a fork's CI can't pull from it, so a version built as a layer fails on your fork at its `Build` step, when it pulls the version before it. A version built fresh needs nothing from IRIS's package. Until then a layer version can't be proved before review: leave it `unpublished`, say so in your PR, and the maintainer publishes it from `main` once the review batch merges it, as `envs/README.md`'s [Publishing a version](envs/README.md#publishing-a-version) describes. Making the package public needs one of the org's owners, so nothing in this procedure can do it.
+
+Either way, the lab's other workflows keep the version they pin until their owners prove them in the new one: moving a workflow to a newer version is a change to its folder, which needs a new run proof ([Run proof](#6-run-proof)), and its owner's choice. _#150 fills in which of them would pass: the version's CI run reports it. Until then nothing does._
 
 ### 5. Test instance
 
@@ -205,16 +215,22 @@ Review covers safety and fit only, never your science. A PR that fails a criteri
 
 ### 9. WorkflowHub
 
-_#143 fills this step with one walkthrough for any workflow, reading its values from the workflow's manifest. Until then `bin/workflowhub-microct-2d-segmentation` is the worked example: run on the desktop (it needs `curl` and `python3`), it walks through steps 3 to 5 of the list below for the reference workflow, with every value filled in. Copy it for your workflow and change the values at the top of its stages._
+Each catalogue workflow has its own WorkflowHub entry, and each citable version is a frozen snapshot of `main` with its own DOI. There are no git tags (ADR-0002, `docs/adr/0002-citable-versions-are-frozen-from-main.md`). The workflow owner does every step, through one walkthrough run on the desktop from a clone at `main` (it needs `curl` and `python3`):
 
-Each catalogue workflow has its own WorkflowHub entry, and each citable version is a frozen snapshot of `main` with its own DOI. There are no git tags (ADR-0002, `docs/adr/0002-citable-versions-are-frozen-from-main.md`). The workflow owner does every step.
+```bash
+bin/workflowhub --values <slug>    # what it will enter, read from your workflow's folder
+bin/workflowhub <slug>             # the walkthrough
+```
+
+It reads every value from `workflows/<slug>/`: the title from the manifest's `name:`, the description from its `description:`, the tags from its `tags:` (one comma-separated line, which you add), you as creator from its owner, the main workflow file `src/run.py`, and the entry itself from the newest DOI the page's **Cite this workflow** lists. With none listed it registers a new entry; with one, it adds a new version to that entry. It asks for your ORCID if the manifest lacks it, and keeps your answers outside the repo, so a re-run offers them back.
 
 1. **Create an account** on [WorkflowHub](https://workflowhub.eu/) and link your ORCID to it.
 2. **Ask to join Team 472**, [UNSW ResTech](https://workflowhub.eu/projects/472), from its page. The maintainer approves, and keeps edit rights over every entry in the team, so leave the team able to manage your entry.
-3. **Register the workflow** in Team 472 by importing from git: repository `https://github.com/unsw-restech/iris`, branch `main`, main workflow file the workflow's entry point (`workflows/<slug>/src/run.py` for the reference workflow), workflow type `Other`.
-4. **Fill in the metadata**: the title and description from the workflow's page, licence Apache-2.0, and as creators yourself, your co-authors (with ORCIDs where they have them) and UNSW Research Technology Services.
-5. **Freeze** the entry's snapshot of `main` (WorkflowHub's Freeze button), **publish** it, then **mint** its DOI, which makes it a citable version. Neither publishing nor minting can be undone. Note the date and the commit of `main` it was frozen at.
-6. **Open a PR** adding the citable version to the workflow's page: its DOI, its date and its commit, never a version number. Add its DOI to `identifiers` in `CITATION.cff` too, above that workflow's older ones.
+3. **Run `bin/workflowhub <slug>`.** It does every step WorkflowHub documents with you: registration in Team 472 by importing from git (repository `https://github.com/unsw-restech/iris`, branch `main`, workflow type `Other`), then the metadata, with each value printed to paste: title, description, licence Apache-2.0, sharing, tags, and as creators yourself, your co-authors (with ORCIDs where they have them) and UNSW Research Technology Services.
+4. **Make your three clicks**, which it lists in order and stops for a yes before each: **Freeze** the version, **Publish** the entry, then **Generate a DOI**, which makes it a citable version. None can be undone. It reads the published entry back to check its title, licence and commit before the DOI, and reads the DOI back after.
+5. **Open a PR** adding the citable version to the workflow's page: its DOI, its date and its commit, never a version number, and its DOI to `identifiers` in `CITATION.cff`, above that workflow's older ones. The walkthrough ends by printing both lines.
+
+To try it without minting anything, run it against WorkflowHub's development instance, which mints no DOIs, so it stops after Publish: `IRIS_WORKFLOWHUB=https://dev.workflowhub.eu IRIS_WORKFLOWHUB_TEAM=<a team there> bin/workflowhub <slug>`. That instance's entries are its own, so `IRIS_WORKFLOWHUB_ENTRY=<its entry URL>` adds a new version to one.
 
 **When to mint:** the first citable version straight after your workflow merges; after that, only when its code or defaults change in a way that changes results, not on every merge. A citable version's commit may include unrelated changes to other workflows; that is harmless, since each run's `commit.txt` pins exactly what ran.
 
