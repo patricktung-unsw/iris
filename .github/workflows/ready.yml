@@ -1,0 +1,81 @@
+# Labels a pull request ready when its check run passes, so the review
+# batch lists only PRs that have proved themselves (#141), and
+# outside-folder when bin/outside-folder flags what it changes beyond its
+# workflow's folder, its card and its lab's recipe, for the maintainer's
+# review. When a check run starts, ready comes off until it passes again;
+# a failed run leaves it off. outside-folder doesn't hold ready back.
+#
+# workflow_run, so a PR from a fork gets a token that can label, after the
+# check workflow's own run, which has none. This runs the workflow file and
+# code on the default branch, never the PR's: it fetches the PR's commits
+# only for bin/outside-folder to read through git. A check run on a push,
+# rather than a pull request, is ignored. GitHub runs a workflow_run
+# workflow only from the default branch, so a change here takes effect once
+# it is on main.
+name: ready
+on:
+  workflow_run:
+    workflows: [check]
+    types: [requested, completed]
+
+permissions:
+  contents: read
+  issues: write  # labels: creating them, and adding them to a PR
+  pull-requests: write
+
+concurrency:
+  group: ready-${{ github.event.workflow_run.head_sha }}
+
+jobs:
+  label:
+    if: github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0  # bin/outside-folder diffs against the PR's base branch
+          persist-credentials: false
+      - name: Label the pull request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+          ACTION: ${{ github.event.action }}
+          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+        run: |
+          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "No head commit: $SHA"; exit 1; }
+          # The open PR whose head is the run's commit; none if it has
+          # moved on since, whose own run labels it.
+          read -r pr base < <(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls?state=open&per_page=100" \
+              --jq ".[] | select(.head.sha == \"$SHA\") | \"\(.number) \(.base.ref)\"") || true
+          [ -n "${pr:-}" ] || { echo "No open pull request has $SHA as its head."; exit 0; }
+          echo "Pull request #$pr into $base, check run $ACTION${CONCLUSION:+ ($CONCLUSION)}."
+          labels="repos/$GITHUB_REPOSITORY/labels"
+          on() {
+              gh api "$labels/$1" --silent 2> /dev/null ||
+                  gh api "$labels" -f name="$1" -f color="$2" -f description="$3" --silent
+              gh api "repos/$GITHUB_REPOSITORY/issues/$pr/labels" -f "labels[]=$1" --silent
+          }
+          off() { gh api -X DELETE "repos/$GITHUB_REPOSITORY/issues/$pr/labels/$1" --silent 2> /dev/null || true; }
+
+          git fetch -q --no-tags origin "+refs/pull/$pr/head:refs/remotes/pr/head"
+          [ "$(git rev-parse pr/head)" = "$SHA" ] || { echo "#$pr has moved on from $SHA."; exit 0; }
+          if flags="$(bin/outside-folder "origin/$base" "$SHA")"; then
+              off outside-folder
+          else
+              [ $? = 1 ] || exit 1
+              on outside-folder d93f0b "Changes something beyond its workflow's folder, card and lab recipe (bin/outside-folder)"
+              {
+                  echo "bin/outside-folder flags what #$pr changes beyond its workflow's folder, its card and its lab's recipe:"
+                  echo
+                  echo '```'
+                  echo "$flags"
+                  echo '```'
+              } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          if [ "$ACTION" = completed ] && [ "$CONCLUSION" = success ]; then
+              on ready 0e8a16 "Every check passed: in the queue for the next review batch"
+          else
+              off ready
+          fi

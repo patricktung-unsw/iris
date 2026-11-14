@@ -1,10 +1,15 @@
 #!/bin/bash
-# bin/envrun <env>/<n> <command> [<arg>...]: run a command in an
-# environment version's container on the desktop or in CI, on CPU, with
-# this clone bound at its own path and the working folder kept. bin/check
-# runs the Python tests with it, each workflow's in the version its form
-# pins (envs/README.md). Not for Katana, where jobs run the container files
-# bin/envpull puts there.
+# bin/envrun [--no-network] [--time-limit <seconds>] <env>/<n> <command> [<arg>...]:
+# run a command in an environment version's container on the desktop or in
+# CI, on CPU, with this clone bound at its own path and the working folder
+# kept. bin/check runs the Python tests with it, each workflow's in the
+# version its form pins (envs/README.md), with no network and, for a
+# workflow's tests, a time limit. Not for Katana, where jobs run the
+# container files bin/envpull puts there.
+#
+# --no-network runs the command with no network: loopback only.
+# --time-limit stops the command once it has run that many seconds, says
+# so and exits 124. A first run's pull happens before the limit starts.
 #
 # The container is the version's digest in lib/katana.sh's digest map; an
 # unpublished version, or one not in the map, fails with one line.
@@ -24,17 +29,38 @@ set -eo pipefail
 repo="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
 # shellcheck source=lib/katana.sh
 . "$repo/lib/katana.sh"
-iris_is_env_version "$1" && [ $# -ge 2 ] ||
-    { echo "usage: bin/envrun <env>/<n> <command> [<arg>...]" >&2; exit 2; }
+usage() { echo "usage: bin/envrun [--no-network] [--time-limit <seconds>] <env>/<n> <command> [<arg>...]" >&2; exit 2; }
+offline="" limit=""
+while [[ "${1-}" == --* ]]; do
+    case "$1" in
+        --no-network) offline=yes; shift ;;
+        --time-limit) [[ "${2-}" =~ ^[1-9][0-9]*$ ]] || usage; limit="$2"; shift 2 ;;
+        *) usage ;;
+    esac
+done
+iris_is_env_version "${1-}" && [ $# -ge 2 ] || usage
 version="$1"
 shift
 ref="$(iris_env_ref "$version")"
 runtime="${IRIS_CONTAINER_RUNTIME:-$(command -v apptainer > /dev/null && echo apptainer || echo docker)}"
 
+# run <command>...: runs the container command, within the time limit if
+# there is one.
+run() {
+    [ -n "$limit" ] || exec "$@"
+    local status=0
+    timeout -k 10 "$limit" "$@" || status=$?
+    [ "$status" != 124 ] || echo "envrun: $version: the command ran past its $limit s limit and was stopped" >&2
+    exit "$status"
+}
+
 if [ "$runtime" = docker ]; then
+    docker image inspect "$ref" > /dev/null 2>&1 || docker pull -q "$ref" >&2
+    net=()
+    [ -z "$offline" ] || net=(--network none)
     # The uid has no passwd entry in the container, so USER carries the
     # name getpass.getuser() needs; torch calls it (CI run 42537470699).
-    exec docker run --rm --user "$(id -u):$(id -g)" --env USER="$(id -un)" --env HOME=/tmp --env PYTHONUNBUFFERED=1 \
+    run docker run --rm "${net[@]}" --user "$(id -u):$(id -g)" --env USER="$(id -un)" --env HOME=/tmp --env PYTHONUNBUFFERED=1 \
         --volume "$repo:$repo" --workdir "$PWD" "$ref" "$@"
 fi
 
@@ -53,4 +79,6 @@ if [ ! -f "$file" ]; then
         { rm -f "$file.part"; echo "envrun: the pull of $version failed; a private package needs a login with read:packages (bin/envrun's header)" >&2; exit 1; }
     mv "$file.part" "$file"
 fi
-exec apptainer exec --cleanenv --env PYTHONUNBUFFERED=1 --bind "$repo" --pwd "$PWD" "$file" "$@"
+net=()
+[ -z "$offline" ] || net=(--net --network none)
+run apptainer exec --cleanenv "${net[@]}" --env PYTHONUNBUFFERED=1 --bind "$repo" --pwd "$PWD" "$file" "$@"

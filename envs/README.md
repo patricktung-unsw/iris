@@ -82,7 +82,7 @@ Docker Desktop's Windows credential helper breaks the base pull unless the build
 
 ## The Python tests
 
-`bin/check` runs the library's tests, `lib/tests`, in the researcher tools' version, and each workflow's `tests/`, its synthetic-dataset test among them, in the version its form pins, on CPU. The CUDA PyTorch in a container runs on CPU when there is no GPU. A test file holding the line `# bin/check: on the host` runs with the host's `python3` instead: the job library's, `test_job_lib.py`, since the job library runs on the job's node, outside any container.
+`bin/check` runs the library's tests, `lib/tests`, in the researcher tools' version, and each workflow's `tests/`, its synthetic-dataset test among them, in the version its form pins, on CPU, with no network (`bin/envrun --no-network`). Each workflow's tests have two minutes, not counting a first run's pull (`--time-limit 120`), and fail past it. The CUDA PyTorch in a container runs on CPU when there is no GPU. A test file holding the line `# bin/check: on the host` runs with the host's `python3` instead: the job library's, `test_job_lib.py`, since the job library runs on the job's node, outside any container.
 
 `bin/envrun <env>/<n> <command>…` runs a command in a published version's container, with the clone bound at its own path:
 

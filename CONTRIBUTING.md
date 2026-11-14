@@ -43,7 +43,8 @@ iris/
 │   └── iris.css                      # Shared styles for workflow detail pages and the guide
 ├── guide/index.html                  # "Using IRIS on Katana": staging and viewing, shared by imaging workflows
 ├── _archive/<slug>/                  # Retired OpenComposer forms, never served by OpenComposer
-├── .github/workflows/check.yml       # CI: runs bin/check on every push
+├── .github/workflows/check.yml       # CI: runs bin/check on every push and pull request
+├── .github/workflows/ready.yml       # CI: labels a pull request ready once check passes, and outside-folder if bin/outside-folder flags it
 ├── .github/workflows/containers.yml  # CI: builds and checks each unpublished environment version; publishes it from main
 ├── .github/ISSUE_TEMPLATE/proposal.yml  # Issue form for a workflow author's proposal
 ├── .github/pull_request_template.md  # The checklist a workflow PR is ready for review on
@@ -58,6 +59,7 @@ iris/
 │   ├── envpull                       # Pull the containers live forms pin onto Katana; list those nothing pins (desktop)
 │   ├── envpull-dm.sh                 # envpull's side on the data mover
 │   ├── envrun                        # Run a command in an environment version's container: bin/check's Python tests (desktop, CI)
+│   ├── outside-folder                # List what a PR changes beyond its workflow's folder, its card and its lab's recipe (the ready workflow runs it)
 │   ├── pageswait                     # Wait for the live site to serve a change (desktop)
 │   ├── issue-tick                    # Tick checkboxes in an issue's body or Agent Brief (desktop)
 │   ├── iris-import                   # Import new runs into your MLflow tracking store
@@ -191,7 +193,9 @@ CI checks it on your PR: `bin/check` runs `bin/run-proof --check`, which fails a
 
 Turn on Actions on your fork (its **Actions** tab), so the `check` workflow runs `bin/check` on every push there, and see it pass on your branch before you open a PR. Until the environment containers are public ([#132](https://github.com/unsw-restech/iris/issues/132)), your fork's CI can't pull them, so the tests that run in a container fail there; run `bin/check` on your own machine for those.
 
-_#141 fills the rest of this step: CI on your PR runs every check and labels the PR `ready` when all pass. Until then the maintainer reads the PR's CI result._
+Then open the PR. CI runs the `check` workflow on it, `bin/check` as on your fork: every rule, the page rules among them, your workflow's synthetic-dataset test on CPU in the container your form pins, with no network and two minutes for each workflow's tests, and the run proof check ([Run proof](#6-run-proof)). A first-time contributor whose GitHub account is new waits for the maintainer to approve that run; anyone else's runs at once. When it passes, the `ready` workflow labels the PR `ready`, which puts it in the queue for the next [review batch](#8-review-batch). A push to the PR takes `ready` off until `check` passes again, and a failing run leaves it off: read the run's log, fix what it names and push.
+
+The same workflow labels a PR `outside-folder` when it changes anything beyond your workflow's folder, its card in `index.html` and your lab's recipe (`envs/<env>/`, the environment the lab table gives your lab), or more than one workflow's folder; the run's summary lists what. That label doesn't hold `ready` back: the maintainer reads what it lists in the review batch, so leave shared files alone unless your PR needs them. `bin/outside-folder <base>`, such as `upstream/main`, lists the same for your branch before you push.
 
 ### 8. Review batch
 
