@@ -209,6 +209,13 @@ library_copies() {
 }
 check "workflows' library copies match lib/ at the commit they record" library_copies
 
+# A pull request that changes a workflow's folder after its run proof's
+# commit, or with no proof, fails (bin/run-proof's header). Only a pull
+# request's CI run is checked, so a push to main never is, nor is a run
+# outside CI; bin/run-proof --check <base> checks a branch by hand.
+# tests/bin/test_run_proof_check.sh runs it on fixture repos.
+check "run proofs of the workflows a pull request changes" bin/run-proof --check
+
 # iris.rundir names every file in a run directory, so the library and the
 # entry scripts use its constants, not a quoted name or path ending in one.
 # The names come from its constants, so a new file is covered as it is added.
