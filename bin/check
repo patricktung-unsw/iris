@@ -574,7 +574,6 @@ card_status() {
     awk -F'\t' '
         BEGIN {
             label["Run and verified"] = "Active"
-            label["Run, browser run pending"] = "Testing"
             label["Planned"] = "Planned"
             label["Unmaintained"] = "no card"
         }
