@@ -27,6 +27,7 @@ The test instance serves the IRIS maintainer's dev clone, `~/iris`, and runs as 
    ```
 
    `payload_json` holds the rendered script.
+4. For a run proof, once the job has ended and its `.OU` is in `runs/`, run `ssh katana '~/iris/bin/run-proof <run dir>'`: it makes the same checks itself and writes `workflows/<slug>/run-proof.json` in the dev clone, or says why it can't (CONTRIBUTING's [Run proof](../../CONTRIBUTING.md#6-run-proof)). The dev clone only ever pulls, so copy the file into the desktop clone, `ssh katana 'cat ~/iris/workflows/<slug>/run-proof.json' > workflows/<slug>/run-proof.json`, commit it there, and remove the dev clone's copy, with the IRIS maintainer's go-ahead naming it, before the next dev-clone pull, which won't overwrite a file git doesn't track (a proof already committed is simply restored with `git -C ~/iris checkout -- <path>`).
 
 To see what an author with no clone gets, move `~/iris/workflows` aside, with the IRIS maintainer's go-ahead naming it, only once no job of theirs reads it, and move it back as soon as they've reloaded the pages. A Develop app runs in development mode, so its error page names the exception, which the fork's `misc/tests/serve`, in production mode, doesn't (#174).
 

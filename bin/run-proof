@@ -1,0 +1,314 @@
+#!/usr/bin/env python3
+"""Write a workflow's run proof from a finished test-instance run, or check
+that the run proofs of the workflows a pull request changes are current.
+
+    bin/run-proof <run dir>         on Katana, in your clone at ~/iris
+    bin/run-proof --check [<base>]  bin/check runs it; CI checks a pull request
+
+The run proof is workflows/<slug>/run-proof.json, committed with the
+workflow. It shows the workflow's current code ran and finished, from the
+test instance; it doesn't replace review. PBS keeps a finished job only
+24 hours, so the proof is a file. It holds, as JSON:
+
+  "format"       PROOF_FORMAT, this file's own format
+  "workflow"     the slug
+  "commit"       the clone's commit the run recorded (40 hex), the proof's
+                 commit
+  "job"          {"id": the PBS job number, "exit_status": 0}
+  "environment"  {"version": <env>/<n>, "digest": sha256:<64 hex>}, from
+                 the run record (iris.record)
+  "form_tests"   {"test": "tests/test_form.rb", "result": its minitest
+                 totals line}
+  "written"      when the proof was written, UTC
+
+Writing: <run dir> is the run directory of a finished run of the
+workflow's form, submitted from the test instance,
+/pun/dev/OpenComposer-iris-test/<slug> (ADR-0012), and nowhere else: the
+job must be in the test instance's job history, the pbspro.sqlite3 in the
+data_dir its checkout's conf.yml.erb names (IRIS_TEST_INSTANCE_CHECKOUT in
+lib/katana.sh). The run must have finished with PBS's exit status 0, as
+its job output's resource summary prints it ("Exit Status 0.", job
+9752576's runs/<job ID>.<server>.OU), recorded unedited code at one
+commit, in the environment version its form pins at that commit; this
+clone's copy of the workflow's folder must be that commit's, uncommitted
+edits included; and the workflow's form tests, tests/test_form.rb, must
+pass with none skipped, run with the ruby on the PATH or else Katana's
+ruby/3.2.0 module (../available-modules.md). Then it writes
+the proof and says to commit it. Anything short of that, it names and
+writes nothing. Runs on Katana's system python3, 3.6.
+
+Checking: with <base>, every workflow with a library copy (lib/copied-from)
+whose folder HEAD changes since its merge base with <base> needs a run
+proof at HEAD whose commit is in HEAD's history and whose workflow folder,
+run-proof.json aside, is HEAD's. Updating the library copy or moving the
+environment version changes the folder, so it needs a new proof. With no
+<base>, it checks only a pull request's CI run (GITHUB_EVENT_NAME
+pull_request), against origin/<GITHUB_BASE_REF>; anything else, a push to
+main included, is not checked. Prints each failure and exits 1; prints
+nothing and exits 0 when every proof checked is current or nothing is
+checked; exits 2 on a usage or git error.
+"""
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+
+PROOF = "run-proof.json"
+PROOF_FORMAT = 1
+ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+
+
+def git(*args):
+    """git's output in the clone this script sits in; raises on failure."""
+    p = subprocess.run(["git", "-C", ROOT] + list(args), stdout=subprocess.PIPE,
+                       stderr=subprocess.PIPE, universal_newlines=True)
+    if p.returncode != 0:
+        raise GitError("git %s: %s" % (" ".join(args), p.stderr.strip()))
+    return p.stdout
+
+
+class GitError(Exception):
+    pass
+
+
+def ok(*args):
+    """Whether a git command succeeds."""
+    return subprocess.run(["git", "-C", ROOT] + list(args), stdout=subprocess.DEVNULL,
+                          stderr=subprocess.DEVNULL).returncode == 0
+
+
+def folder_changes(commit, slug, against="HEAD"):
+    """The files in workflows/<slug>/, the run proof aside, that differ
+    between <commit> and <against> (None: the working tree)."""
+    spec = ["--", "workflows/%s" % slug, ":(exclude)workflows/%s/%s" % (slug, PROOF)]
+    rev = [commit] if against is None else [commit, against]
+    return git("diff", "--name-only", *(rev + spec)).split()
+
+
+# --check
+
+def check_proof(slug):
+    """What is wrong with HEAD's run proof of <slug>, as lines."""
+    path = "workflows/%s/%s" % (slug, PROOF)
+    how = "run bin/run-proof on Katana after a test-instance run (CONTRIBUTING's Run proof), then commit it"
+    if not ok("cat-file", "-e", "HEAD:" + path):
+        return ["workflows/%s: changed, with no run proof: %s" % (slug, how)]
+    try:
+        proof = json.loads(git("show", "HEAD:" + path))
+        commit = proof["commit"]
+    except (ValueError, KeyError, TypeError):
+        return ["%s: not a run proof bin/run-proof wrote; %s" % (path, how)]
+    if proof.get("workflow") != slug or not re.fullmatch(r"[0-9a-f]{40}", str(commit)):
+        return ["%s: not a run proof bin/run-proof wrote for %s; %s" % (path, slug, how)]
+    if not ok("merge-base", "--is-ancestor", commit, "HEAD"):
+        return ["%s: its commit %s is not in this branch's history, as after a rebase or a squash; "
+                "%s" % (path, commit[:12], how)]
+    changed = folder_changes(commit, slug)
+    if changed:
+        return ["%s: workflows/%s changed after the proof's commit %s, so it needs a new run: %s; changed: %s"
+                % (path, slug, commit[:12], how, ", ".join(changed))]
+    return []
+
+
+def check(base):
+    """Prints what is wrong with the run proofs of the workflows HEAD
+    changes since its merge base with <base>; returns the exit status."""
+    try:
+        git("rev-parse", "--verify", "--quiet", base + "^{commit}")
+    except GitError:
+        print("bin/run-proof --check: no commit %s to compare with" % base)
+        return 2
+    changed = git("diff", "--name-only", base + "...HEAD", "--", "workflows/").split()
+    slugs = sorted({f.split("/")[1] for f in changed if f.count("/") >= 2})
+    problems = []
+    for slug in slugs:
+        if ok("cat-file", "-e", "HEAD:workflows/%s/lib/copied-from" % slug):
+            problems += check_proof(slug)
+    for line in problems:
+        print(line)
+    return 1 if problems else 0
+
+
+# Writing
+
+class Refused(Exception):
+    """Why a run can't be proved."""
+
+
+# Katana's Ruby module (../available-modules.md), as bin/katana-test loads it.
+RUBY_MODULE = "ruby/3.2.0"
+TEST_INSTANCE = "/pun/dev/OpenComposer-iris-test/<slug>"
+
+
+def katana_constant(name):
+    """A constant from this clone's lib/katana.sh."""
+    p = subprocess.run(["bash", "-c", '. "$1" && printf %s "${!2}"', "-",
+                        os.path.join(ROOT, "lib", "katana.sh"), name],
+                       stdout=subprocess.PIPE, universal_newlines=True)
+    if p.returncode != 0 or not p.stdout:
+        raise Refused("lib/katana.sh sets no %s" % name)
+    return p.stdout
+
+
+def read_record(run_dir):
+    path = os.path.join(run_dir, "run.json")
+    try:
+        with open(path) as f:
+            record = json.load(f)
+    except (OSError, ValueError) as e:
+        raise Refused("no run record to prove at %s: %s" % (path, e))
+    if not isinstance(record, dict) or not isinstance(record.get("format"), int) or record["format"] < 2:
+        raise Refused("%s is in run record format 1, which records no environment: prove a run of "
+                      "the workflow's current code" % path)
+    try:
+        run, job, code, env = record["run"], record["job"], record["code"], record["environment"]
+        return {"slug": run["workflow"], "status": run["status"], "job": str(job["id"]),
+                "commit": code.get("commit"), "lib_commit": code.get("lib_commit"),
+                "edited": code.get("edited"), "version": env.get("version"), "digest": env.get("digest")}
+    except (KeyError, TypeError, AttributeError) as e:
+        raise Refused("%s is not a whole run record: no %s" % (path, e))
+
+
+def in_test_instance_history(job, slug):
+    """Whether the test instance's job history, the pbspro.sqlite3 in the
+    data_dir its checkout's conf.yml.erb names, holds <job> of <slug>."""
+    import sqlite3
+    conf = os.path.join(katana_constant("IRIS_TEST_INSTANCE_CHECKOUT"), "conf.yml.erb")
+    try:
+        with open(conf) as f:
+            m = re.search(r'^data_dir:\s*"([^"]*)"', f.read(), re.M)
+    except OSError as e:
+        raise Refused("can't read the test instance's settings: %s" % e)
+    if not m:
+        raise Refused("%s names no data_dir" % conf)
+    data_dir = m.group(1).replace("<%= ENV['HOME'] %>", os.path.expanduser("~"))
+    db = os.path.join(data_dir, "pbspro.sqlite3")
+    if "<%" in data_dir or not os.path.isfile(db):
+        return False
+    try:
+        c = sqlite3.connect("file:%s?mode=ro" % db, uri=True)
+        row = c.execute("SELECT 1 FROM jobs WHERE _job_id = ? AND _app_dir_name = ?", (job, slug)).fetchone()
+        c.close()
+    except sqlite3.Error as e:
+        raise Refused("can't read the test instance's job history, %s: %s" % (db, e))
+    return row is not None
+
+
+def exit_status(run_dir, job):
+    """PBS's exit status, from the resource summary at the end of the job
+    output, runs/<job ID>.<server>.OU beside the run directory."""
+    runs = os.path.dirname(os.path.abspath(run_dir))
+    outs = sorted(f for f in os.listdir(runs) if f.startswith(job + ".") and f.endswith(".OU"))
+    if not outs:
+        raise Refused("no job output, %s/%s.<server>.OU, to read the exit status from: PBS copies it "
+                      "there when the job ends, so wait for it" % (runs, job))
+    with open(os.path.join(runs, outs[-1]), errors="replace") as f:
+        m = re.findall(r"Exit Status (-?\d+)", f.read())
+    if not m:
+        raise Refused("%s has no 'Exit Status' line: has the job ended?" % os.path.join(runs, outs[-1]))
+    return int(m[-1])
+
+
+def form_tests(slug):
+    """The form tests' minitest totals; refuses unless they all passed."""
+    test = "workflows/%s/tests/test_form.rb" % slug
+    if not os.path.isfile(os.path.join(ROOT, test)):
+        raise Refused("%s has no form tests, %s" % (slug, test))
+    # Katana's login nodes have no ruby until the module is loaded.
+    script = ('command -v ruby > /dev/null || { . /etc/profile.d/modules.sh && module load %s; } && '
+              'ruby "$1"' % RUBY_MODULE)
+    p = subprocess.run(["bash", "-c", script, "-", test], cwd=ROOT, stdout=subprocess.PIPE,
+                       stderr=subprocess.STDOUT, universal_newlines=True)
+    totals = re.findall(r"^\d+ runs, .*$", p.stdout, re.M)
+    if p.returncode != 0 or not totals or not re.search(r" 0 failures, 0 errors", totals[-1]):
+        raise Refused("the form tests, %s, failed:\n%s" % (test, p.stdout.rstrip()))
+    if not totals[-1].strip().endswith(" 0 skips"):
+        raise Refused("the form tests, %s, skipped some, so they prove nothing (they need "
+                      "/srv/scratch/$USER): %s" % (test, totals[-1].strip()))
+    return totals[-1].strip()
+
+
+def prove(run_dir):
+    """Checks the run in <run dir> and writes its run proof; returns the
+    proof's path in the clone."""
+    r = read_record(run_dir)
+    slug, job, commit = r["slug"], r["job"], r["commit"]
+    if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", str(slug)) or not os.path.isdir(os.path.join(ROOT, "workflows", slug)):
+        raise Refused("the run is of workflow %r, which this clone has no folder for" % slug)
+    if not re.fullmatch(r"[0-9]+", job):
+        raise Refused("the run's job ID is %s, not a PBS job's: submit it from the test instance, %s"
+                      % (job, TEST_INSTANCE))
+    if not in_test_instance_history(job, slug):
+        raise Refused("job %s of %s is not in the test instance's job history: a run proof comes only "
+                      "from a run submitted from the test instance, %s" % (job, slug, TEST_INSTANCE))
+    if r["status"] != "FINISHED":
+        raise Refused("job %s ended %s, not FINISHED" % (job, r["status"]))
+    status = exit_status(run_dir, job)
+    if status != 0:
+        raise Refused("job %s ended with exit status %d" % (job, status))
+    if r["edited"] is not False:
+        raise Refused("job %s ran edited code, or code not known to be unedited (edited: %s): run the "
+                      "form with its script as it opens" % (job, json.dumps(r["edited"])))
+    if r["lib_commit"]:
+        raise Refused("the clone moved from %s to %s while job %s waited, so it ran code from two "
+                      "commits: run it again" % (commit, r["lib_commit"], job))
+    if not re.fullmatch(r"[0-9a-f]{40}", str(commit)) or not ok("cat-file", "-e", commit + "^{commit}"):
+        raise Refused("job %s recorded commit %s, which this clone doesn't have" % (job, commit))
+    form = git("show", "%s:workflows/%s/form.yml.erb" % (commit, slug))
+    pins = re.findall(r"^  IRIS_ENV_VERSION=(\S+)\s*$", form, re.M)
+    if r["version"] not in pins:
+        raise Refused("job %s ran in %s, but its form at %s pins %s"
+                      % (job, r["version"], commit[:12], ", ".join(pins) or "no version"))
+    if not re.fullmatch(r"sha256:[0-9a-f]{64}", str(r["digest"])):
+        raise Refused("job %s recorded no environment digest (%s)" % (job, r["digest"]))
+    changed = folder_changes(commit, slug, against=None)
+    changed += git("ls-files", "--others", "--exclude-standard", "--", "workflows/%s" % slug).split()
+    changed = [f for f in changed if f != "workflows/%s/%s" % (slug, PROOF)]
+    if changed:
+        raise Refused("this clone's workflows/%s isn't the code job %s ran, commit %s: %s differ. Commit "
+                      "the folder as you want it proved, then run the form again from the test instance" % (slug, job, commit[:12], ", ".join(changed)))
+    proof = {
+        "format": PROOF_FORMAT,
+        "workflow": slug,
+        "commit": commit,
+        "job": {"id": job, "exit_status": status},
+        "environment": {"version": r["version"], "digest": r["digest"]},
+        "form_tests": {"test": "tests/test_form.rb", "result": form_tests(slug)},
+        "written": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
+    path = os.path.join(ROOT, "workflows", slug, PROOF)
+    with open(path + ".tmp", "w") as f:
+        f.write(json.dumps(proof, indent=2) + "\n")
+    os.replace(path + ".tmp", path)
+    return "workflows/%s/%s" % (slug, PROOF)
+
+
+def main(argv):
+    if len(argv) == 1 and not argv[0].startswith("-"):
+        try:
+            path = prove(argv[0])
+        except (Refused, GitError) as e:
+            print("bin/run-proof: no run proof written: %s" % e, file=sys.stderr)
+            return 1
+        print("Wrote %s. Commit it, and push it with your branch." % path)
+        return 0
+    if argv[:1] == ["--check"] and len(argv) <= 2:
+        if len(argv) == 2:
+            base = argv[1]
+        elif os.environ.get("GITHUB_EVENT_NAME") == "pull_request":
+            base = "origin/" + os.environ.get("GITHUB_BASE_REF", "")
+        else:
+            return 0
+        try:
+            return check(base)
+        except GitError as e:
+            print("bin/run-proof --check: %s" % e)
+            return 2
+    print("usage: bin/run-proof <run dir> | bin/run-proof --check [<base>]", file=sys.stderr)
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

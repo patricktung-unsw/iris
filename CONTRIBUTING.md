@@ -73,6 +73,7 @@ iris/
 │   ├── prune-merged                  # List, then remove, the local branches and worktrees whose work is already in origin/main (desktop)
 │   ├── syspull-pins.sh               # List the environment versions a commit pins whose container files aren't on Katana (syspull runs it)
 │   ├── qwait                         # Wait for Katana jobs and show how they ended (desktop)
+│   ├── run-proof                     # Write a workflow's run proof from a test-instance run (Katana); check a PR's proofs (bin/check runs it)
 │   ├── syspull                       # Show, then deploy, what a pull brings the system clone (desktop)
 │   ├── tracked-tree                  # Print the tree a commit of every uncommitted edit would hold (check-passed and katana-test run it)
 │   └── workflowhub                   # Walkthrough registering a workflow on WorkflowHub and minting its citable versions, from its manifest (desktop)
@@ -98,6 +99,7 @@ iris/
         ├── form.yml.erb, manifest.yml  # OpenComposer form
         ├── src/run.py                # Entry point: train, then segment into a run directory
         ├── lib/                      # Its own copy of the library's job side, which its jobs run (bin/libcopy; never edited by hand)
+        ├── run-proof.json            # Its run proof, from a test-instance run (bin/run-proof), once it has one
         └── tests/                    # This workflow's own tests: its synthetic-dataset run and its form tests (see AGENTS.md)
 ```
 
@@ -139,7 +141,7 @@ _#137 fills this step with `bin/new-workflow <slug>`, which makes the whole fold
 - **Set the fields and `check:` rules** in `form.yml.erb`, and the entry point under `src/`. `check:` validates the dataset layout your page documents, so a researcher who picks the wrong folder is told before the job runs. Add a synthetic-dataset test under `tests/`, as the reference workflow's `tests/test_synthetic.py` does, so `bin/check` runs your workflow end to end on made-up data, on CPU in the container your form pins (`envs/README.md`). Defaults for memory, walltime and epochs cite the timing run that measured them. A select's, radio's or checkbox's `value:` names its default by an option's label, and a script line names a checkbox or multi_select as `#{field}`, never `#{:field}`: its line drops when nothing is chosen, colon or not, so a field a run must record goes in a select or a radio (#184). `bin/check` checks both (`lib/tests/form_fields.rb`).
 
   **Embed the entry script** in the form's `script:`, as the reference form does, so researchers can edit it for one run (ADR-0006): the form reads it from `src/` at render time into a quoted heredoc below the one-line hint `# Edit the workflow code below`, and the job writes it into the run directory as `run.py`, runs `iris_record_code` on the next line to record the run's code, writing its `commit.txt` and writing and printing its `run.diff`, and runs it from there. Beside `script:`, the form's `editable_region` key names the heredoc's opener and its end marker, as the reference form's does, so on the IRIS fork the entry script is the only part of the pane a researcher can edit. The form sources the job library from the workflow's own copy, `source "$CODE/lib/iris-job.sh"`, which keeps it out of the pane. The entry script may contain neither `#{` (OpenComposer substitutes a field there) nor `<%` (ERB); `bin/check` renders every imaging form as OpenComposer does and checks the script it submits, in order, its `editable_region` and the workflow page's quote of the hint, against what `lib/tests/imaging_form.rb`'s header lists. So `bin/check` needs Ruby: `sudo apt install ruby` once in WSL. `hello-world` keeps its plain script.
-- **Add the catalogue card** to `index.html`, in its lab's section, with its modality tag and compute tag, and the workflow's row in the tier table (see [Status](#status)): **Run, browser run pending**, so the card reads Testing until the maintainer's browser run ([Test instance](#5-test-instance)) moves it to **Run and verified**, citing that job ID. A new modality also needs a `.card-domain.<x>` style and the card's `<span class="card-domain <x>">` tag, and a new lab its own `<div class="lab" id="<x>">` section, which its pages' breadcrumbs link (`../../#<x>`), and its line in the lab table; each needs an approved proposal.
+- **Add the catalogue card** to `index.html`, in its lab's section, with its modality tag and compute tag, and the workflow's row in the tier table (see [Status](#status)): **Run and verified**, so the card reads Active, citing the job ID of your test-instance run ([Test instance](#5-test-instance)). A new modality also needs a `.card-domain.<x>` style and the card's `<span class="card-domain <x>">` tag, and a new lab its own `<div class="lab" id="<x>">` section, which its pages' breadcrumbs link (`../../#<x>`), and its line in the lab table; each needs an approved proposal.
 
 If the workflow ships a `local/run_local.ps1`, **keep it ASCII-only**. These files have no BOM, and Windows PowerShell 5.1 reads a BOM-less UTF-8 file as ANSI — an em dash or box-drawing character decodes into a byte PowerShell treats as a string delimiter, and the script fails to parse before it runs a single line. Use `-` and `=` in banners. The `.sh` files are unaffected.
 
@@ -164,13 +166,26 @@ Either way, the lab's other workflows keep the version they pin until their owne
 
 ### 5. Test instance
 
-_#139 brings the test instance, an OpenComposer you add to your own Katana OnDemand, under **Develop**, that shows you the forms in your own clone and runs them as you ([ADR-0012](docs/adr/0012-the-iris-instance-replaces-the-shared-opencomposer.md)). During the pilot only pilot testers can read it, so an author outside the pilot proves a workflow with `qsub` as below. It finds your clone only at `~/iris` ([ADR-0011](docs/adr/0011-iris-runs-its-own-opencomposer-fork.md)): with no `~/iris/workflows`, every page of the test instance, the list and each form, reads "Internal Server Error" and "application error", then `Errno::ENOENT` and `No such file or directory @ dir_initialize - /home/<zID>/iris/workflows` (the fork at `c5da1b9`, 2026-11-14, #174; #179 asks for a clearer message). Until the test instance exists, prove the workflow with `qsub`:_ `bin/check` clean, then a `qsub` run of the job script from your clone on Katana. The job script is the form's `script:` block: copy it into a `.pbs` file, fill in each `#{...}` with a value, and replace each `<%= ... %>` with what the form would render: `CODE` is your clone's `workflows/<slug>`, the commit is your clone's `HEAD`, and the heredoc holds your entry script. Run it on a real dataset in the layout your page documents, pass `-m abe` so PBS emails you, and check the run directory it writes.
+The test instance is an OpenComposer you add to your own Katana OnDemand, under **Develop**, on the same fork commit as the IRIS instance, that shows you the forms in your own clone and runs them as you ([ADR-0012](docs/adr/0012-the-iris-instance-replaces-the-shared-opencomposer.md)). You prove your workflow there. During the pilot only pilot testers can read it, as only they can run IRIS on Katana. Add it once, from a shell on Katana:
 
-Until then the maintainer also does a **browser run** from the dev clone on your PR's branch: the form opens, `check:` rejects one wrong dataset folder, and one real run finishes, opens with the `iris-view` line its job output prints and appears in MLflow through its `iris-compare` line. A dev run prints the dev clone's full paths, so it is viewed with the branch's code; `module load iris` would run the system clone's.
+1. `mkdir -p ~/ondemand/dev`
+2. `ln -s /srv/scratch/katana_ai/iris/OpenComposer-iris-test ~/ondemand/dev/`
+3. If step 1 made `~/ondemand/dev`, choose **Help → Restart Web Server** in Katana OnDemand, since it turns **Develop** on for anyone who has that folder when their web server starts. If the folder was already there, the test instance shows up without a restart.
+
+It opens at `https://kod.restech.unsw.edu.au/pun/dev/OpenComposer-iris-test/<slug>`, its navbar reading "IRIS test instance" where the IRIS instance's reads "IRIS", and keeps its own history, `~/composer/iris-test`, so your test runs stay out of your IRIS instance history (#174, job 9774480). It finds your clone only at `~/iris` ([ADR-0011](docs/adr/0011-iris-runs-its-own-opencomposer-fork.md)): with no `~/iris/workflows`, every page of the test instance, the list and each form, reads "Internal Server Error" and "application error", then `Errno::ENOENT` and `No such file or directory @ dir_initialize - /home/<zID>/iris/workflows` (the fork at `c5da1b9`, 2026-11-14, #174; #179 asks for a clearer message).
+
+To prove the workflow: `bin/check` clean, your branch checked out in `~/iris`, then submit your form from the test instance on a real dataset in the layout your page documents, and check the run directory it writes: `commit.txt` is your clone's `HEAD`.
 
 ### 6. Run proof
 
-_#140 fills this step with a tool, run on Katana after your test-instance run, that writes the run proof into your workflow's folder, and a CI check that fails a PR whose folder changed after the proof's commit. Until then:_ cite your `qsub` run's job ID in the PR. Any later change to your folder, updating its library copy or moving its environment version included, needs a new run.
+The run proof shows your workflow's current code ran and finished, from a form on the [test instance](#5-test-instance). Only a run from the test instance proves a workflow: not a `qsub` run, nor one from any other OpenComposer.
+
+1. **Commit** your workflow's folder as you want it proved, in your clone at `~/iris`, and run `bin/check`.
+2. **Run the form** from the test instance, `https://kod.restech.unsw.edu.au/pun/dev/OpenComposer-iris-test/<slug>`, on a real dataset in the layout your page documents, with its script as it opens: an edited run proves nothing.
+3. **Write the proof** once the job has ended and its job output, `runs/<job ID>.<server>.OU`, is in your dataset's `runs/` folder: on Katana, `~/iris/bin/run-proof <run dir>`. It writes `workflows/<slug>/run-proof.json`: the job ID, its exit status, the commit the run recorded, the environment version and digest from its run record, and your form tests' results, which it runs. It writes nothing, and says why, unless the job is in the test instance's job history, finished with exit status 0, ran unedited code at one commit in the environment version your form pins, your clone's copy of the folder is still that commit's, and your form tests (`tests/test_form.rb`) pass with none skipped. PBS forgets a finished job after 24 hours, which is why the proof is a file.
+4. **Commit the proof** and push it with your branch.
+
+CI checks it on your PR: `bin/check` runs `bin/run-proof --check`, which fails a PR that changes a workflow's folder, anything in it but the proof, after the proof's commit, or changes it with no proof. Any later change, updating its library copy or moving its environment version included, needs a new run and proof. Before you push, `bin/run-proof --check <base>` checks your branch against `<base>`, such as `upstream/main` if that remote is `unsw-restech/iris`. Only a PR is checked: the maintainer's pushes to `main` are not.
 
 ### 7. CI and `ready`
 
@@ -218,7 +233,7 @@ The [contribute page](https://docs.restech.unsw.edu.au/iris/contribute/#unmainta
 
 - **Unmaintained**: the workflow moves to the Unmaintained row of the tier table ([Status](#status)).
 - **Handing over**: a PR that names the new owner in place of you ([Owner](#3-owner)).
-- **Adoption**: after the approved proposal, a PR that fixes the workflow, carries a run proof ([Run proof](#6-run-proof); a `qsub` job ID until then) and names the adopter as its workflow owner. It keeps its folder and its WorkflowHub entry.
+- **Adoption**: after the approved proposal, a PR that fixes the workflow, carries a run proof ([Run proof](#6-run-proof)) and names the adopter as its workflow owner. It keeps its folder and its WorkflowHub entry.
 
 ## Licence
 
@@ -234,7 +249,7 @@ The OpenComposer forms reach Katana separately: OpenComposer's `apps_dir` points
 
 IRIS is in a **pilot**. The "Run on Katana" buttons point at the system OnDemand instance (`/pun/sys/OpenComposer/...`), whose workflows only pilot testers (members of `katana_ai_ro`) can reach. At launch, remove every pre-launch notice: the pilot notices in the README and on the landing page, and the line saying proposals open at launch on the contribute page, in step 2 of [From fork to DOI](#from-fork-to-doi) and in the proposal form. `bin/check` fails if only some are gone.
 
-The catalogue is **imaging only**, grouped into one section per lab. Each card carries a modality tag and a compute tag; Planned cards are labelled Planned and have no Run button. A card reads Active only in the **Run and verified** tier, and Testing in **Run, browser run pending**, which has no workflows at present: a new workflow sits there until the maintainer's browser run ([Test instance](#5-test-instance)). `hello-world` sits outside the catalogue as onboarding.
+The catalogue is **imaging only**, grouped into one section per lab. Each card carries a modality tag and a compute tag; Planned cards are labelled Planned and have no Run button. Every card reads Active or Planned: Active in the **Run and verified** tier, which a new workflow joins with its test-instance run ([Test instance](#5-test-instance)), and Planned in **Planned**. An Unmaintained workflow has no card. `hello-world` sits outside the catalogue as onboarding.
 
 | Tier | Workflows | What exists |
 |---|---|---|
