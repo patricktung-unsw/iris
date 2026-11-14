@@ -1,9 +1,12 @@
 # bin/check on every push and pull request: the shipping greps, shellcheck,
 # actionlint, ruff and the Python tests, the synthetic-dataset test among them, each
-# run on CPU in the container its form pins (bin/envrun, through Docker
-# here). On a pull request it also checks the run proofs of the workflows
-# the PR changes (bin/run-proof --check, which reads GITHUB_EVENT_NAME and
+# run on CPU in the container its form pins, with no network and two
+# minutes for each workflow's tests (bin/envrun, through Docker here). On a
+# pull request it also checks the run proofs of the workflows the PR
+# changes (bin/run-proof --check, which reads GITHUB_EVENT_NAME and
 # GITHUB_BASE_REF and compares with origin/<base>); on a push it doesn't.
+# When a pull request's run passes, the ready workflow (ready.yml) labels
+# the PR ready; this one's token can't, since a fork's is read-only.
 name: check
 on: [push, pull_request]
 

@@ -1,6 +1,8 @@
 <!--
-Adding or changing a workflow? Fill in the checklist below; the PR is ready
-for a review batch when every box that applies is ticked. CONTRIBUTING.md has
+Adding or changing a workflow? Fill in the checklist below. CI labels the PR
+`ready` for a review batch once every check passes, and `outside-folder` if
+it changes anything beyond its workflow's folder, card and lab's recipe,
+which the maintainer then reads closely. CONTRIBUTING.md has
 the steps, one section per step. The maintainer merges it or closes it naming
 the criterion it failed, without back and forth: fix that and reopen it.
 For any other change, replace this with a short description.

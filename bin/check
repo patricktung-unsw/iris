@@ -881,20 +881,23 @@ check "ruff" bash -c 'uvx --quiet ruff@0.17.1 check --quiet --output-format conc
 
 # The Python tests: lib/tests once, in the researcher tools' version
 # (IRIS_TOOLS_ENV_VERSION), then each workflow's tests/ in the version its
-# form pins, each in that version's container (bin/envrun), on CPU. A test
-# file holding the line "# bin/check: on the host" runs with the host's
-# python3 instead: the job library's, which runs outside any container,
-# as a job's does.
+# form pins, each in that version's container (bin/envrun), on CPU, with
+# no network. A workflow's tests get synthetic_limit seconds, its pull
+# aside, and fail past it. A test file holding the line "# bin/check: on
+# the host" runs with the host's python3 instead: the job library's, which
+# runs outside any container, as a job's does.
+synthetic_limit=120
 # py_tests <dir> <version>: runs <dir>'s test_*.py; prints any failure.
 py_tests() {
-    local dir="$1" version="$2" root="$PWD" t out host=() in_container=()
+    local dir="$1" version="$2" root="$PWD" t out host=() in_container=() limit=()
+    [ "$dir" = lib/tests ] || limit=(--time-limit "$synthetic_limit")
     for t in "$dir"/test_*.py; do
         t="${t##*/}"
         if tr -d '\r' < "$dir/$t" | grep -qx '# bin/check: on the host'; then host+=("${t%.py}"); else in_container+=("${t%.py}"); fi
     done
     if [ ${#in_container[@]} -gt 0 ]; then
         [ -n "$version" ] || { echo "FAIL: synthetic-dataset test: $dir: no IRIS_ENV_VERSION in its form to run it in"; failed=1; return; }
-        out="$(cd "$dir" && "$root/bin/envrun" "$version" python -m unittest "${in_container[@]}" 2>&1)" || {
+        out="$(cd "$dir" && "$root/bin/envrun" --no-network "${limit[@]}" "$version" python -m unittest "${in_container[@]}" 2>&1)" || {
             echo "FAIL: synthetic-dataset test: $dir in $version"
             echo "$out" | tail -40 | sed 's/^/  /'
             failed=1

@@ -116,3 +116,60 @@ has "envrun unpublished" "$(run -- microct/2 python -V)" "unpublished"
 # No command is a usage error.
 out="$(run -- microct/1)" && echo "envrun with no command: exit 0"
 has "envrun with no command" "$out" "usage:"
+out="$(run -- --time-limit soon microct/1 python -V)" && echo "envrun --time-limit soon: exit 0"
+has "envrun --time-limit soon" "$out" "usage:"
+
+# --no-network runs the command with no network, under either runtime;
+# without it, the container keeps the host's.
+rm -f "$fake/apptainer.log" "$fake/docker.log"
+run -- microct/1 python -V > /dev/null
+lacks "apptainer run" "$(log apptainer)" "[--net]"
+run -- --no-network microct/1 python -V > /dev/null
+has "apptainer --no-network" "$(log apptainer)" "[exec][--cleanenv][--net][--network][none]"
+run IRIS_CONTAINER_RUNTIME=docker -- microct/1 python -V > /dev/null
+lacks "docker run" "$(log docker)" "[--network]"
+run IRIS_CONTAINER_RUNTIME=docker -- --no-network microct/1 python -V > /dev/null
+has "docker --no-network" "$(log docker)" "[--network][none]"
+
+# --time-limit <seconds> stops a command that runs past it, saying so,
+# and exits non-zero; the first run's pull doesn't count towards it.
+# The fake apptainer's exec sleeps FAKE_EXEC_SLEEP seconds, its pull
+# FAKE_PULL_SLEEP.
+cat > "$fake/apptainer" <<'EOF'
+#!/bin/bash
+dir="$(dirname "$0")"
+printf '[%s]' "$@" >> "$dir/apptainer.log"; echo >> "$dir/apptainer.log"
+if [ "$1" != pull ]; then sleep "${FAKE_EXEC_SLEEP:-0}"; exit 0; fi
+sleep "${FAKE_PULL_SLEEP:-0}"
+shift
+while [[ "$1" == --* ]]; do shift; done
+echo "container $2" > "$1"
+EOF
+out="$(run FAKE_EXEC_SLEEP=5 -- --time-limit 1 microct/1 python -m unittest test_synthetic)" &&
+    echo "envrun --time-limit 1 on a 5 s command: exit 0"
+has "envrun past its time limit" "$out" "ran past its 1 s limit"
+out="$(run FAKE_EXEC_SLEEP=0 -- --time-limit 3 microct/1 python -V)" ||
+    { echo "envrun --time-limit 3 on a quick command: exit non-zero"; echo "$out" | sed 's/^/  /'; }
+rm -rf "$cache"
+out="$(run FAKE_PULL_SLEEP=2 -- --time-limit 1 microct/1 python -V)" ||
+    { echo "envrun --time-limit 1 with a 2 s pull: exit non-zero"; echo "$out" | sed 's/^/  /'; }
+# Docker pulls a container it doesn't have before the limit starts.
+cat > "$fake/docker" <<'EOF'
+#!/bin/bash
+dir="$(dirname "$0")"
+printf '[%s]' "$@" >> "$dir/docker.log"; echo >> "$dir/docker.log"
+case "$1" in
+    image) [ -f "$dir/pulled" ] ;;
+    pull) sleep "${FAKE_PULL_SLEEP:-0}"; touch "$dir/pulled" ;;
+    run) sleep "${FAKE_EXEC_SLEEP:-0}" ;;
+esac
+EOF
+rm -f "$fake/docker.log"
+out="$(run IRIS_CONTAINER_RUNTIME=docker FAKE_PULL_SLEEP=2 -- --time-limit 1 microct/1 python -V)" ||
+    { echo "docker --time-limit 1 with a 2 s pull: exit non-zero"; echo "$out" | sed 's/^/  /'; }
+has "docker --time-limit, first run" "$(log docker)" "[pull][-q][$IRIS_ENV_REGISTRY@$a]"
+rm -f "$fake/docker.log"
+out="$(run IRIS_CONTAINER_RUNTIME=docker FAKE_EXEC_SLEEP=5 -- --time-limit 1 microct/1 python -V)" &&
+    echo "docker --time-limit 1 on a 5 s command: exit 0"
+has "docker past its time limit" "$out" "ran past its 1 s limit"
+lacks "docker --time-limit, second run" "$(log docker)" "[pull]"

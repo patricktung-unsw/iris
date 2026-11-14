@@ -1,0 +1,121 @@
+#!/bin/bash
+# bin/outside-folder <base> [<head>]: the out-of-folder flag. Prints what a
+# pull request, <base>...<head> (HEAD by default), changes outside its
+# workflow's folder, its card in index.html and its lab's recipe, one line
+# each, in path order:
+#
+#   <path>                                       a file outside them
+#   index.html (outside the card of <slug>)      index.html beyond the card
+#   workflows/ (more than one workflow's folder: <slug> <slug>)
+#
+# A PR that changes no workflow's folder has everything it changes flagged.
+# The flag is for the maintainer's review, not a failure: the ready
+# workflow (.github/workflows/ready.yml) labels a flagged PR outside-folder
+# and still labels it ready once its checks pass.
+#
+# Exit 0 and no output: nothing flagged. 1: something flagged. 2: usage, or
+# <base> or <head> isn't a commit. It runs no code from the commits it
+# reads: the lab table comes from this clone's own lib/katana.sh, and the
+# rest from git, so the ready workflow runs it from the PR's base with the
+# PR's commits fetched.
+
+cd "$(dirname "$(readlink -f "$0")")/.." || exit 2
+usage() { echo "usage: bin/outside-folder <base> [<head>]" >&2; exit 2; }
+[ $# -ge 1 ] && [ $# -le 2 ] || usage
+base="$1" head="${2:-HEAD}"
+for c in "$base" "$head"; do
+    git rev-parse -q --verify "$c^{commit}" > /dev/null || { echo "bin/outside-folder: $c isn't a commit" >&2; exit 2; }
+done
+# shellcheck source=lib/katana.sh
+. lib/katana.sh
+
+# allowed <slug>: what a PR changing workflows/<slug>/ may also change
+# unflagged, one a line: a folder (ending in /) or a file, or "card", the
+# lines of its card in index.html. The one place the allowed set is
+# defined: adjust it here.
+allowed() {
+    local lab env
+    echo "workflows/$1/"
+    echo card
+    lab="$(card_lab "$head" "$1")"
+    [ -n "$lab" ] || lab="$(card_lab "$base" "$1")"
+    env="${IRIS_LAB_ENVS[$lab]-}"
+    [ -z "$env" ] || echo "envs/${env%/*}/"
+}
+
+# index_html <commit>: index.html at <commit>, empty if it has none.
+index_html() { git show "$1:index.html" 2> /dev/null | tr -d '\r'; }
+
+# card_lab <commit> <slug>: the id of the lab section holding <slug>'s card
+# in index.html at <commit>, empty if none.
+card_lab() {
+    index_html "$1" | awk -v s="$2" '
+        /class="lab[" ]/ { lab = $0; if (!sub(/.* id="/, "", lab)) lab = ""; else sub(/".*/, "", lab) }
+        index($0, "href=\"workflows/" s "/\"") && /class="workflow-card/ { print lab; exit }'
+}
+
+# card_lines <commit> <slug>: the first and last line numbers of <slug>'s
+# card in index.html at <commit>, its <a ...class="workflow-card"> to its
+# </a>; nothing if it has none.
+card_lines() {
+    index_html "$1" | awk -v s="$2" '
+        !start && index($0, "href=\"workflows/" s "/\"") && /class="workflow-card/ { start = NR }
+        start && /<\/a>/ { print start, NR; exit }'
+}
+
+# index_outside <slug>...: whether the PR changes a non-blank line of
+# index.html outside every one of these workflows' cards, a removed line
+# by its card in <base> and an added one by its card in <head>.
+index_outside() {
+    local s old=() new=()
+    for s in "$@"; do
+        old+=("$(card_lines "$base" "$s")")
+        new+=("$(card_lines "$head" "$s")")
+    done
+    git diff -U0 --no-renames "$base...$head" -- index.html | tr -d '\r' | awk -v old="${old[*]}" -v new="${new[*]}" '
+        function inside(n, ranges,   r, k, i) {
+            k = split(ranges, r, " ")
+            for (i = 1; i < k; i += 2) if (n >= r[i] && n <= r[i + 1]) return 1
+            return 0
+        }
+        /^@@ / {
+            split($2, a, ","); o = substr(a[1], 2)
+            split($3, b, ","); n = substr(b[1], 2)
+            body = 1; next
+        }
+        !body { next }
+        /^-/ { if ($0 !~ /^-[ \t]*$/ && !inside(o, old)) bad = 1; o++; next }
+        /^\+/ { if ($0 !~ /^\+[ \t]*$/ && !inside(n, new)) bad = 1; n++; next }
+        END { exit !bad }'
+}
+
+paths="$(git diff --name-only --no-renames "$base...$head")" || exit 2
+mapfile -t slugs < <(sed -n 's|^workflows/\([^/]*\)/.*|\1|p' <<< "$paths" | sort -u)
+flagged=0
+if [ ${#slugs[@]} -gt 1 ]; then
+    echo "workflows/ (more than one workflow's folder: ${slugs[*]})"
+    flagged=1
+fi
+mapfile -t ok < <(for s in "${slugs[@]}"; do allowed "$s"; done)
+while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    pass=""
+    for a in "${ok[@]}"; do
+        case "$a" in
+            card) [ "$p" != index.html ] || pass=card ;;
+            */) [[ "$p" != "$a"* ]] || pass=yes ;;
+            *) [ "$p" != "$a" ] || pass=yes ;;
+        esac
+        [ "$pass" != yes ] || break
+    done
+    if [ "$pass" = card ]; then
+        index_outside "${slugs[@]}" || continue
+        echo "index.html (outside the card of ${slugs[*]})"
+    elif [ -z "$pass" ]; then
+        echo "$p"
+    else
+        continue
+    fi
+    flagged=1
+done <<< "$paths"
+exit "$flagged"
