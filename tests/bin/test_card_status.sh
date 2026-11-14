@@ -13,27 +13,34 @@ trap 'rm -rf "$scratch"' EXIT
 . tests/bin/lib.sh
 
 name="card status matches the CONTRIBUTING tier table"
-workflows=(seg:ct-lab:active denoise:ct-lab:testing tumour:mr-lab:planned old:mr-lab:unmaintained)
+workflows=(seg:ct-lab:active denoise:ct-lab:active tumour:mr-lab:planned old:mr-lab:unmaintained)
 
 site_tree "$scratch/clean" "${workflows[@]}"
 expect pass "$scratch/clean" "$name"
 
 # The card reads Active, but the tier table puts seg in Planned.
 site_tree "$scratch/disagrees" "${workflows[@]}"
-sed -i '/^| \*\*Run and verified\*\*/d; s/`tumour`/`seg`, `tumour`/' "$scratch/disagrees/CONTRIBUTING.md"
+sed -i 's/`seg`, //; s/`tumour`/`seg`, `tumour`/' "$scratch/disagrees/CONTRIBUTING.md"
 expect fail "$scratch/disagrees" "$name"
 
 site_tree "$scratch/wrong-label" "${workflows[@]}"
-sed -i 's|</span> Testing</span>|</span> Active</span>|' "$scratch/wrong-label/index.html"
+sed -i '0,/<\/span> Active<\/span>/s||</span> Planned</span>|' "$scratch/wrong-label/index.html"
 expect fail "$scratch/wrong-label" "$name"
 
 site_tree "$scratch/no-row" "${workflows[@]}"
-sed -i '/^| \*\*Run, browser run pending\*\*/d' "$scratch/no-row/CONTRIBUTING.md"
+sed -i '/^| \*\*Planned\*\*/d' "$scratch/no-row/CONTRIBUTING.md"
 expect fail "$scratch/no-row" "$name"
 
 site_tree "$scratch/unknown-tier" "${workflows[@]}"
 sed -i 's/^| \*\*Planned\*\*/| **Someday**/' "$scratch/unknown-tier/CONTRIBUTING.md"
 expect fail "$scratch/unknown-tier" "$name"
+
+# The Testing tier is gone (#144): a "Run, browser run pending" row fails
+# even when its card reads Testing, as that tier's cards used to.
+site_tree "$scratch/testing" "${workflows[@]}"
+sed -i 's/^| \*\*Planned\*\*/| **Run, browser run pending**/' "$scratch/testing/CONTRIBUTING.md"
+sed -i 's|</span> Planned</span>|</span> Testing</span>|' "$scratch/testing/index.html"
+expect fail "$scratch/testing" "$name"
 
 site_tree "$scratch/crlf" "${workflows[@]}"
 sed -i 's/$/\r/' "$scratch/crlf/index.html" "$scratch/crlf/CONTRIBUTING.md"

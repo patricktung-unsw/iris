@@ -33,14 +33,13 @@ expect() {
 #     a job for each active workflow
 #   - README.md: a repo map naming bin/ and, with a workflow,
 #     workflows/<workflow>/
-# <tier> is active (Run and verified), testing (Run, browser run
-# pending), planned or unmaintained. A test then breaks the part its rule
+# <tier> is active (Run and verified), planned or unmaintained. A test then breaks the part its rule
 # reads; a rule that reads git's index needs git -C <tree> add -A after.
 site_tree() {
     local tree="$1" spec slug lab tier t list planned labs=()
     shift
-    local -A title=([active]="Run and verified" [testing]="Run, browser run pending" [planned]=Planned [unmaintained]=Unmaintained)
-    local -A status=([active]=Active [testing]=Testing [planned]=Planned)
+    local -A title=([active]="Run and verified" [planned]=Planned [unmaintained]=Unmaintained)
+    local -A status=([active]=Active [planned]=Planned)
     mkdir -p "$tree/bin" "$tree/guide" "$tree/contribute" "$tree/.githooks"
     cp bin/check "$tree/bin/check"
     cp .githooks/avoid-names .githooks/avoid-names.pl "$tree/.githooks/"
@@ -80,7 +79,7 @@ site_tree() {
     done
     {
         printf '%s\n' '| Tier | Workflows | What exists |' '|---|---|---|'
-        for t in active testing planned unmaintained; do
+        for t in active planned unmaintained; do
             list=""
             for spec in "$@"; do
                 IFS=: read -r slug lab tier <<< "$spec"
