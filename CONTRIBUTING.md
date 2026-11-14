@@ -73,6 +73,7 @@ iris/
 │   ├── prune-merged                  # List, then remove, the local branches and worktrees whose work is already in origin/main (desktop)
 │   ├── syspull-pins.sh               # List the environment versions a commit pins whose container files aren't on Katana (syspull runs it)
 │   ├── qwait                         # Wait for Katana jobs and show how they ended (desktop)
+│   ├── run-proof                     # Write a workflow's run proof from a test-instance run (Katana); check a PR's proofs (bin/check runs it)
 │   ├── syspull                       # Show, then deploy, what a pull brings the system clone (desktop)
 │   ├── tracked-tree                  # Print the tree a commit of every uncommitted edit would hold (check-passed and katana-test run it)
 │   └── workflowhub-microct-2d-segmentation  # Walkthrough registering it on WorkflowHub; copy it for another workflow (desktop)
@@ -98,6 +99,7 @@ iris/
         ├── form.yml.erb, manifest.yml  # OpenComposer form
         ├── src/run.py                # Entry point: train, then segment into a run directory
         ├── lib/                      # Its own copy of the library's job side, which its jobs run (bin/libcopy; never edited by hand)
+        ├── run-proof.json            # Its run proof, from a test-instance run (bin/run-proof), once it has one
         └── tests/                    # This workflow's own tests: its synthetic-dataset run and its form tests (see AGENTS.md)
 ```
 
@@ -170,7 +172,14 @@ Until then the maintainer also does a **browser run** from the dev clone on your
 
 ### 6. Run proof
 
-_#140 fills this step with a tool, run on Katana after your test-instance run, that writes the run proof into your workflow's folder, and a CI check that fails a PR whose folder changed after the proof's commit. Until then:_ cite your `qsub` run's job ID in the PR. Any later change to your folder, updating its library copy or moving its environment version included, needs a new run.
+The run proof shows your workflow's current code ran and finished, from a form on the test instance. Only a run from the test instance proves a workflow: not a `qsub` run, nor one from any other OpenComposer. During the pilot only pilot testers can open the test instance, as only they can open PRs ([From fork to DOI](#from-fork-to-doi)).
+
+1. **Commit** your workflow's folder as you want it proved, in your clone at `~/iris`, and run `bin/check`.
+2. **Run the form** from the test instance, `https://kod.restech.unsw.edu.au/pun/dev/OpenComposer-iris-test/<slug>`, on a real dataset in the layout your page documents, with its script as it opens: an edited run proves nothing.
+3. **Write the proof** once the job has ended and its job output, `runs/<job ID>.<server>.OU`, is in your dataset's `runs/` folder: on Katana, `~/iris/bin/run-proof <run dir>`. It writes `workflows/<slug>/run-proof.json`: the job ID, its exit status, the commit the run recorded, the environment version and digest from its run record, and your form tests' results, which it runs. It writes nothing, and says why, unless the job is in the test instance's job history, finished with exit status 0, ran unedited code at one commit in the environment version your form pins, your clone's copy of the folder is still that commit's, and your form tests (`tests/test_form.rb`) pass with none skipped. PBS forgets a finished job after 24 hours, which is why the proof is a file.
+4. **Commit the proof** and push it with your branch.
+
+CI checks it on your PR: `bin/check` runs `bin/run-proof --check`, which fails a PR that changes a workflow's folder, anything in it but the proof, after the proof's commit, or changes it with no proof. Any later change, updating its library copy or moving its environment version included, needs a new run and proof. Before you push, `bin/run-proof --check <base>` checks your branch against `<base>`, such as `upstream/main` if that remote is `unsw-restech/iris`. Only a PR is checked: the maintainer's pushes to `main` are not.
 
 ### 7. CI and `ready`
 
@@ -212,7 +221,7 @@ The [contribute page](https://docs.restech.unsw.edu.au/iris/contribute/#unmainta
 
 - **Unmaintained**: the workflow moves to the Unmaintained row of the tier table ([Status](#status)).
 - **Handing over**: a PR that names the new owner in place of you ([Owner](#3-owner)).
-- **Adoption**: after the approved proposal, a PR that fixes the workflow, carries a run proof ([Run proof](#6-run-proof); a `qsub` job ID until then) and names the adopter as its workflow owner. It keeps its folder and its WorkflowHub entry.
+- **Adoption**: after the approved proposal, a PR that fixes the workflow, carries a run proof ([Run proof](#6-run-proof)) and names the adopter as its workflow owner. It keeps its folder and its WorkflowHub entry.
 
 ## Licence
 
