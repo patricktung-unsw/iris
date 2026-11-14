@@ -42,6 +42,7 @@ iris/
 ├── assets/
 │   └── iris.css                      # Shared styles for workflow detail pages and the guide
 ├── guide/index.html                  # "Using IRIS on Katana": staging and viewing, shared by imaging workflows
+├── templates/workflow-page.html      # The page template every workflow page is written from (Page)
 ├── _archive/<slug>/                  # Retired OpenComposer forms, never served by OpenComposer
 ├── .github/workflows/check.yml       # CI: runs bin/check on every push
 ├── .github/workflows/containers.yml  # CI: builds and checks each unpublished environment version; publishes it from main
@@ -147,7 +148,11 @@ If the workflow ships a `local/run_local.ps1`, **keep it ASCII-only**. These fil
 
 ### 2. Page
 
-_#135 fills this step with a page template of fixed sections and `bin/check` rules for it. Until then:_ write the page text in `index.html`, starting from the reference workflow's page. Document the dataset layout your workflow reads, since workflows differ, and link the guide (`../../guide/#stage` and `../../guide/#view`) for staging and viewing rather than repeating its steps. Use relative links only: root-absolute links like `href="/"` resolve outside `/iris/` and 404.
+Your workflow's `index.html` is written from the page template, `templates/workflow-page.html`, so every workflow page has the same sections and looks like IRIS; you write the words. Its placeholders come in two kinds: `{{NAME}}`, a value the [scaffold](#1-scaffold) fills, or you do while that step is by hand (`{{SLUG}}`, `{{TITLE}}`, `{{LAB_ID}}`, `{{LAB_NAME}}`, `{{OWNER_LOGIN}}`, `{{OWNER_NAME}}`, `{{OWNER_EMAIL}}`), and `{{TODO: ...}}`, which says what you write in its place. Replace each with your text, braces and all.
+
+The template's fixed sections, each with its `id`, are what the workflow does (`what`, under the title), its workflow owner with their contact (`owner`), how to run it (`run`, the Run button and the "You're ready when" checklist, then `fields`, what each form field does), the data it needs (`data`, the dataset layout your form's `check:` validates, since workflows differ), what a run writes (`run-directory`) and how to cite it (`cite`). Keep them all, keep the owner section's line saying IRIS reviewed the workflow for safety and fit and its owner answers for its science word for word, and add sections of your own if your workflow needs them, as the reference workflow's page does. Link the guide (`../../guide/#stage` and `../../guide/#view`) for staging and viewing rather than repeating its steps. Use relative links only: root-absolute links like `href="/"` resolve outside `/iris/` and 404.
+
+`bin/check`'s page template rules fail a workflow page with a placeholder left, a script (a `<script>`, an `on...=` attribute or a `javascript:` link), an `<iframe>`, `<object>` or `<embed>`, or styles from outside IRIS (a `<style>`, a `style=` attribute, or a `<link>` the template doesn't have), and a page with a form that lacks one of the template's sections or its review line.
 
 ### 3. Owner
 

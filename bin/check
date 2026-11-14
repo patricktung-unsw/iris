@@ -673,6 +673,67 @@ guide_copies() {
 }
 check "workflow page repeats the guide (link guide/#stage or #view)" guide_copies
 
+# A workflow page is written from templates/workflow-page.html
+# (CONTRIBUTING.md, Page), whose placeholders are {{NAME}}, filled by
+# bin/new-workflow, and {{TODO: ...}}, written by the author. Every
+# workflow page fails with a placeholder left ("{{" anywhere), or with a
+# script (a <script>, an on...= attribute in a tag, a javascript: link),
+# an <iframe>, <object> or <embed>. Every one but hello-world, which keeps
+# its own styles, fails with styles from outside IRIS: a <style> element, a
+# style= attribute, or a <link> whose href the template's <link>s don't
+# have. A page with a form, hello-world apart, keeps the template's fixed
+# sections, each id="..." the template has, and its wf-review line, word
+# for word. tests/bin/test_page_template.sh runs it on fixture trees.
+page_template() {
+    local tpl=templates/workflow-page.html f d styles sections
+    [ -f "$tpl" ] || { echo "$tpl is missing"; return; }
+    for f in $(workflow_pages); do
+        d=$(dirname "$f")
+        styles=1; sections=1
+        [ "$d" = workflows/hello-world ] && { styles=0; sections=0; }
+        [ -f "$d/form.yml.erb" ] || sections=0
+        awk -v f="$f" -v tpl="$tpl" -v styles="$styles" -v sections="$sections" '
+            function trim(s) { sub(/^[ \t]+/, "", s); sub(/[ \t]+$/, "", s); return s }
+            # The href of each <link> tag in s, as keys of out.
+            function links(s, out,   t) {
+                while (match(s, /<[Ll][Ii][Nn][Kk][ \t][^>]*>/)) {
+                    t = substr(s, RSTART, RLENGTH); s = substr(s, RSTART + RLENGTH)
+                    out[match(t, /href="[^"]*"/) ? substr(t, RSTART + 6, RLENGTH - 7) : "(no href)"] = 1
+                }
+            }
+            # The value of each id="..." in s, as keys of out.
+            function ids(s, out) {
+                while (match(s, / id="[^"]*"/)) { out[substr(s, RSTART + 5, RLENGTH - 6)] = 1; s = substr(s, RSTART + RLENGTH) }
+            }
+            { sub(/\r$/, "") }
+            FNR == NR {
+                links($0, ok); ids($0, need)
+                if (review == "" && /class="wf-review"/) review = trim($0)
+                next
+            }
+            {
+                lc = tolower($0)
+                if (index($0, "{{")) print f ":" FNR ": a placeholder left to fill ({{...}})"
+                if (lc ~ /<(script|iframe|object|embed)[ \t>\/]|<script$/ || lc ~ /<[a-z][^>]*[ \t]on[a-z]+[ \t]*=/ || lc ~ /javascript:/)
+                    print f ":" FNR ": a script, iframe or embed; IRIS pages carry none"
+                if (styles && (lc ~ /<style[ \t>]/ || lc ~ /<[a-z][^>]*[ \t]style[ \t]*=/))
+                    print f ":" FNR ": a style of its own; pages use IRIS'"'"'s styles, assets/iris.css"
+                if (styles) {
+                    split("", got); links($0, got)
+                    for (h in got) if (!(h in ok)) print f ":" FNR ": a <link> to " h ", which " tpl " does not have"
+                }
+                ids($0, have)
+                if (review != "" && trim($0) == review) has_review = 1
+            }
+            END {
+                if (!sections) exit
+                for (i in need) if (!(i in have)) print f ": no id=\"" i "\" section, which " tpl " has"
+                if (!has_review) print f ": no wf-review line as " tpl " words it"
+            }' "$tpl" "$f"
+    done
+}
+check "page template rules (templates/workflow-page.html)" page_template
+
 # Page text keeps to GLOSSARY.md's terms (CODING_STANDARDS.md). Only the
 # Avoid words that have drifted onto pages are matched, since most Avoid
 # words (sync, results, app) are fine in other senses: "scan" for Volume,
