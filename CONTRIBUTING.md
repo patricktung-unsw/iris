@@ -76,7 +76,7 @@ iris/
 │   ├── run-proof                     # Write a workflow's run proof from a test-instance run (Katana); check a PR's proofs (bin/check runs it)
 │   ├── syspull                       # Show, then deploy, what a pull brings the system clone (desktop)
 │   ├── tracked-tree                  # Print the tree a commit of every uncommitted edit would hold (check-passed and katana-test run it)
-│   └── workflowhub-microct-2d-segmentation  # Walkthrough registering it on WorkflowHub; copy it for another workflow (desktop)
+│   └── workflowhub                   # Walkthrough registering a workflow on WorkflowHub and minting its citable versions, from its manifest (desktop)
 ├── envs/                             # Environment containers: the core list, each environment's packages and versions, CI's build and checks (see its README)
 ├── lib/
 │   ├── iris-job.sh                   # Run-time steps every imaging job sources (container check, run dir, commit, container start), from its workflow's copy
@@ -211,16 +211,22 @@ Review covers safety and fit only, never your science. A PR that fails a criteri
 
 ### 9. WorkflowHub
 
-_#143 fills this step with one walkthrough for any workflow, reading its values from the workflow's manifest. Until then `bin/workflowhub-microct-2d-segmentation` is the worked example: run on the desktop (it needs `curl` and `python3`), it walks through steps 3 to 5 of the list below for the reference workflow, with every value filled in. Copy it for your workflow and change the values at the top of its stages._
+Each catalogue workflow has its own WorkflowHub entry, and each citable version is a frozen snapshot of `main` with its own DOI. There are no git tags (ADR-0002, `docs/adr/0002-citable-versions-are-frozen-from-main.md`). The workflow owner does every step, through one walkthrough run on the desktop from a clone at `main` (it needs `curl` and `python3`):
 
-Each catalogue workflow has its own WorkflowHub entry, and each citable version is a frozen snapshot of `main` with its own DOI. There are no git tags (ADR-0002, `docs/adr/0002-citable-versions-are-frozen-from-main.md`). The workflow owner does every step.
+```bash
+bin/workflowhub --values <slug>    # what it will enter, read from your workflow's folder
+bin/workflowhub <slug>             # the walkthrough
+```
+
+It reads every value from `workflows/<slug>/`: the title from the manifest's `name:`, the description from its `description:`, the tags from its `tags:` (one comma-separated line, which you add), you as creator from its owner, the main workflow file `src/run.py`, and the entry itself from the newest DOI the page's **Cite this workflow** lists. With none listed it registers a new entry; with one, it adds a new version to that entry. It asks for your ORCID if the manifest lacks it, and keeps your answers outside the repo, so a re-run offers them back.
 
 1. **Create an account** on [WorkflowHub](https://workflowhub.eu/) and link your ORCID to it.
 2. **Ask to join Team 472**, [UNSW ResTech](https://workflowhub.eu/projects/472), from its page. The maintainer approves, and keeps edit rights over every entry in the team, so leave the team able to manage your entry.
-3. **Register the workflow** in Team 472 by importing from git: repository `https://github.com/unsw-restech/iris`, branch `main`, main workflow file the workflow's entry point (`workflows/<slug>/src/run.py` for the reference workflow), workflow type `Other`.
-4. **Fill in the metadata**: the title and description from the workflow's page, licence Apache-2.0, and as creators yourself, your co-authors (with ORCIDs where they have them) and UNSW Research Technology Services.
-5. **Freeze** the entry's snapshot of `main` (WorkflowHub's Freeze button), **publish** it, then **mint** its DOI, which makes it a citable version. Neither publishing nor minting can be undone. Note the date and the commit of `main` it was frozen at.
-6. **Open a PR** adding the citable version to the workflow's page: its DOI, its date and its commit, never a version number. Add its DOI to `identifiers` in `CITATION.cff` too, above that workflow's older ones.
+3. **Run `bin/workflowhub <slug>`.** It does every step WorkflowHub documents with you: registration in Team 472 by importing from git (repository `https://github.com/unsw-restech/iris`, branch `main`, workflow type `Other`), then the metadata, with each value printed to paste: title, description, licence Apache-2.0, sharing, tags, and as creators yourself, your co-authors (with ORCIDs where they have them) and UNSW Research Technology Services.
+4. **Make your three clicks**, which it lists in order and stops for a yes before each: **Freeze** the version, **Publish** the entry, then **Generate a DOI**, which makes it a citable version. None can be undone. It reads the published entry back to check its title, licence and commit before the DOI, and reads the DOI back after.
+5. **Open a PR** adding the citable version to the workflow's page: its DOI, its date and its commit, never a version number, and its DOI to `identifiers` in `CITATION.cff`, above that workflow's older ones. The walkthrough ends by printing both lines.
+
+To try it without minting anything, run it against WorkflowHub's development instance, which mints no DOIs, so it stops after Publish: `IRIS_WORKFLOWHUB=https://dev.workflowhub.eu IRIS_WORKFLOWHUB_TEAM=<a team there> bin/workflowhub <slug>`. That instance's entries are its own, so `IRIS_WORKFLOWHUB_ENTRY=<its entry URL>` adds a new version to one.
 
 **When to mint:** the first citable version straight after your workflow merges; after that, only when its code or defaults change in a way that changes results, not on every merge. A citable version's commit may include unrelated changes to other workflows; that is harmless, since each run's `commit.txt` pins exactly what ran.
 
