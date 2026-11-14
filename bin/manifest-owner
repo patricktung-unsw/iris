@@ -1,0 +1,68 @@
+#!/bin/bash
+# A workflow's owner lives in its manifest (#136), the OpenComposer
+# manifest.yml beside its form, which ignores keys it doesn't know:
+#
+#   owner:
+#     name: Jane Doe          # as the page's wf-owner line shows it
+#     github: jdoe            # GitHub login, no @: mentioned on PRs, linked from the page
+#     orcid: 0000-0002-1825-0097   # optional; WorkflowHub's creators list
+#
+# This reads it, for bin/check's owner rule, bin/owner-mentions and anything
+# else that needs the owner, so the shape is read in one place.
+#
+#   bin/manifest-owner <manifest.yml> <field>   print name, github or orcid
+#                                               (orcid prints nothing if unset)
+#   bin/manifest-owner <manifest.yml>           check the owner block only
+#
+# Either way it exits 1, naming the manifest, if the block is missing or
+# holds anything else: a field other than those three, a second block, a
+# name or login missing, a login GitHub wouldn't allow (no @), or an ORCID
+# iD that isn't the bare 0000-0000-0000-000X form. The block is plain
+# "key: value" lines indented two spaces under a top-level owner:, values
+# optionally quoted, with # comments; a flow map ({...}) is refused.
+
+[ $# -ge 1 ] && [ $# -le 2 ] || { echo "usage: bin/manifest-owner <manifest.yml> [name|github|orcid]" >&2; exit 2; }
+manifest="$1" field="${2:-}"
+case "$field" in
+    ""|name|github|orcid) ;;
+    *) echo "$manifest: no owner field \"$field\"; the fields are name, github and orcid" >&2; exit 1 ;;
+esac
+[ -f "$manifest" ] || { echo "$manifest: no such manifest" >&2; exit 1; }
+
+tr -d '\r' < "$manifest" | awk -v m="$manifest" -v want="$field" '
+    function bad(msg) { print m ": " msg > "/dev/stderr"; failed = 1 }
+    function strip(v) {
+        sub(/^[ \t]+/, "", v)
+        if (v ~ /^#/) return ""
+        if (v ~ /^"/) { sub(/^"/, "", v); sub(/".*/, "", v); return v }
+        if (v ~ /^'\''/) { sub(/^'\''/, "", v); sub(/'\''.*/, "", v); return v }
+        sub(/[ \t]+#.*/, "", v); sub(/[ \t]+$/, "", v)
+        return v
+    }
+    /^[^ \t#]/ { inblock = 0 }
+    /^owner:/ {
+        rest = $0; sub(/^owner:/, "", rest); rest = strip(rest)
+        if (rest != "") { bad("owner: holds \"" rest "\"; give it as indented name:, github: and orcid: lines"); next }
+        blocks++; inblock = 1; next
+    }
+    inblock && /^[ \t]*(#.*)?$/ { next }
+    inblock {
+        line = $0
+        if (line !~ /^  [a-z_]+:/) { bad("an owner line that is not \"  <field>: <value>\": " line); next }
+        key = line; sub(/^  /, "", key); sub(/:.*/, "", key)
+        val = line; sub(/^  [a-z_]+:/, "", val); val = strip(val)
+        if (key != "name" && key != "github" && key != "orcid") { bad("owner has a field \"" key "\"; the fields are name, github and orcid"); next }
+        v[key] = val
+    }
+    END {
+        if (blocks == 0) { bad("no owner block (owner: with name: and github: under it; see bin/manifest-owner)"); exit 1 }
+        if (blocks > 1) { bad("more than one owner block"); exit 1 }
+        if (v["name"] == "") bad("owner has no name")
+        if (v["github"] == "") bad("owner has no github login")
+        else if (v["github"] !~ /^[A-Za-z0-9]([A-Za-z0-9]|-[A-Za-z0-9])*$/ || length(v["github"]) > 39)
+            bad("owner github \"" v["github"] "\" is not a GitHub login (letters, digits and single hyphens, no @)")
+        if (v["orcid"] != "" && v["orcid"] !~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9X]$/)
+            bad("owner orcid \"" v["orcid"] "\" is not a bare ORCID iD (0000-0000-0000-000X)")
+        if (failed) exit 1
+        if (want != "") print v[want]
+    }'

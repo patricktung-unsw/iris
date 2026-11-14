@@ -1,0 +1,64 @@
+#!/bin/bash
+# The comment .github/workflows/owner-mention.yml posts on a PR to mention
+# the workflow owner of each workflow folder it touches, read from that
+# folder's manifest (bin/manifest-owner), so an owner without write access
+# to the repo still hears of it, as CODEOWNERS can't manage (#136).
+#
+#   <changed paths> | bin/owner-mentions <PR author> [<earlier comments>]
+#
+# It reads the PR's changed paths on stdin, one per line, and the
+# manifests in the tree it sits in, which the Action checks out at the
+# PR's base, so the owners are those of the folders as they stand and a
+# PR can't pick who gets mentioned. A folder with no manifest there, a new
+# workflow's, has no owner but its author. It prints the comment, or
+# nothing when no one is left to mention: the PR's author is never
+# mentioned, nor any login an earlier comment of this kind (the file
+# <earlier comments>, which may hold any text) already did, so each push
+# mentions only owners new to the PR. A manifest bin/manifest-owner
+# refuses is named on stderr and skipped; it still exits 0.
+
+cd "$(dirname "$(readlink -f "$0")")/.." || exit 1
+[ $# -ge 1 ] && [ $# -le 2 ] || { echo "usage: <changed paths> | bin/owner-mentions <PR author> [<earlier comments>]" >&2; exit 2; }
+author="${1,,}" earlier="${2:-/dev/null}"
+marker='<!-- iris-owner-mention -->'
+
+# Logins earlier comments of this kind mentioned, lower-cased.
+declare -A seen
+while IFS= read -r login; do
+    seen[${login,,}]=1
+done < <(tr -d '\r' < "$earlier" 2>/dev/null | awk -v m="$marker" '$0 == m { on = 1 } on' |
+    sed -nE 's/^- @([A-Za-z0-9-]+):.*/\1/p')
+
+# Each workflow folder the PR touches, once.
+declare -A folders owner_of
+while IFS= read -r slug; do
+    folders[$slug]=1
+done < <(tr -d '\r' | sed -nE 's|^workflows/([a-z0-9-]+)/.+|\1|p')
+
+declare -A lines
+for slug in "${!folders[@]}"; do
+    m="workflows/$slug/manifest.yml"
+    [ -f "$m" ] || continue
+    login=$(bin/manifest-owner "$m" github 2> /dev/null)
+    if [ -z "$login" ]; then
+        # hello-world has no owner block; anything else refused is named.
+        grep -q '^owner:' "$m" && bin/manifest-owner "$m" > /dev/null
+        continue
+    fi
+    key="${login,,}"
+    [ "$key" = "$author" ] || [ -n "${seen[$key]:-}" ] && continue
+    owner_of[$key]="$login"
+    lines[$key]+="${lines[$key]:+ }$slug"
+done
+
+[ ${#lines[@]} -gt 0 ] || exit 0
+echo "$marker"
+echo "This pull request changes a workflow you own as its workflow owner (its \`manifest.yml\`), so please review it:"
+echo
+for key in $(printf '%s\n' "${!lines[@]}" | sort); do
+    list=""
+    for slug in $(tr ' ' '\n' <<< "${lines[$key]}" | sort); do
+        list+="${list:+, }\`workflows/$slug/\`"
+    done
+    echo "- @${owner_of[$key]}: $list"
+done

@@ -1,6 +1,13 @@
 name: microCT 2D Segmentation (U-Net)
 category: Imaging
 icon: bi-layers
+# The workflow owner, mentioned on every PR that touches this folder;
+# bin/manifest-owner gives the shape, and bin/check keeps it in step with
+# the page's wf-owner line.
+owner:
+  name: Patrick Tung
+  github: PatrickTung
+  orcid: 0000-0002-2741-3177
 description: |
   Train a 2D U-Net from scratch on a few labelled slices of a microCT scan,
   then segment the whole scan slice by slice.
