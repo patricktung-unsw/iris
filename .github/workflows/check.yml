@@ -1,7 +1,9 @@
 # bin/check on every push and pull request: the shipping greps, shellcheck,
 # actionlint, ruff and the Python tests, the synthetic-dataset test among them, each
 # run on CPU in the container its form pins (bin/envrun, through Docker
-# here).
+# here). On a pull request it also checks the run proofs of the workflows
+# the PR changes (bin/run-proof --check, which reads GITHUB_EVENT_NAME and
+# GITHUB_BASE_REF and compares with origin/<base>); on a push it doesn't.
 name: check
 on: [push, pull_request]
 
