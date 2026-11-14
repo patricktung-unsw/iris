@@ -190,55 +190,168 @@ finish() {
 # ──────────────────────────────────────────────────────────────────────────
 
 
-# Registers microct-2d-segmentation on WorkflowHub, the worked example of
-# spec #58 (ADR-0002: one entry per catalogue workflow, imported from main,
-# type Other, citable versions frozen from main). The workflow owner runs
-# it on the desktop (for this workflow, Patrick, who is also the
-# maintainer); it needs no credentials, only a browser signed in to
-# WorkflowHub as a member of Team 472. It stops for a yes before Publish
-# and before Generate a DOI, and ends with the comment for #76.
+# Registers one catalogue workflow on WorkflowHub, or adds a new version to
+# its entry, and walks its workflow owner through minting a citable version
+# (CONTRIBUTING.md, "9. WorkflowHub"; ADR-0002: one entry per catalogue
+# workflow, imported by git from main, type Other, each citable version a
+# frozen snapshot of main). The owner runs it on the desktop, from a clone;
+# it needs curl and python3 and no credentials, only a browser signed in to
+# WorkflowHub as a member of the team.
 #
-#   bin/workflowhub-microct-2d-segmentation
+#   bin/workflowhub <slug>             the walkthrough
+#   bin/workflowhub --values <slug>    print what it would enter, and stop
 #
-# Answers are kept in $IRIS_WIZARD_ENV (default below, outside the repo),
-# so a re-run offers them back: press Enter through the stages already done.
-# A workflow owner registering another workflow copies this script and
-# changes the values in the block below, setting TICKET empty.
+# Every value comes from workflows/<slug>/: the manifest's name, description,
+# tags and owner, the entry script src/run.py, and the entry itself, from the
+# newest DOI the page's "Cite this workflow" lists; with none listed it
+# registers a new entry. It does every step WorkflowHub documents and leaves
+# the owner three clicks, in order and each behind a yes: Freeze, Publish and
+# Generate a DOI. It ends with the lines that list the new citable version on
+# the page and in CITATION.cff, for the owner's PR.
+#
+# IRIS_WORKFLOWHUB=https://dev.workflowhub.eu, with IRIS_WORKFLOWHUB_TEAM set
+# to a team there, runs it against WorkflowHub's development instance, which
+# mints no DOIs, so it stops after Publish. That instance's entries are its
+# own: IRIS_WORKFLOWHUB_ENTRY=<entry URL> adds a new version to one.
+#
+# Answers are kept in $IRIS_WIZARD_ENV (default below, outside the repo), one
+# file per workflow and instance, so a re-run offers them back: press Enter
+# through the stages already done.
 #
 # It sits in bin/ with the other desktop tools, so Pages serves it like
 # every file; that's harmless, since it holds no credentials and writes
 # its answers outside the repo.
 
-SLUG=microct-2d-segmentation
+refuse() { echo "bin/workflowhub: $1" >&2; exit 2; }
+VALUES_ONLY=no
+if [[ "${1:-}" == --values ]]; then VALUES_ONLY=yes; shift; fi
+[[ $# == 1 ]] || { echo "usage: bin/workflowhub [--values] <slug>" >&2; exit 2; }
+SLUG=$1
+ROOT=$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)
+WF=workflows/$SLUG
+[[ "$SLUG" != hello-world ]] || refuse "hello-world is onboarding, not a catalogue workflow, so it has no WorkflowHub entry"
+[[ "$SLUG" =~ ^[a-z0-9][a-z0-9-]*$ && -d "$ROOT/$WF" ]] || refuse "no workflow folder $WF"
+for f in form.yml.erb manifest.yml src/run.py index.html; do
+  [[ -f "$ROOT/$WF/$f" ]] || refuse "$WF has no $f; only a workflow with a form, an entry script and a page is registered"
+done
+
+# manifest_value <key>: one value from the workflow's manifest.yml, a key at
+# the top level (name) or one level down (owner.name), given on the key's
+# line or as a | block under it. It reads only that plain YAML, so it needs
+# no YAML library on the owner's desktop; a missing key prints nothing.
+manifest_value() {
+  python3 -I - "$ROOT/$WF/manifest.yml" "$1" <<'PY'
+import re, sys
+lines = open(sys.argv[1], encoding="utf-8").read().replace("\r", "").split("\n")
+want, parents, i = sys.argv[2], [], 0
+while i < len(lines):
+    m = re.match(r"( *)([A-Za-z_][\w-]*):(?: +(.*?))? *$", lines[i])
+    i += 1
+    if not m or lines[i - 1].lstrip().startswith("#"):
+        continue
+    indent, key, value = len(m[1]), m[2], m[3] or ""
+    parents = [(n, k) for n, k in parents if n < indent]
+    path = ".".join([k for _, k in parents] + [key])
+    if value in ("|", "|-", ">"):
+        block = []
+        while i < len(lines) and (not lines[i].strip() or len(lines[i]) - len(lines[i].lstrip()) > indent):
+            block.append(lines[i]); i += 1
+        depth = min((len(b) - len(b.lstrip()) for b in block if b.strip()), default=0)
+        value = "\n".join(b[depth:] for b in block).rstrip()
+    elif not value:
+        parents.append((indent, key))
+        continue
+    else:
+        value = re.sub(r" +#.*$", "", value).strip()
+        if len(value) > 1 and value[0] == value[-1] and value[0] in "'\"":
+            value = value[1:-1]
+        value = value.strip("[]")
+    if path == want:
+        print(value)
+        break
+PY
+}
+
+# owner_field <name|orcid>: the workflow owner's name or ORCID iD from the
+# manifest, assumed to sit as owner: { name:, orcid: } until #136 settles
+# the manifest's owner fields; this is the one place that reads them.
+owner_field() { manifest_value "owner.$1"; }
+
+TITLE_NAME=$(manifest_value name)
+TAGS=$(manifest_value tags)
+BODY=$(manifest_value description)
+for k in name description tags; do
+  v=TITLE_NAME; [[ $k == description ]] && v=BODY; [[ $k == tags ]] && v=TAGS
+  [[ -n "${!v}" ]] || refuse "$WF/manifest.yml has no $k:, which the WorkflowHub entry takes"
+done
 # The manifest's name, prefixed so it reads on its own in WorkflowHub's search.
-TITLE="UNSW HPC Katana - microCT 2D Segmentation (U-Net)"
+TITLE="UNSW HPC Katana - $TITLE_NAME"
+OWNER=$(owner_field name || true)
+OWNER_ORCID=$(owner_field orcid || true)
+
+WH="${IRIS_WORKFLOWHUB:-https://workflowhub.eu}"
+WH="${WH%/}"
+[[ "$WH" =~ ^https://([a-z0-9-]+\.)?workflowhub\.eu$ ]] ||
+  refuse "IRIS_WORKFLOWHUB is $WH; give https://workflowhub.eu, or https://dev.workflowhub.eu to test"
+WH_RE="${WH//./\\.}"
+PRODUCTION=no; [[ "$WH" == https://workflowhub.eu ]] && PRODUCTION=yes
+TEAM_ID="${IRIS_WORKFLOWHUB_TEAM:-472}"
+[[ "$TEAM_ID" =~ ^[0-9]+$ ]] || refuse "IRIS_WORKFLOWHUB_TEAM is $TEAM_ID, not a team number"
+TEAM_NAME="team $TEAM_ID"
+[[ "$PRODUCTION$TEAM_ID" == yes472 ]] && TEAM_NAME="UNSW ResTech"
+TEAM_URL=$WH/projects/$TEAM_ID
+
 REPO_URL=https://github.com/unsw-restech/iris
 BRANCH=main
-MAIN_FILE=workflows/$SLUG/src/run.py
+MAIN_FILE=$WF/src/run.py
 WF_TYPE=Other
 LICENCE=Apache-2.0
-TEAM_ID=472
-TEAM_NAME="UNSW ResTech"
-TEAM_URL=https://workflowhub.eu/projects/$TEAM_ID
-OWNER="Patrick Tung"
-OWNER_ORCID=0000-0002-2741-3177   # empty it in a copy, and the first stage asks
 ORG_CREATOR="UNSW Research Technology Services"
 PAGE_URL=https://docs.restech.unsw.edu.au/iris/workflows/$SLUG/
-TAGS="microCT, segmentation, U-Net, deep learning, imaging, HPC"
-# The issue the last stage reports on: #76 checks, for spec #58, that a
-# frozen snapshot records its commit. Empty skips that stage.
-TICKET=76
-# The workflow page's lead paragraph, then the manifest's description, in
-# the glossary's terms.
-DESCRIPTION="Label a few slices of a microCT volume, and IRIS trains a 2D U-Net on them and segments the whole volume slice by slice. Each run is recorded, so you can compare runs with different settings side by side.
+DOI_RE='10\.48546/workflowhub\.workflow\.[0-9]+\.[0-9]+'
+# The manifest's description, its own documentation line moved to the end,
+# where it follows a pointer to the page's citing rule (README's "Citing
+# IRIS" owns that rule; the entry only points at it).
+BODY=$(sed '/^Documentation: /d' <<< "$BODY")
+BODY="${BODY%"${BODY##*[![:space:]]}"}"
+DESCRIPTION="$BODY
 
-IRIS is UNSW Research Technology Services' AI imaging gateway on the Katana cluster. Pick a dataset folder in your scratch holding volume/ (the volume's netCDF blocks) and train/images/ with train/labels/ (TIFF pairs with matching names, 0 = unlabelled). The job runs in the pre-built IRIS imaging environment, so nothing is installed.
-
-Everything lands in <dataset>/runs/<job ID>/: the label volume, the trained weights, the run's record and the IRIS commit that ran, as the page lists them: ${PAGE_URL}#run-directory. To cite a run, follow \"Cite this workflow\" on the page below, and give that commit.
+IRIS is UNSW Research Technology Services' AI imaging gateway on the Katana cluster. To cite a run, follow \"Cite this workflow\" on the page below, and give the commit in the run's commit.txt.
 
 Documentation: $PAGE_URL"
 
+# The entry: on WorkflowHub itself, the one the page's newest citable version
+# belongs to; on the development instance, only one named for it.
+LISTED_DOI=""
+ENTRY_URL="${IRIS_WORKFLOWHUB_ENTRY:-}"
+ENTRY_FROM="IRIS_WORKFLOWHUB_ENTRY"
+if [[ -n "$ENTRY_URL" ]]; then
+  [[ "$ENTRY_URL" =~ ^$WH_RE/workflows/[0-9]+/?$ ]] ||
+    refuse "IRIS_WORKFLOWHUB_ENTRY is $ENTRY_URL, not an entry on $WH ($WH/workflows/<number>)"
+  ENTRY_URL="${ENTRY_URL%/}"
+elif [[ $PRODUCTION == yes ]]; then
+  LISTED_DOI=$(tr -d '\r' < "$ROOT/$WF/index.html" |
+    awk '/ id="cite"/ { c = 1 } c && /<\/details>/ { c = 0 } c' | grep -oE "$DOI_RE" | head -n1 || true)
+  if [[ -n "$LISTED_DOI" ]]; then
+    ENTRY_URL=${LISTED_DOI#10.48546/workflowhub.workflow.}
+    ENTRY_URL=$WH/workflows/${ENTRY_URL%%.*}
+    ENTRY_FROM="$LISTED_DOI on the page"
+  fi
+fi
+
+if [[ $VALUES_ONLY == yes ]]; then
+  printf '%s\n' "Instance: $WH" "Team: $TEAM_URL ($TEAM_NAME)" "Repository: $REPO_URL" "Branch: $BRANCH" \
+    "Main workflow file: $MAIN_FILE" "Workflow type: $WF_TYPE" "Licence: $LICENCE" "Title: $TITLE" "Tags: $TAGS"
+  echo "Creator: ${OWNER:-the workflow owner (the manifest has no owner name, so it asks)}, ORCID ${OWNER_ORCID:-asked for}"
+  echo "Creator: $ORG_CREATOR"
+  if [[ -n "$ENTRY_URL" ]]; then echo "Entry: $ENTRY_URL (from $ENTRY_FROM), so it adds a new version"
+  else echo "Entry: none yet, so it registers a new one"; fi
+  printf 'Description:\n%s\n' "$DESCRIPTION"
+  exit 0
+fi
+
 ENV_FILE="${IRIS_WIZARD_ENV:-$HOME/.config/iris/workflowhub-$SLUG.env}"
+[[ $PRODUCTION == yes || -n "${IRIS_WIZARD_ENV:-}" ]] || ENV_FILE="$HOME/.config/iris/workflowhub-$SLUG@${WH#https://}.env"
 mkdir -p "$(dirname "$ENV_FILE")"
 
 # paste_block "label" "text" prints text flush left between rules, so it
@@ -251,12 +364,12 @@ paste_block() {
 stop_here() {
   printf '\n'
   warn "$1"
-  note "Nothing after this point was done. Re-run the wizard when ready; your answers are kept in $ENV_FILE."
+  note "Nothing after this point was done. Re-run the walkthrough when ready; your answers are kept in $ENV_FILE."
   exit 0
 }
 
 # wh_read <field> prints one field of the entry at $WH_ENTRY_URL from
-# WorkflowHub's public JSON API: title, licence, or the newest snapshot's
+# WorkflowHub's public JSON API: title, licence, or the newest version's
 # commit or doi. Prints nothing until the entry is public, or if the API
 # can't be reached, so a caller falls back to asking.
 wh_read() {
@@ -279,40 +392,51 @@ expect_field() {
   else ok "$1: $got"; fi
 }
 
-if [[ -n "$TICKET" ]]; then TOTAL_STAGES=8; else TOTAL_STAGES=7; fi
-
-banner "Register $SLUG on WorkflowHub"
+ORCID_RE='^[0-9]{4}-[0-9]{4}-[0-9]{4}-[0-9]{3}[0-9X]$'
+if [[ $PRODUCTION == yes ]]; then TOTAL_STAGES=8; else TOTAL_STAGES=6; fi
+if [[ -n "$ENTRY_URL" ]]; then banner "Add a citable version of $SLUG on WorkflowHub"
+else banner "Register $SLUG on WorkflowHub"; fi
 
 # ──────────────────────────────────────────────────────────────────────────
-stage "Sign in, and check you are in Team $TEAM_ID"
+stage "Sign in, and check you are in $TEAM_NAME"
 say "If a browser opens on a different machine from the one you're reading this on,"
 say "click the printed URLs instead."
 open_url "$TEAM_URL"
 step "Sign in to WorkflowHub (top right) if you aren't already."
-step "On the $TEAM_NAME team page, check you're listed under its people."
+step "On the $TEAM_NAME page, check you're listed under its people."
 note "Registering into a team needs membership of it."
+printf '\n'
+say "This walkthrough does every other step with you. Your three clicks, in order: Freeze, Publish, Generate a DOI."
+say "Each is permanent, and it stops for a yes before each one."
+[[ $PRODUCTION == yes ]] || note "On $WH, which mints no DOIs, it stops after Publish."
 pause "Signed in and listed? Press Enter."
 printf '\n'
-# The workflow owner's ORCID iD goes in the creators list; asked for only
-# when OWNER_ORCID above is empty or malformed.
-if ! [[ "${OWNER_ORCID:-}" =~ ^[0-9]{4}-[0-9]{4}-[0-9]{4}-[0-9]{3}[0-9X]$ ]]; then
-  printf '  %s%sOWNER ORCID NEEDED%s\n' "$BOLD" "$YELLOW" "$RESET"
-  say "Your ORCID iD goes in the creators list."
-  say "Find it at https://orcid.org/my-orcid or on your WorkflowHub profile."
+# The workflow owner's name and ORCID iD go in the creators list; asked for
+# only when the manifest lacks them.
+if [[ -z "$OWNER" ]]; then
+  OWNER=$(_existing OWNER || true)
+  until [[ -n "${OWNER:-}" ]]; do ask OWNER ">>> ENTER YOUR NAME, as the workflow owner:"; done
+  write_env OWNER "$OWNER"
 fi
-until [[ "${OWNER_ORCID:-}" =~ ^[0-9]{4}-[0-9]{4}-[0-9]{4}-[0-9]{3}[0-9X]$ ]]; do
-  [[ -n "${OWNER_ORCID:-}" ]] && warn "that isn't an ORCID iD like 0000-0002-1825-0097"
-  ask OWNER_ORCID ">>> ENTER YOUR ORCID iD (0000-0000-0000-0000):"
-  OWNER_ORCID="${OWNER_ORCID#https://orcid.org/}"
-done
-write_env OWNER_ORCID "$OWNER_ORCID"
+if ! [[ "${OWNER_ORCID:-}" =~ $ORCID_RE ]]; then
+  printf '  %s%sOWNER ORCID NEEDED%s\n' "$BOLD" "$YELLOW" "$RESET"
+  say "Your ORCID iD goes in the creators list, and belongs in $WF/manifest.yml."
+  say "Find it at https://orcid.org/my-orcid or on your WorkflowHub profile."
+  OWNER_ORCID=""
+  until [[ "${OWNER_ORCID:-}" =~ $ORCID_RE ]]; do
+    [[ -n "${OWNER_ORCID:-}" ]] && warn "that isn't an ORCID iD like 0000-0002-1825-0097"
+    ask OWNER_ORCID ">>> ENTER YOUR ORCID iD (0000-0000-0000-0000):"
+    OWNER_ORCID="${OWNER_ORCID#https://orcid.org/}"
+  done
+  write_env OWNER_ORCID "$OWNER_ORCID"
+fi
 
 # ──────────────────────────────────────────────────────────────────────────
-stage "Import the repo from git"
+if [[ -n "$ENTRY_URL" ]]; then stage "Add a new version from git"; else stage "Import the repo from git"; fi
 # The commit main is at when imported, to compare with what the entry shows.
 WH_IMPORT_COMMIT=$(_existing WH_IMPORT_COMMIT || true)
 if [[ -z "$WH_IMPORT_COMMIT" ]] || ! confirm "Already imported, at ${WH_IMPORT_COMMIT:0:12}? No reads $BRANCH again"; then
-  WH_IMPORT_COMMIT=$(git ls-remote "$REPO_URL" "refs/heads/$BRANCH" 2>/dev/null | cut -f1)
+  WH_IMPORT_COMMIT=$(git ls-remote "$REPO_URL" "refs/heads/$BRANCH" 2>/dev/null | cut -f1 || true)
 fi
 if [[ -n "$WH_IMPORT_COMMIT" ]]; then
   write_env WH_IMPORT_COMMIT "$WH_IMPORT_COMMIT"
@@ -320,13 +444,23 @@ if [[ -n "$WH_IMPORT_COMMIT" ]]; then
 else
   warn "couldn't read $BRANCH's commit from $REPO_URL; note it from GitHub instead"
 fi
-open_url "https://workflowhub.eu/workflows/new"
-step "If that isn't the new-workflow wizard: Create (top menu) → Workflow."
-step "Choose the option to import a Git repository."
-paste_block "Git repository URL" "$REPO_URL"
-step "Click Register."
-paste_block "Branch (not a release tag)" "$BRANCH"
-step "Click Register again."
+if [[ -n "$ENTRY_URL" ]]; then
+  open_url "$ENTRY_URL"
+  step "Actions → Upload a new version."
+  note "WorkflowHub documents only that item's name. On an entry imported from git it should"
+  note "read the repository again; whatever its form asks, keep the values below."
+  paste_block "Git repository URL, if it asks" "$REPO_URL"
+  paste_block "Branch (not a release tag)" "$BRANCH"
+  step "Click Register."
+else
+  open_url "$WH/workflows/new"
+  step "If that isn't the new-workflow wizard: Create (top menu) → Workflow."
+  step "Choose the option to import a Git repository."
+  paste_block "Git repository URL" "$REPO_URL"
+  step "Click Register."
+  paste_block "Branch (not a release tag)" "$BRANCH"
+  step "Click Register again."
+fi
 paste_block "Main workflow file (pick it from the list)" "$MAIN_FILE"
 step "Leave Abstract CWL and Diagram empty."
 step "If it asks for the workflow type, pick: $WF_TYPE"
@@ -335,6 +469,7 @@ pause "On the metadata step? Press Enter."
 
 # ──────────────────────────────────────────────────────────────────────────
 stage "Title and description"
+[[ -z "$ENTRY_URL" ]] || note "A new version keeps the entry's metadata; if this step isn't offered, check them under Actions → Edit Workflow."
 paste_block "Title" "$TITLE"
 paste_block "Description (replace whatever was imported)" "$DESCRIPTION"
 pause "Both pasted? Press Enter."
@@ -343,7 +478,7 @@ pause "Both pasted? Press Enter."
 stage "Team, licence, sharing, tags and creators"
 step "Teams: $TEAM_NAME (team $TEAM_ID)."
 step "Licence: $LICENCE (Apache License 2.0)."
-warn "the team's default licence is CC-BY-4.0: change it, since IRIS is $LICENCE"
+warn "a team's default licence may be CC-BY-4.0: change it, since IRIS is $LICENCE"
 step "Workflow type, if it appears here rather than on the last step: $WF_TYPE"
 step "Sharing: give $TEAM_NAME manage rights, so the maintainer can fix any team entry."
 note "Leave public access as offered; the Publish stage makes it public."
@@ -351,45 +486,66 @@ paste_block "Tags" "$TAGS"
 step "Creators, in this order:"
 say "  1. $OWNER, ORCID $OWNER_ORCID: pick your WorkflowHub profile, and"
 say "     check it shows that ORCID (add it to your profile if not)."
-say "  2. $ORG_CREATOR: if there's no organisation creator, put it in the"
+say "  2. Your co-authors, with ORCIDs where they have them."
+say "  3. $ORG_CREATOR: if there's no organisation creator, put it in the"
 say "     free-text other-creators field."
 step "Click Register."
 printf '\n'
-until [[ "${WH_ENTRY_URL:-}" =~ ^https://workflowhub\.eu/workflows/[0-9]+ ]]; do
-  [[ -n "${WH_ENTRY_URL:-}" ]] && warn "expected https://workflowhub.eu/workflows/<number>"
-  ask WH_ENTRY_URL "Paste the new entry's URL:"
-  WH_ENTRY_URL="${WH_ENTRY_URL%%\?*}"
-done
-WH_ENTRY_URL="${WH_ENTRY_URL%/}"
+if [[ -n "$ENTRY_URL" ]]; then
+  WH_ENTRY_URL=$ENTRY_URL
+  pause "Registered? Press Enter."
+else
+  WH_ENTRY_URL=$(_existing WH_ENTRY_URL || true)
+  [[ "${WH_ENTRY_URL:-}" =~ ^$WH_RE/workflows/[0-9]+ ]] || WH_ENTRY_URL=""
+  until [[ "${WH_ENTRY_URL:-}" =~ ^$WH_RE/workflows/[0-9]+$ ]]; do
+    [[ -n "${WH_ENTRY_URL:-}" ]] && warn "expected $WH/workflows/<number>"
+    ask WH_ENTRY_URL "Paste the new entry's URL:"
+    WH_ENTRY_URL="${WH_ENTRY_URL%%\?*}"
+    WH_ENTRY_URL="${WH_ENTRY_URL%/}"
+  done
+fi
 write_env WH_ENTRY_URL "$WH_ENTRY_URL"
+ENTRY_ID=${WH_ENTRY_URL##*/}
 
 # ──────────────────────────────────────────────────────────────────────────
 stage "Check the entry, then freeze"
 open_url "$WH_ENTRY_URL"
-step "Check Title, Description, Creators (both, ORCID on yours), Licence $LICENCE and Team."
+step "Check Title, Description, Creators (ORCID on yours), Licence $LICENCE and Team."
 step "Fix anything wrong with Actions → Edit Workflow / Manage workflow."
 step "Find the version's git details and note which commit it shows."
 [[ -n "${WH_IMPORT_COMMIT:-}" ]] && note "It should be ${WH_IMPORT_COMMIT:0:12}… ($BRANCH when you imported)."
-step "Actions → Freeze version."
+printf '\n'
+printf '  %s%sYour click 1 of 3: Freeze.%s\n' "$BOLD" "$RED" "$RESET"
+step "In the Citation panel on the right, click Freeze."
 note "Frozen, its files and metadata can't change: that's what the DOI will point at."
-pause "Checked and frozen? Press Enter."
+confirm "Freeze this version now? It can't be unfrozen" || stop_here "Stopped before Freeze."
+pause "Frozen? Press Enter."
 
 # ──────────────────────────────────────────────────────────────────────────
 stage "Publish"
-printf '  %s%sOne-way door.%s\n' "$BOLD" "$RED" "$RESET"
+printf '  %s%sYour click 2 of 3: Publish. One-way door.%s\n' "$BOLD" "$RED" "$RESET"
 say "Publish makes the entry public. A public entry with a DOI can't be"
 say "withdrawn, so check the metadata once more before going on."
-step "Actions → Publish Workflow (sharing: Actions → Manage Workflow)."
+step "In the Citation panel, click Publish (sharing: Actions → Manage Workflow)."
+note "An entry public from an earlier citable version has nothing to publish: answer yes."
 printf '\n'
 confirm "Publish $SLUG publicly now? This can't be undone once it has a DOI" ||
   stop_here "Stopped before Publish."
 pause "Published? Press Enter."
 
+if [[ $PRODUCTION != yes ]]; then
+  printf '\n'
+  ok "Done up to Publish on $WH: $WH_ENTRY_URL"
+  note "DOIs mint only on https://workflowhub.eu, so the walkthrough ends here."
+  finish
+  exit 0
+fi
+
 # ──────────────────────────────────────────────────────────────────────────
 stage "Generate a DOI"
-printf '  %s%sOne-way door.%s\n' "$BOLD" "$RED" "$RESET"
+printf '  %s%sYour click 3 of 3: Generate a DOI. One-way door.%s\n' "$BOLD" "$RED" "$RESET"
 say "A DOI is permanent: DataCite keeps it, and this snapshot's metadata, for good."
-step "On the frozen version, Actions → Generate a DOI."
+step "On the frozen version, in the Citation panel, Generate a DOI."
 step "It reminds you to review the metadata, then asks you to confirm."
 printf '\n'
 # Published, the entry is public, so the API shows what the DOI will carry.
@@ -398,16 +554,17 @@ matches=yes
 expect_field title "$TITLE" || matches=no
 expect_field licence "$LICENCE" || matches=no
 if [[ -n "${WH_IMPORT_COMMIT:-}" ]]; then expect_field commit "$WH_IMPORT_COMMIT" || matches=no; fi
-[[ "$matches" == yes ]] || warn "fix it with Actions → Edit Workflow first, or change the value in this script"
+[[ "$matches" == yes ]] || warn "fix it with Actions → Edit Workflow first, or the value in $WF/manifest.yml"
 printf '\n'
 confirm "Generate the DOI for this frozen snapshot now? It can't be undone" ||
   stop_here "Stopped before Generate a DOI."
 printf '\n'
 # Read from the entry; a pasted DOI covers an API that can't be reached.
+# It must be this entry's, and not the citable version already listed.
 WH_DOI=$(wh_read doi)
-until [[ "${WH_DOI:-}" =~ ^10\.48546/workflowhub\.workflow\.[0-9]+\.[0-9]+$ ]]; do
-  [[ -n "${WH_DOI:-}" ]] && warn "expected a WorkflowHub DOI like 10.48546/workflowhub.workflow.123.1"
-  ask WH_DOI "No DOI read from WorkflowHub yet. Paste it, or press Enter to read again:" || true
+until [[ "${WH_DOI:-}" =~ ^10\.48546/workflowhub\.workflow\.$ENTRY_ID\.[0-9]+$ && "$WH_DOI" != "$LISTED_DOI" ]]; do
+  [[ -n "${WH_DOI:-}" ]] && warn "expected a new DOI of entry $ENTRY_ID, like 10.48546/workflowhub.workflow.$ENTRY_ID.1"
+  ask WH_DOI "No new DOI read from WorkflowHub yet. Paste it, or press Enter to read again:" || true
   WH_DOI="${WH_DOI#https://doi.org/}"
   [[ -n "$WH_DOI" ]] || WH_DOI=$(wh_read doi)
 done
@@ -416,45 +573,23 @@ write_env WH_DOI "$WH_DOI"
 open_url "https://doi.org/$WH_DOI"
 note "It should resolve to the entry; a new DOI can take a few minutes."
 
-if [[ -z "$TICKET" ]]; then finish; exit 0; fi
-
 # ──────────────────────────────────────────────────────────────────────────
-stage "Report on #$TICKET"
-say "The spec rests on one assumption: that a frozen snapshot records its commit."
-WH_COMMIT_SEEN=$(wh_read commit)
-[[ -n "$WH_COMMIT_SEEN" ]] && WH_COMMIT_SHOWN=yes && note "WorkflowHub shows $WH_COMMIT_SEEN."
-until [[ "${WH_COMMIT_SHOWN:-}" =~ ^(yes|no)$ ]]; do
-  ask WH_COMMIT_SHOWN "Does the frozen snapshot show the commit it came from? (yes/no):"
-  WH_COMMIT_SHOWN="${WH_COMMIT_SHOWN,,}"
+stage "List the citable version"
+WH_COMMIT=$(wh_read commit)
+[[ -n "$WH_COMMIT" ]] || WH_COMMIT=${WH_IMPORT_COMMIT:-}
+until [[ "${WH_COMMIT:-}" =~ ^[0-9a-f]{7,40}$ ]]; do
+  ask WH_COMMIT "Paste the commit the frozen version shows:"
 done
-write_env WH_COMMIT_SHOWN "$WH_COMMIT_SHOWN"
-if [[ "$WH_COMMIT_SHOWN" == yes ]]; then
-  [[ -n "$WH_COMMIT_SEEN" ]] || ask WH_COMMIT_SEEN "Paste the commit it shows:"
-  write_env WH_COMMIT_SEEN "$WH_COMMIT_SEEN"
-  shown="Yes: it shows \`$WH_COMMIT_SEEN\`."
-  [[ -n "${WH_IMPORT_COMMIT:-}" ]] && shown+=" \`$BRANCH\` was at \`$WH_IMPORT_COMMIT\` at import."
-else
-  ask WH_COMMIT_NOTE "Where did you look, and what does it show instead?"
-  write_env WH_COMMIT_NOTE "$WH_COMMIT_NOTE"
-  shown="No. $WH_COMMIT_NOTE"
-  [[ -n "${WH_IMPORT_COMMIT:-}" ]] && shown+=" \`$BRANCH\` was at \`$WH_IMPORT_COMMIT\` at import."
-fi
-COMMENT="Registered with \`bin/workflowhub-$SLUG\`.
-
-- DOI: https://doi.org/$WH_DOI
-- Entry: $WH_ENTRY_URL
-- Frozen snapshot shows its commit: $shown"
-paste_block "Comment for #$TICKET" "$COMMENT"
-printf '\n'
-if confirm "Post this on #$TICKET with gh?"; then
-  if printf '%s\n' "$COMMENT" | gh issue comment "$TICKET" --repo unsw-restech/iris --body-file - >/dev/null; then
-    printf '  %s✓ posted%s on #%s\n' "$GREEN" "$RESET" "$TICKET"
-  else
-    SKIPPED+=("comment on #$TICKET: gh failed, so paste the comment above")
-  fi
-else
-  SKIPPED+=("comment on #$TICKET: paste the comment above at $REPO_URL/issues/$TICKET")
-  pause "Copy the comment, then press Enter."
-fi
+SHORT=${WH_COMMIT:0:7}
+TODAY=$(date +%F)
+say "Open a PR adding this citable version, by DOI, date and commit, never a version number:"
+paste_block "In $WF/index.html, the first line of Cite this workflow's list (drop \"No citable version yet\" if it's there)" \
+  "      <li><a href=\"https://doi.org/$WH_DOI\" target=\"_blank\">$WH_DOI</a> · $TODAY · commit <code>$SHORT</code></li>"
+paste_block "In CITATION.cff's identifiers, above $SLUG's older DOIs" \
+  "  - type: doi
+    value: $WH_DOI
+    description: \"$SLUG's citable version of $TODAY, commit $SHORT\""
+note "bin/check fails the PR unless the page and CITATION.cff list the same DOIs."
+pause "Copied both? Press Enter."
 
 finish
