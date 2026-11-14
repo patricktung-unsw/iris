@@ -85,11 +85,11 @@ def rendered_lines(after):
     return lines[after]
 
 
-def envs_folder(tmp, container=None, digest=DIGEST):
-    """An environments folder in `tmp` holding the pinned version's
-    container file, a link to `container` (an empty file if None), and its
-    digest file, holding `digest` unless that is None."""
-    folder = Path(tmp, "envs")
+def envs_folder(tmp, container=None, digest=DIGEST, name="envs"):
+    """An environments folder in `tmp`, named `name`, holding the pinned
+    version's container file, a link to `container` (an empty file if
+    None), and its digest file, holding `digest` unless that is None."""
+    folder = Path(tmp, name)
     container_file = folder / f"{pinned_version()}.sif"
     container_file.parent.mkdir(parents=True)
     if container:
@@ -102,10 +102,12 @@ def envs_folder(tmp, container=None, digest=DIGEST):
 
 
 def source_job_lib(envs, run_dir, then="echo AFTER", commit=None, code=WORKFLOW, view=None, env=None,
-                   own_copy=False):
+                   own_copy=False, own_envs=None):
     """Run the rendered script's header, from #!/bin/bash to sourcing the
     library, for a run directory <dataset>/runs/<job>, then run `then`.
-    The environments folder is `envs`; COMMIT, the clone's commit when the
+    The environments folder is `envs`, and the author's own folder
+    `own_envs`, or else an empty folder beside `envs`, so no test reads the
+    real one in /srv/scratch/$USER; COMMIT, the clone's commit when the
     form rendered, is `commit` if given, and VIEW is `view` if given, as a
     workflow that writes no label volume sets it. `env` adds to the job's
     environment. The library sourced is this tree's lib/, whichever clone
@@ -120,6 +122,7 @@ def source_job_lib(envs, run_dir, then="echo AFTER", commit=None, code=WORKFLOW,
         header, n = re.subn(r"^COMMIT=.*$", lambda _: f'COMMIT="{commit}"', header, flags=re.M)
         assert n == 1, f"the rendered header sets COMMIT {n} times"
     header += f'ENVS_FOLDER="{envs}"\n'
+    header += f'OWN_ENVS_FOLDER="{Path(envs).parent / "no-own-envs" if own_envs is None else own_envs}"\n'
     if view is not None:
         header += f'VIEW="{view}"\n'
     header += lines[end] if own_copy else f'source "{JOB_LIB}"\n'
@@ -148,6 +151,67 @@ class MissingContainer(unittest.TestCase):
             self.assertFalse(run_dir.exists())
             # PBS delivers the job output to runs/, so it must exist even here.
             self.assertTrue(run_dir.parent.is_dir())
+
+    def test_from_an_authors_own_clone_the_line_names_their_own_folder_too(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            own = Path(tmp, "own")
+            result = source_job_lib(Path(tmp, "envs"), Path(tmp, "dataset", "runs", "1"), own_envs=own)
+            lines = (result.stdout + result.stderr).strip().splitlines()
+            self.assertEqual(len(lines), 1, lines)
+            self.assertIn(str(own / f"{pinned_version()}.sif"), lines[0])
+
+    def test_an_authors_own_folder_is_in_their_own_scratch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            result = source_job_lib(Path(tmp, "envs"), Path(tmp, "dataset", "runs", "1"), own_envs="",
+                                    env={"USER": "z0000000"})
+            self.assertIn(f"/srv/scratch/z0000000/.envs/{pinned_version()}.sif", result.stdout + result.stderr)
+
+    @unittest.skipUnless(SYSTEM_CODE.is_dir(), "needs the system clone")
+    def test_from_the_system_clone_an_authors_own_container_file_is_never_used(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            own = envs_folder(tmp, name="own")
+            result = source_job_lib(Path(tmp, "envs"), Path(tmp, "dataset", "runs", "1"), code=SYSTEM_CODE,
+                                    own_envs=own)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertNotIn(str(own), result.stdout + result.stderr)
+
+
+class OwnContainer(unittest.TestCase):
+    """A run from a workflow author's own clone, as the test instance runs
+    one, of a version CI published under their own account (#138), whose
+    container file bin/envpull --own put in their own folder."""
+
+    def start(self, envs, own):
+        bin_dir = Path(own.parent, "bin")
+        bin_dir.mkdir(exist_ok=True)
+        fake = bin_dir / "apptainer"
+        fake.write_text('#!/bin/bash\nprintf "%s\\n" "$@" ENV\nenv | sed -n "s/^APPTAINERENV_//p" | sort\n')
+        fake.chmod(0o755)
+        smi = bin_dir / "nvidia-smi"
+        smi.write_text("#!/bin/bash\necho 'No devices were found'\nexit 6\n")
+        smi.chmod(0o755)
+        result = source_job_lib(envs, Path(own.parent, "dataset", "runs", "1"), own_envs=own,
+                                then=f"echo START\n{rendered_lines(1)}",
+                                env={"PATH": f"{bin_dir}:{os.environ['PATH']}"})
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        args, variables = result.stdout.split("START\n", 1)[1].split("ENV\n", 1)
+        return args.splitlines(), dict(line.split("=", 1) for line in variables.splitlines())
+
+    def test_runs_in_the_authors_own_container_file_with_its_digest(self):
+        own_digest = "sha256:" + "cd" * 32
+        with tempfile.TemporaryDirectory() as tmp:
+            own = envs_folder(tmp, digest=own_digest, name="own")
+            args, variables = self.start(Path(tmp, "envs"), own)
+            self.assertEqual(args[2], str(own / f"{pinned_version()}.sif"))
+            self.assertEqual(variables["IRIS_ENV_DIGEST"], own_digest)
+
+    def test_the_environments_folder_comes_first(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            envs = envs_folder(tmp)
+            own = envs_folder(tmp, digest="sha256:" + "cd" * 32, name="own")
+            args, variables = self.start(envs, own)
+            self.assertEqual(args[2], str(envs / f"{pinned_version()}.sif"))
+            self.assertEqual(variables["IRIS_ENV_DIGEST"], DIGEST)
 
 
 class StartLine(unittest.TestCase):

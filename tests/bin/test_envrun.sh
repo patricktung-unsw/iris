@@ -93,6 +93,16 @@ has "docker run" "$out" "[--volume][$repo:$repo]"
 has "docker run" "$out" "[--workdir][$repo/workflows/seg]"
 has "docker run" "$out" "[$IRIS_ENV_REGISTRY@$a][python][-V]"
 
+# An author's version, published under their own account on their fork
+# (#138), runs from that container by digest, so bin/check on the fork
+# runs the workflow's tests in the version its form pins.
+author="ghcr.io/an-author/iris-env@$a"
+sed -i "s|^    \[microct/2\]=unpublished|    [microct/2]=$author|" "$repo/lib/katana.sh"
+rm -f "$fake/docker.log"
+run IRIS_CONTAINER_RUNTIME=docker -- microct/2 python -V > /dev/null
+has "author's version" "$(log docker)" "[$author][python][-V]"
+sed -i "s|^    \[microct/2\]=$author|    [microct/2]=unpublished|" "$repo/lib/katana.sh"
+
 # A version that is unpublished or not in the map fails with one line and
 # starts nothing.
 rm -f "$fake/apptainer.log" "$fake/docker.log"

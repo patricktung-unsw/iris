@@ -6,6 +6,8 @@
 #                                    the folder, and list container files
 #                                    nothing pins
 #   bin/envpull --pull <env>/<n>     pull one version by digest, pinned or not
+#   bin/envpull --own <env>/<n>      pull one version into your own folder,
+#                                    a workflow author's (#138)
 #   bin/envpull --remove <env>/<n>   remove a version's container file and
 #                                    its digest file, if nothing pins it and
 #                                    --pull could bring it back
@@ -24,15 +26,29 @@
 # Pulls log in with the read-only token in ~/.config/iris/ghcr-token on
 # Katana if it is there. Over `ssh katana-dm`; bin/envpull-dm.sh is the
 # side that runs there.
+#
+# A version CI published under a workflow author's own account, whose
+# digest map value names that container in full, is no container for the
+# environments folder until the review batch copies it into the org's
+# package: the listing skips it and --pull refuses it. --own is the
+# author's: run from their own checkout, it pulls the version the digest
+# map names, an author's container or the org's, into their own folder in
+# their own scratch on Katana, iris_own_envs_folder in lib/katana.sh,
+# where a job from their own clone, as the test instance runs it, finds
+# it. It replaces a file there whose digest file disagrees with the map,
+# since the folder is the author's and a rebuilt version needs a new run.
 
 here="$(dirname "$(readlink -f "$0")")"
 # shellcheck source=lib/katana.sh
 . "$here/../lib/katana.sh" || exit 2
-usage() { echo "usage: bin/envpull [--pull <env>/<n> | --remove <env>/<n> | --check-login]" >&2; exit 2; }
+usage() { echo "usage: bin/envpull [--pull <env>/<n> | --own <env>/<n> | --remove <env>/<n> | --check-login]" >&2; exit 2; }
 
+folder="$IRIS_ENVS_FOLDER"
 case "$#:${1-}" in
     0:) mode=list target=- ;;
     2:--pull) mode=pull target="$2" ;;
+    # %u is the data mover's USER, which bin/envpull-dm.sh fills in.
+    2:--own) mode=own target="$2" folder="$(iris_own_envs_folder %u)" ;;
     2:--remove) mode=remove target="$2" ;;
     1:--check-login) mode=login target=- ;;
     *) usage ;;
@@ -56,5 +72,5 @@ for f in "$here"/../workflows/*/form.yml.erb; do
     done < <(iris_form_pins "$f")
 done
 
-ssh katana-dm bash -s -- "$mode" "$target" "$IRIS_ENVS_FOLDER" "$IRIS_SYSTEM_CLONE" "$IRIS_ENV_REGISTRY" \
+ssh katana-dm bash -s -- "$mode" "$target" "$folder" "$IRIS_SYSTEM_CLONE" "$IRIS_ENV_REGISTRY" \
     "$IRIS_TOOLS_ENV_VERSION" "${args[@]}" < "$here/envpull-dm.sh"

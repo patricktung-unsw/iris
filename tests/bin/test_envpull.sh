@@ -19,8 +19,10 @@ a=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 b=sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 fake="$scratch/fake" repo="$scratch/repo"
 export REAL_ENVS="$IRIS_ENVS_FOLDER" REAL_CLONE="$IRIS_SYSTEM_CLONE"
-export FAKE_ENVS="$scratch/envs" FAKE_CLONE="$scratch/clone" FAKE_HOME="$scratch/home"
-mkdir -p "$fake" "$repo/bin" "$repo/lib" "$FAKE_ENVS" "$FAKE_CLONE" "$FAKE_HOME"
+export FAKE_ENVS="$scratch/envs" FAKE_CLONE="$scratch/clone" FAKE_HOME="$scratch/home" FAKE_SCRATCH="$scratch/scratch"
+mkdir -p "$fake" "$repo/bin" "$repo/lib" "$FAKE_ENVS" "$FAKE_CLONE" "$FAKE_HOME" "$FAKE_SCRATCH"
+# The workflow author's own folder, as the data mover's USER makes it.
+own="$FAKE_SCRATCH/$USER/.envs"
 cp bin/envpull bin/envpull-dm.sh "$repo/bin/"
 envs="$FAKE_ENVS"
 
@@ -36,6 +38,7 @@ shift
 cmd="$*"
 cmd="${cmd//"$REAL_ENVS"/"$FAKE_ENVS"}"
 cmd="${cmd//"$REAL_CLONE"/"$FAKE_CLONE"}"
+cmd="${cmd//\/srv\/scratch\//"$FAKE_SCRATCH"/}"
 cd "$FAKE_HOME" && HOME="$FAKE_HOME" bash -c "$cmd"
 EOF
 # Adds its arguments to $fake/pulls and the registry login it was given to
@@ -73,7 +76,7 @@ pin() {
 }
 # reset: no forms anywhere, no container files, no token, no fakes' records.
 reset() {
-    rm -rf "$repo/workflows" "$FAKE_CLONE/workflows" "${envs:?}"/* "$FAKE_HOME/.config"
+    rm -rf "$repo/workflows" "$FAKE_CLONE/workflows" "${envs:?}"/* "$FAKE_HOME/.config" "${FAKE_SCRATCH:?}"/*
     rm -f "$fake/args" "$fake/pulls" "$fake/auth" "$fake/pull-fails" "$fake/ssh-down"
 }
 
@@ -240,6 +243,42 @@ expect 2 "usage:" --check-login microct/1
 reset; map "[microct/1]=$a"; touch "$fake/pull-fails"
 expect 1 ".config/iris/ghcr-token"
 [ -z "$(ls -A "$envs/microct" 2>/dev/null)" ] || { echo "envpull pull-fails: left files"; ls -A "$envs/microct" | sed 's/^/  /'; }
+
+# A version CI published under a workflow author's own account (#138) is
+# no container for the environments folder until the review batch copies
+# it into the org's package: it is skipped there, and --pull refuses it.
+author="ghcr.io/an-author/iris-env@$b"
+reset; map "[microct/1]=$a" "[microct/2]=$author"; pin "$repo" seg microct/2
+expect 0 "microct/2: published under an author's own account"
+[ ! -e "$envs/microct/2.sif" ] || echo "envpull: put an author's container in the environments folder"
+expect 1 "published under an author's own account" --pull microct/2
+[ ! -e "$envs/microct/2.sif" ] || echo "envpull --pull: put an author's container in the environments folder"
+
+# --own pulls a version by the digest map's container, an author's or the
+# org's, into the author's own folder in their own scratch on Katana, with
+# the digest alone beside it, as the job reads it.
+rm -f "$fake/pulls"
+expect 0 "microct/2: pulled" --own microct/2
+holds own "$own/microct/2.sif" "container docker://$author"
+holds own "$own/microct/2.digest" "$b"
+[ ! -e "$envs/microct/2.sif" ] || echo "envpull --own: wrote the environments folder"
+expect 0 "microct/1: pulled" --own microct/1
+holds own-org "$own/microct/1.sif" "container docker://$IRIS_ENV_REGISTRY@$a"
+# Run again, it is there and nothing is pulled.
+rm -f "$fake/pulls"
+expect 0 "microct/2: present" --own microct/2
+no_pull own-present
+# A rebuilt version, with a new digest in the map, replaces the author's
+# own file: it is theirs, and only the new one proves the workflow.
+rebuilt="ghcr.io/an-author/iris-env@$a"
+map "[microct/1]=$a" "[microct/2]=$rebuilt"
+expect 0 "microct/2: pulled" --own microct/2
+holds own-rebuilt "$own/microct/2.sif" "container docker://$rebuilt"
+holds own-rebuilt "$own/microct/2.digest" "$a"
+expect 1 "not in lib/katana.sh's digest map" --own microct/3
+map "[microct/1]=$a" "[microct/2]=unpublished"
+expect 1 "unpublished" --own microct/2
+expect 2 "usage:" --own
 
 # Anything else is a usage error, before ssh runs.
 reset

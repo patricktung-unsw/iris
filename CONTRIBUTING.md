@@ -44,7 +44,7 @@ iris/
 ├── guide/index.html                  # "Using IRIS on Katana": staging and viewing, shared by imaging workflows
 ├── _archive/<slug>/                  # Retired OpenComposer forms, never served by OpenComposer
 ├── .github/workflows/check.yml       # CI: runs bin/check on every push
-├── .github/workflows/containers.yml  # CI: builds and checks each unpublished environment version; publishes it from main
+├── .github/workflows/containers.yml  # CI: builds and checks each unpublished environment version; publishes it from main, and on a fork under its owner's account
 ├── .github/ISSUE_TEMPLATE/proposal.yml  # Issue form for a workflow author's proposal
 ├── .github/pull_request_template.md  # The checklist a workflow PR is ready for review on
 ├── .githooks/commit-msg              # Refuses AI attribution, git's conflict list or a glossary Avoid word in a commit message; AGENTS.md turns the hooks on
@@ -55,7 +55,7 @@ iris/
 │   ├── check                         # Every check to pass before committing
 │   ├── check-passed                  # Record the tree a full bin/check passed on; say whether a commit's tree passed (pre-push runs it)
 │   ├── ciwait                        # Wait for a pushed commit's CI run, check or containers (desktop)
-│   ├── envpull                       # Pull the containers live forms pin onto Katana; list those nothing pins (desktop)
+│   ├── envpull                       # Pull the containers live forms pin onto Katana; list those nothing pins; --own pulls an author's into their own scratch (desktop)
 │   ├── envpull-dm.sh                 # envpull's side on the data mover
 │   ├── envrun                        # Run a command in an environment version's container: bin/check's Python tests (desktop, CI)
 │   ├── pageswait                     # Wait for the live site to serve a change (desktop)
@@ -155,14 +155,24 @@ _#136 fills this step: the owner goes in the workflow's `manifest.yml`, and a sm
 
 ### 4. New environment versions
 
-_#138 fills this step: CI on your fork builds your new version and publishes it under your own GitHub account, so you prove your workflow in it without waiting for the maintainer. Until then the maintainer publishes it from `main`._
-
-You need a proposal for new packages first ([When you need a proposal](#when-you-need-a-proposal)). Then, in your PR, change your lab's environment recipe (`envs/<env>/requirements.in`) and make its next version, *n+1*, as `envs/README.md` describes: its lock, `envs/<env>/<n+1>/requirements.lock`, and `[<env>/<n+1>]=unpublished` in `lib/katana.sh`'s digest map. Your form pins *n+1* in its `IRIS_ENV_VERSION`, and your PR points your lab's lab table entry at it, so the maintainer's review of your PR is the maintainer moving the lab. A lab that shares another lab's environment keeps its entry until the maintainer moves that lab ([ADR-0010](docs/adr/0010-an-environment-version-may-change-its-labs-pins.md)).
+CI on your fork builds your new version and publishes it under your own GitHub account, so you prove your workflow in it without waiting for the maintainer. You need a proposal for new packages first ([When you need a proposal](#when-you-need-a-proposal)). Then, in your PR, change your lab's environment recipe (`envs/<env>/requirements.in`) and make its next version, *n+1*, as `envs/README.md` describes: its lock, `envs/<env>/<n+1>/requirements.lock`, and `[<env>/<n+1>]=unpublished` in `lib/katana.sh`'s digest map. Your form pins *n+1* in its `IRIS_ENV_VERSION`, and your PR points your lab's lab table entry at it, so the maintainer's review of your PR is the maintainer moving the lab. A lab that shares another lab's environment keeps its entry until the maintainer moves that lab ([ADR-0010](docs/adr/0010-an-environment-version-may-change-its-labs-pins.md)).
 
 - **A version that only adds packages is the cheap case**: its lock keeps every line of the one before, so it is built as one layer on it.
 - **A version that changes or removes a package** is not declined: it is built fresh rather than as a layer, `bin/check` prints a `NOTE:` naming what it changes and removes, and it needs the maintainer's review ([ADR-0010](docs/adr/0010-an-environment-version-may-change-its-labs-pins.md)). It is still the lab's next version, never a second environment.
 
-Either way, the lab's other workflows keep the version they pin until their owners prove them in the new one. _#150 fills in which of them would pass: the version's CI run reports it. Until then nothing does._ Until it is published, `bin/check` can't run your tests in it, so say in the PR what you ran them in.
+Then build it and pin it, all on your fork:
+
+1. **Push the branch**, with Actions on for your fork ([CI and `ready`](#7-ci-and-ready)). The `containers` workflow builds every unpublished version with the checks every version gets (`envs/README.md`) and publishes yours to your own account's package, `ghcr.io/<your login>/iris-env`, tagged `<env>-<n+1>`, your login lowercased. Its run's summary prints the digest map line, `    [<env>/<n+1>]=ghcr.io/<your login>/iris-env@sha256:<hex>`.
+2. **Pin it**: put that line in `lib/katana.sh` in place of `[<env>/<n+1>]=unpublished`, and commit and push it. The digest is the version: CI never builds it again, and `bin/check` runs your workflow's tests in that container, on your fork and on your own machine.
+3. **Make the package public**: under **Packages** on your GitHub profile, open `iris-env`, then **Package settings**, **Change visibility**, **Public**. Your PR's CI and the review batch pull it from there.
+4. **Put it on Katana**: `bin/envpull --own <env>/<n+1>`, from your clone, pulls it by digest through the data mover into your own scratch, `/srv/scratch/<zID>/.envs/<env>/<n+1>.sif`. `bin/envpull` reaches the data mover as `ssh katana-dm`, so give your SSH config a `Host katana-dm` entry for `kdm.restech.unsw.edu.au` with your zID as `User`. A run from your own clone, the test instance's, finds the container there when the IRIS environments folder has none, and a researcher's run from IRIS never looks there. The lookup is in the library's job side, so a library copy made before it finds only the environments folder: copy the library again first ([The library's two sides](#the-librarys-two-sides)).
+5. **Prove your workflow in it** on the test instance ([Test instance](#5-test-instance)): its job output's `Environment :` line names the version and its digest, and its run proof records them.
+
+A change to the lock after that is a rebuild with a new digest: put the version back to `unpublished`, push, pin the new line, run `bin/envpull --own` again, which replaces your own file, and prove the workflow again. The review batch copies the container you proved, by that digest, into IRIS's package, `ghcr.io/unsw-restech/iris-env`, and writes its digest alone in the map ([Review batch](#8-review-batch)); it never rebuilds it.
+
+Until IRIS's package is public ([#132](https://github.com/unsw-restech/iris/issues/132)), a fork's CI can't pull from it, so a version built as a layer fails on your fork at its `Build` step, when it pulls the version before it. A version built fresh needs nothing from IRIS's package. Until then a layer version can't be proved before review: leave it `unpublished`, say so in your PR, and the maintainer publishes it from `main` once the review batch merges it, as `envs/README.md`'s [Publishing a version](envs/README.md#publishing-a-version) describes. Making the package public needs one of the org's owners, so nothing in this procedure can do it.
+
+Either way, the lab's other workflows keep the version they pin until their owners prove them in the new one: moving a workflow to a newer version is a change to its folder, which needs a new run proof ([Run proof](#6-run-proof)), and its owner's choice. _#150 fills in which of them would pass: the version's CI run reports it. Until then nothing does._
 
 ### 5. Test instance
 
