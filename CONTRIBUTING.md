@@ -50,7 +50,7 @@ iris/
 ├── .github/pull_request_template.md  # The checklist a workflow PR is ready for review on
 ├── .githooks/commit-msg              # Refuses AI attribution, git's conflict list or a glossary Avoid word in a commit message; AGENTS.md turns the hooks on
 ├── .githooks/avoid-names(.pl)        # The glossary Avoid words bin/check fails in tracked files and commit-msg refuses in a message, and the script matching them
-├── .githooks/pre-push                # Refuses a push to main of a tree no full bin/check passed on, or whose forms, module, job library, library copies or the tests bin/katana-test runs no passing bin/katana-test tested
+├── .githooks/pre-push                # Refuses a push to main of a tree no full bin/check passed on, or whose forms, module, job library, library copies or the tests bin/katana-test runs no passing bin/katana-test tested, or whose digest map names an author's container
 ├── ruff.toml                         # The Python lint rules bin/check applies
 ├── bin/
 │   ├── check                         # Every check to pass before committing
@@ -75,6 +75,7 @@ iris/
 │   ├── prune-merged                  # List, then remove, the local branches and worktrees whose work is already in origin/main (desktop)
 │   ├── syspull-pins.sh               # List the environment versions a commit pins whose container files aren't on Katana (syspull runs it)
 │   ├── qwait                         # Wait for Katana jobs and show how they ended (desktop)
+│   ├── review-batch                  # List every ready PR, then merge the batch on one yes and print its deploy, copying authors' containers by digest (desktop)
 │   ├── run-proof                     # Write a workflow's run proof from a test-instance run (Katana); check a PR's proofs (bin/check runs it)
 │   ├── syspull                       # Show, then deploy, what a pull brings the system clone (desktop)
 │   ├── tracked-tree                  # Print the tree a commit of every uncommitted edit would hold (check-passed and katana-test run it)
@@ -209,9 +210,15 @@ The same workflow labels a PR `outside-folder` when it changes anything beyond y
 
 ### 8. Review batch
 
-_#142 fills this step with the maintainer's review batch command, which lists every ready PR with its diff and anything flagged, merges the batch on one yes and deploys it. Until then the maintainer reviews and merges each PR, then pulls the dev clone (`git pull --ff-only`). Pushing `main` publishes the site._
+The maintainer runs one, about every fortnight and whenever the maintainer chooses, with one command on the desktop. Nothing reminds anyone and no label hurries a PR: if your workflow needs a quick fix, say so in your PR's description, which the batch shows the maintainer.
 
-Review covers safety and fit only, never your science. A PR that fails a criterion is closed with that criterion named; fix it and reopen it ([the contribute page](https://docs.restech.unsw.edu.au/iris/contribute/#help)).
+1. **List the batch**: `bin/review-batch` shows every open PR into `main` labelled `ready`, oldest first, each with its description, its diff and what it flags: a conflict with `main`, each digest map line it adds (an author's container to copy, or a version left `unpublished`), a run proof whose digest isn't the one its version's line names, and what `bin/outside-folder` lists. It changes nothing, and ends with the batch's `--apply` line, each PR pinned at the head it showed.
+2. **One yes**: the maintainer drops any PR that fails a criterion from that line, closes it naming the criterion, and runs the line. `bin/review-batch --apply` checks each PR is still open, `ready` and at that head, merges them in order into a branch of its own from `origin/main` (`review-batch-<main>`, in a worktree under `.claude/worktrees/`), writes each author's container line as its digest alone, `    [<env>/<n>]=sha256:<hex>`, and runs `bin/check` on the result. It pushes and copies nothing; a merge that fails leaves nothing behind.
+3. **Deploy**: it then prints the rest, one command a step, which the yes covers: `bin/review-batch --copy <env>/<n> <author's container>` for each container, which copies it by its digest into `ghcr.io/unsw-restech/iris-env`, tagged `<env>-<n>`, never rebuilding it, and checks the digest is kept; `bin/katana-test` if the batch changes what it tests; the push to `main`, which publishes the site and marks each PR merged; `bin/ciwait`; the dev clone's pull; `bin/envpull`, which puts the new containers on Katana; and last `bin/syspull`, whose listing, quoting each commit, is the usual go-ahead for the system clone's deploy. The push hook refuses a `main` whose digest map still names an author's container.
+
+A version that arrived `unpublished` is published from `main` after the merge and pinned there ([Publishing a version](envs/README.md#publishing-a-version)) before a form that pins it can deploy.
+
+Review covers safety and fit only, never your science. A PR that fails a criterion is closed with that criterion named, never iterated on; fix it and reopen it ([the contribute page](https://docs.restech.unsw.edu.au/iris/contribute/#help)).
 
 ### 9. WorkflowHub
 

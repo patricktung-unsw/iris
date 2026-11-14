@@ -56,7 +56,7 @@ A workflow author makes their lab's next version in their pull request (CONTRIBU
 - The author makes the package public, which an account's own package allows, so the pull request's CI and the review batch can pull it.
 - `bin/envpull --own <env>/<n>` pulls it into the author's own folder on Katana (below), where their test-instance run finds it.
 - `bin/envpull` leaves it out of the environments folder, and `bin/syspull` names it as not yet copied, so no form pinning it deploys to the system clone.
-- The review batch copies it by that digest into `ghcr.io/unsw-restech/iris-env`, tagged `<env>-<n>`, and writes `    [<env>/<n>]=sha256:<hex>` in its place (#142). A copy by digest keeps the digest, so the run proof's digest and the record of every run in it still name the same container, which is never rebuilt.
+- The review batch copies it by that digest into `ghcr.io/unsw-restech/iris-env`, tagged `<env>-<n>` (`bin/review-batch --copy`), and writes `    [<env>/<n>]=sha256:<hex>` in its place before the push (`bin/review-batch --apply`; `.githooks/pre-push` refuses a `main` that still names an author's container). A copy by digest keeps the digest, so the run proof's digest and the record of every run in it still name the same container, which is never rebuilt.
 
 On a branch of `unsw-restech/iris` itself nothing publishes but `main`. Until `ghcr.io/unsw-restech/iris-env` is public ([#132](https://github.com/unsw-restech/iris/issues/132)), a fork's token can't read it, so a version built as a layer fails on a fork when it pulls the version before it; a version built fresh needs nothing from it.
 

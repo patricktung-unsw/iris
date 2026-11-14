@@ -1,0 +1,374 @@
+#!/usr/bin/env python3
+"""The maintainer's review batch (CONTRIBUTING.md, Review batch): every
+ready pull request into main, reviewed together, merged on one yes and
+deployed. Run on the desktop, from any clone or worktree of the repo.
+
+    bin/review-batch                     list the batch; changes nothing
+    bin/review-batch --apply <pr>:<sha>...
+                                         merge it, as the listing's last
+                                         line says, into a branch of its own
+    bin/review-batch --copy <env>/<n> ghcr.io/<login>/iris-env@sha256:<hex>
+                                         copy one author's container into
+                                         IRIS's package, by its digest
+
+Listing: every open PR into main labelled ready (.github/workflows/ready.yml),
+oldest first, each with its author, body, diff and what it flags: a
+conflict with main; each digest map line it adds, an author's container
+the batch copies or a version left unpublished that main publishes after
+the merge (envs/README.md); a run proof whose digest isn't the one its
+version's line names; and what bin/outside-folder, this clone's, lists
+beyond its folder, card and lab recipe. An owner who needs a quick fix
+says so in their PR's body, which the listing shows. It ends with the one
+--apply line for the batch, each PR pinned at the head the listing showed;
+leave a PR out by dropping its word, and close it naming the criterion it
+failed. It fetches origin and each PR's head and changes nothing else.
+
+--apply: refuses unless every PR named is still open, into main, ready and
+at the head named. Then, in a worktree of its own,
+.claude/worktrees/review-batch-<main> in the main clone, on a branch of the
+same name from origin/main, it merges each PR in order (git merge --no-ff),
+rewrites each author's container line in lib/katana.sh to its digest alone,
+commits that, and runs bin/check there. A merge that fails removes the
+worktree and its branch again. It pushes nothing and copies nothing: it
+prints the rest of the batch, each step one command to run on its own, so
+a permission rule can match it. The yes to the listing is the go-ahead for
+each of them; the system clone's deploy gets its own, from the listing
+bin/syspull prints at the end.
+
+--copy: copies the container by digest, never rebuilding it, to
+IRIS_ENV_REGISTRY tagged <env>-<n> with docker buildx imagetools, and
+checks the tag then has that digest. A tag already at that digest is left
+alone; one at another digest is refused, since a version's digest never
+changes once written. It needs docker logged in to ghcr.io with a token
+that can write IRIS's package.
+
+Exit 0 done; 1 refused or failed, saying why; 2 usage, or gh or git failed.
+"""
+import json
+import os
+import re
+import subprocess
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+USAGE = ("usage: bin/review-batch [--apply <pr>:<sha>... | "
+         "--copy <env>/<n> ghcr.io/<login>/iris-env@sha256:<hex>]")
+PR_FIELDS = "number,title,url,author,headRefOid,baseRefName,labels,body,mergeable"
+VERSION = re.compile(r"^[a-z0-9-]+/[1-9][0-9]*$")
+# A digest map line, as lib/katana.sh writes it and bin/check holds it.
+MAP_LINE = re.compile(r"^    \[([a-z0-9-]+/[1-9][0-9]*)\]=(\S+)$")
+AUTHOR = re.compile(r"^ghcr\.io/[a-z0-9]([a-z0-9-]*[a-z0-9])?/iris-env@(sha256:[0-9a-f]{64})$")
+PAIR = re.compile(r"^([1-9][0-9]*):([0-9a-f]{7,40})$")
+
+
+def usage():
+    print(USAGE, file=sys.stderr)
+    sys.exit(2)
+
+
+def die(msg, code=1):
+    print("review-batch: " + msg, file=sys.stderr)
+    sys.exit(code)
+
+
+def registry():
+    with open(os.path.join(ROOT, "lib", "katana.sh")) as f:
+        m = re.search(r"^IRIS_ENV_REGISTRY=(\S+)$", f.read(), re.M)
+    if not m:
+        die("lib/katana.sh names no IRIS_ENV_REGISTRY", 2)
+    return m.group(1)
+
+
+def author_digest(value):
+    """The digest of an author's container, or None if value isn't one."""
+    m = AUTHOR.match(value)
+    if not m or value.startswith(registry() + "@"):
+        return None
+    return m.group(2)
+
+
+def run(args, cwd=ROOT, check=True):
+    p = subprocess.run(args, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                       universal_newlines=True)
+    if check and p.returncode != 0:
+        sys.stderr.write(p.stderr)
+        die("%s failed" % " ".join(args[:3]), 2)
+    return p
+
+
+def git(*args, cwd=ROOT):
+    return run(["git"] + list(args), cwd=cwd).stdout
+
+
+def fetch_main():
+    git("fetch", "-q", "--no-tags", "origin", "main")
+    return git("rev-parse", "origin/main").strip()
+
+
+def fetch_head(number):
+    """Fetches PR <number>'s head, leaving no ref, and returns its commit."""
+    git("fetch", "-q", "--no-tags", "origin", "refs/pull/%d/head" % number)
+    return git("rev-parse", "FETCH_HEAD").strip()
+
+
+def label_names(pr):
+    return [label["name"] for label in pr.get("labels", [])]
+
+
+def ready_prs():
+    p = run(["gh", "pr", "list", "--label", "ready", "--state", "open", "--base", "main",
+             "--limit", "100", "--json", PR_FIELDS], check=False)
+    if p.returncode != 0:
+        sys.stderr.write(p.stderr)
+        die("gh couldn't list the ready pull requests", 2)
+    return sorted(json.loads(p.stdout), key=lambda pr: pr["number"])
+
+
+def map_lines(text):
+    """The digest map lines in text, as {version: value}."""
+    return {m.group(1): m.group(2) for m in map(MAP_LINE.match, text.splitlines()) if m}
+
+
+def added_map_lines(base, head):
+    diff = git("diff", "--no-renames", "%s...%s" % (base, head), "--", "lib/katana.sh")
+    return map_lines("\n".join(line[1:] for line in diff.splitlines()
+                               if line.startswith("+") and not line.startswith("+++")))
+
+
+def flags(pr, base, head):
+    """What the maintainer reads closely in this PR, one line each."""
+    out = []
+    if pr.get("mergeable") == "CONFLICTING":
+        out.append("conflicts with main: it can't join the batch until its author merges main into it")
+    reg = registry()
+    for version, value in sorted(added_map_lines(base, head).items()):
+        if author_digest(value):
+            out.append("%s: copy %s into %s by its digest" % (version, value, reg))
+        elif value == "unpublished":
+            out.append("%s is unpublished: main's containers run publishes it after the merge, "
+                       "and its digest is pinned on main (envs/README.md, Publishing a version)" % version)
+    head_map = map_lines(git("show", "%s:lib/katana.sh" % head))
+    paths = git("diff", "--name-only", "--no-renames", "%s...%s" % (base, head)).splitlines()
+    for slug in sorted({p.split("/")[1] for p in paths if p.startswith("workflows/") and p.count("/") >= 2}):
+        proof = "workflows/%s/run-proof.json" % slug
+        shown = run(["git", "show", "%s:%s" % (head, proof)], check=False)
+        if shown.returncode != 0:
+            continue
+        try:
+            env = json.loads(shown.stdout)["environment"]
+            version, digest = env["version"], env["digest"]
+        except (ValueError, KeyError, TypeError):
+            out.append("%s isn't a run proof bin/run-proof wrote" % proof)
+            continue
+        value = head_map.get(version, "")
+        want = author_digest(value) or (value if value.startswith("sha256:") else None)
+        if want and digest != want:
+            out.append("%s ran %s at %s, not the %s its digest map line names" % (proof, version, digest, want))
+    outside = run([os.path.join(ROOT, "bin", "outside-folder"), base, head], check=False)
+    if outside.returncode == 1:
+        out += ["outside its folder: " + line for line in outside.stdout.splitlines() if line]
+    elif outside.returncode != 0:
+        out.append("bin/outside-folder couldn't read it: " + outside.stderr.strip())
+    return out
+
+
+def listing():
+    prs = ready_prs()
+    base = fetch_main()
+    print("origin/main is at " + git("log", "-1", "--format=%h %s", base).strip())
+    if not prs:
+        print("No ready pull requests into main: nothing to review.")
+        return
+    words = []
+    for pr in prs:
+        n = pr["number"]
+        head = fetch_head(n)
+        print()
+        print("==== #%d %s, by %s" % (n, pr["title"], pr["author"]["login"]))
+        print(pr["url"])
+        print("Head %s; labels: %s" % (head[:12], ", ".join(label_names(pr))))
+        if head != pr["headRefOid"]:
+            print("Its head moved from %s while it was listed: list again." % pr["headRefOid"][:12])
+            continue
+        print()
+        for line in (pr.get("body") or "(no description)").replace("\r", "").splitlines():
+            print("    " + line)
+        print()
+        found = flags(pr, base, head)
+        if found:
+            print("Flagged:")
+            for line in found:
+                print("  - " + line)
+        else:
+            print("Nothing flagged.")
+        print()
+        sys.stdout.write(git("diff", "--stat=200", "--no-renames", "%s...%s" % (base, head)))
+        print()
+        sys.stdout.write(git("diff", "--no-renames", "%s...%s" % (base, head)))
+        words.append("%d:%s" % (n, head[:12]))
+    if not words:
+        return
+    print()
+    print("The batch is %d pull request%s, oldest first. Its one yes merges them in this order, "
+          "copies each author's container into %s by its digest, then pushes main and deploys it, "
+          "each step as the --apply run prints it. Leave a PR out by dropping its word, and close it "
+          "naming the criterion it failed:" % (len(words), "" if len(words) == 1 else "s", registry()))
+    print()
+    print("    bin/review-batch --apply " + " ".join(words))
+
+
+def main_clone():
+    out = git("worktree", "list", "--porcelain")
+    return out.splitlines()[0][len("worktree "):]
+
+
+def apply(pairs):
+    base = fetch_main()
+    batch = []
+    for n, sha in pairs:
+        p = run(["gh", "pr", "view", str(n), "--json", "number,title,state,labels,headRefOid,baseRefName"],
+                check=False)
+        if p.returncode != 0:
+            sys.stderr.write(p.stderr)
+            die("gh couldn't read #%d; nothing merged" % n, 2)
+        pr = json.loads(p.stdout)
+        why = []
+        if pr["state"] != "OPEN":
+            why.append("is %s" % pr["state"].lower())
+        if pr["baseRefName"] != "main":
+            why.append("is into %s, not main" % pr["baseRefName"])
+        if "ready" not in label_names(pr):
+            why.append("isn't labelled ready")
+        if not pr["headRefOid"].startswith(sha):
+            why.append("has moved on to %s since the listing" % pr["headRefOid"][:12])
+        if why:
+            die("#%d %s; nothing merged. List the batch again." % (n, " and ".join(why)))
+        head = fetch_head(n)
+        if head != pr["headRefOid"]:
+            die("#%d's head fetched as %s, not %s; nothing merged" % (n, head[:12], pr["headRefOid"][:12]))
+        batch.append((n, pr["title"], head))
+
+    branch = "review-batch-" + base[:7]
+    wt = os.path.join(main_clone(), ".claude", "worktrees", branch)
+    if run(["git", "rev-parse", "-q", "--verify", "refs/heads/" + branch], check=False).returncode == 0 \
+            or os.path.exists(wt):
+        die("%s or its worktree %s is already there: a batch on this main was made before. "
+            "Remove both (git worktree remove, then git branch -D) to make it again" % (branch, wt))
+    git("worktree", "add", "-q", "-b", branch, wt, base)
+
+    def undo(msg):
+        run(["git", "-C", wt, "merge", "--abort"], check=False)
+        run(["git", "worktree", "remove", "--force", wt], check=False)
+        run(["git", "branch", "-D", branch], check=False)
+        die(msg + "; nothing merged, and the batch's worktree and branch are removed. "
+            "Run --apply again without it, and close it naming the criterion if it fails one")
+
+    for n, title, head in batch:
+        p = subprocess.run(["git", "-C", wt, "merge", "--no-ff", "-q", "-m", "Merge #%d: %s" % (n, title), head])
+        if p.returncode != 0:
+            undo("the merge of #%d failed (above)" % n)
+
+    katana = os.path.join(wt, "lib", "katana.sh")
+    with open(katana) as f:
+        lines = f.read().split("\n")
+    copies = []
+    for i, line in enumerate(lines):
+        m = MAP_LINE.match(line)
+        digest = m and author_digest(m.group(2))
+        if digest:
+            copies.append((m.group(1), m.group(2)))
+            lines[i] = "    [%s]=%s" % (m.group(1), digest)
+    if copies:
+        with open(katana, "w") as f:
+            f.write("\n".join(lines))
+        msg = ("The review batch copies %s into %s by digest, so the digest map pins %s by its digest alone"
+               % (", ".join("%s's container" % v for v, _ in copies), registry(),
+                  " and ".join("%s" % v for v, _ in copies)))
+        p = subprocess.run(["git", "-C", wt, "commit", "-q", "-m", msg, "--", "lib/katana.sh"])
+        if p.returncode != 0:
+            undo("committing the digest map's rewrite failed (above)")
+    tip = git("rev-parse", "HEAD", cwd=wt).strip()
+    unpublished = sorted(v for v, value in map_lines("\n".join(lines)).items() if value == "unpublished")
+
+    print("The batch is %s on %s, in %s. Running its bin/check:" % (tip[:12], branch, wt))
+    sys.stdout.flush()
+    if subprocess.run([os.path.join(wt, "bin", "check")], cwd=wt).returncode != 0:
+        die("bin/check failed on the batch (above); nothing pushed or copied. Leave out the PR the failure "
+            "comes from and close it naming the criterion: git worktree remove %s, git branch -D %s, then "
+            "--apply again without it" % (wt, branch))
+    tested = run([os.path.join(wt, "bin", "katana-test"), "--tested", tip, base], cwd=wt, check=False)
+
+    steps = ["bin/review-batch --copy %s %s" % c for c in copies]
+    if tested.returncode != 0:
+        steps.append(os.path.join(wt, "bin", "katana-test"))
+    steps += [
+        "git push origin %s:main" % tip,
+        "bin/ciwait %s" % tip,
+        "ssh katana 'cd ~/iris && git pull --ff-only'",
+        os.path.join(wt, "bin", "envpull"),
+        "bin/syspull",
+    ]
+    print()
+    print("bin/check passed on the batch. The rest, in order, each its own command. The yes to the batch "
+          "is the go-ahead for each; live-check the push on one changed file outside .github/ as "
+          "AGENTS.md's Deploying says:")
+    print()
+    for i, step in enumerate(steps, 1):
+        print("  %d. %s" % (i, step))
+    print()
+    if copies:
+        print("Each copy comes before the push, since main then pins its digest in %s." % registry())
+    if tested.returncode != 0:
+        print("The batch changes what bin/katana-test tests, so the push needs its pass first.")
+    if unpublished:
+        print("Unpublished on main after the push: %s. Its containers run publishes each; pin its digest "
+              "on main (envs/README.md, Publishing a version) before bin/envpull and bin/syspull can deploy "
+              "a form that pins it." % ", ".join(unpublished))
+    print("bin/envpull runs from the batch's worktree, whose lib/katana.sh is the commit pushed. bin/syspull's "
+          "listing, quoting each commit, is the system clone's go-ahead for its --apply line. "
+          "bin/prune-merged then removes the batch's worktree and branch.")
+
+
+def copy(version, ref):
+    reg = registry()
+    digest = author_digest(ref)
+    dst = "%s:%s" % (reg, version.replace("/", "-"))
+
+    def tagged():
+        p = run(["docker", "buildx", "imagetools", "inspect", "--format", "{{json .Manifest}}", dst], check=False)
+        try:
+            return json.loads(p.stdout)["digest"] if p.returncode == 0 else None
+        except (ValueError, KeyError, TypeError):
+            return None
+
+    now = tagged()
+    if now == digest:
+        print("%s is already %s@%s: nothing to copy." % (dst, reg, digest))
+        return
+    if now:
+        die("%s is at %s, not %s; a version's digest never changes once written, so nothing copied" % (dst, now, digest))
+    p = subprocess.run(["docker", "buildx", "imagetools", "create", "--tag", dst, ref])
+    if p.returncode != 0:
+        die("the copy failed (above). It needs docker logged in to ghcr.io with a token that can write %s" % reg)
+    now = tagged()
+    if now != digest:
+        die("%s is at %s after the copy, not %s: don't push the batch, whose digest map pins %s" % (dst, now, digest, digest))
+    print("Copied %s to %s, keeping its digest: %s@%s." % (ref, dst, reg, digest))
+
+
+def main(argv):
+    if not argv:
+        listing()
+    elif argv[0] == "--apply" and len(argv) > 1 and all(PAIR.match(a) for a in argv[1:]):
+        pairs = [(int(m.group(1)), m.group(2)) for m in map(PAIR.match, argv[1:])]
+        if len({n for n, _ in pairs}) != len(pairs):
+            usage()
+        apply(pairs)
+    elif argv[0] == "--copy" and len(argv) == 3 and VERSION.match(argv[1]) and author_digest(argv[2]):
+        copy(argv[1], argv[2])
+    else:
+        usage()
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])
