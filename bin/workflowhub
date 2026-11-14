@@ -273,8 +273,9 @@ PY
 }
 
 # owner_field <name|orcid>: the workflow owner's name or ORCID iD from the
-# manifest, assumed to sit as owner: { name:, orcid: } until #136 settles
-# the manifest's owner fields; this is the one place that reads them.
+# manifest's owner block (owner: with name:, github: and an optional orcid:,
+# #136); this is the one place that reads them. Empty when unset, so the
+# walkthrough asks.
 owner_field() { manifest_value "owner.$1"; }
 
 TITLE_NAME=$(manifest_value name)
