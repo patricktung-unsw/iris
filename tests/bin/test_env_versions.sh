@@ -90,6 +90,24 @@ expect fail "$scratch/tag-and-digest" "$name"
 make_tree todo
 edit todo lib/katana.sh 's|\[microct/1\]=unpublished|[microct/1]=TODO|'
 expect fail "$scratch/todo" "$name"
+# An author's version, published by CI on their fork, is its container in
+# their own account by digest, until the review batch copies it into the
+# org's package (#138); the org's own is written as its digest alone.
+make_tree author
+add_version author microct/2 "ghcr.io/an-author/iris-env@$digest" 'numpy==2.3.0' 'scipy==1.16.0' 'xarray==2025.6.1'
+expect pass "$scratch/author" "$name"
+make_tree author-short
+add_version author-short microct/2 "ghcr.io/an-author/iris-env@sha256:0123abcd" 'numpy==2.3.0' 'xarray==2025.6.1'
+expect fail "$scratch/author-short" "$name"
+make_tree author-other-package
+add_version author-other-package microct/2 "ghcr.io/an-author/other@$digest" 'numpy==2.3.0' 'xarray==2025.6.1'
+expect fail "$scratch/author-other-package" "$name"
+make_tree author-upper
+add_version author-upper microct/2 "ghcr.io/An-Author/iris-env@$digest" 'numpy==2.3.0' 'xarray==2025.6.1'
+expect fail "$scratch/author-upper" "$name"
+make_tree org-in-full
+edit org-in-full lib/katana.sh "s|\[microct/1\]=unpublished|[microct/1]=ghcr.io/unsw-restech/iris-env@$digest|"
+expect fail "$scratch/org-in-full" "$name"
 
 # Versions are <env>/<n> counting from 1, each with its recipe in envs/.
 make_tree bad-name

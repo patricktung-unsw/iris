@@ -262,7 +262,8 @@ check "Katana constants match lib/katana.sh" katana_constants
 
 # lib/katana.sh's digest map and lab table (envs/README.md). Each version
 # is <env>/<n>, counting up from 1, with its lock in envs/<env>/<n>/, and
-# every lock there is in the map; each digest is sha256:<64 hex>, or
+# every lock there is in the map; each digest is sha256:<64 hex>, an
+# author's container ghcr.io/<login>/iris-env@sha256:<64 hex> (#138), or
 # "unpublished" until CI first publishes it. Each lab in the table is a lab
 # section of index.html, starting on a version in the map. The researcher
 # tools' IRIS_TOOLS_ENV_VERSION and every form's IRIS_ENV_VERSION are in the map, published or not: a job stops with one
@@ -284,7 +285,7 @@ env_versions() {
             continue
         fi
         iris_is_env_digest "${IRIS_ENV_DIGESTS[$v]}" ||
-            echo "lib/katana.sh: $v's digest is ${IRIS_ENV_DIGESTS[$v]}; give sha256:<64 hex> alone, or unpublished until CI publishes it"
+            echo "lib/katana.sh: $v's digest is ${IRIS_ENV_DIGESTS[$v]}; give sha256:<64 hex> alone, an author's ghcr.io/<login>/iris-env@sha256:<64 hex>, or unpublished until CI publishes it"
         f="envs/$v/requirements.lock"
         [ -f "$f" ] || { echo "$f: missing, but lib/katana.sh's digest map has $v"; continue; }
         n="${v##*/}"

@@ -133,7 +133,7 @@ One fixed build of an environment, named `<env>/<n>` after the lab it was first 
 _Avoid_: Tag, release, image version
 
 **Digest map**:
-The one list that ties each environment version to the exact container it means, by digest, or marks it unpublished until it is published.
+The one list that ties each environment version to the exact container it means, by digest, or marks it unpublished until it is published. A version a workflow author's fork published names its container in the author's own account until the review batch copies it into IRIS's.
 _Avoid_: Lock, pin file
 
 **Lab table**:
