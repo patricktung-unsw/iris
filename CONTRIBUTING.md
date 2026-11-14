@@ -164,13 +164,21 @@ Either way, the lab's other workflows keep the version they pin until their owne
 
 ### 5. Test instance
 
-_#139 brings the test instance, an OpenComposer you add to your own Katana OnDemand, under **Develop**, that shows you the forms in your own clone and runs them as you ([ADR-0012](docs/adr/0012-the-iris-instance-replaces-the-shared-opencomposer.md)). During the pilot only pilot testers can read it, so an author outside the pilot proves a workflow with `qsub` as below. It finds your clone only at `~/iris` ([ADR-0011](docs/adr/0011-iris-runs-its-own-opencomposer-fork.md)): with no `~/iris/workflows`, every page of the test instance, the list and each form, reads "Internal Server Error" and "application error", then `Errno::ENOENT` and `No such file or directory @ dir_initialize - /home/<zID>/iris/workflows` (the fork at `c5da1b9`, 2026-11-14, #174; #179 asks for a clearer message). Until the test instance exists, prove the workflow with `qsub`:_ `bin/check` clean, then a `qsub` run of the job script from your clone on Katana. The job script is the form's `script:` block: copy it into a `.pbs` file, fill in each `#{...}` with a value, and replace each `<%= ... %>` with what the form would render: `CODE` is your clone's `workflows/<slug>`, the commit is your clone's `HEAD`, and the heredoc holds your entry script. Run it on a real dataset in the layout your page documents, pass `-m abe` so PBS emails you, and check the run directory it writes.
+The test instance is an OpenComposer you add to your own Katana OnDemand, under **Develop**, on the same fork commit as the IRIS instance, that shows you the forms in your own clone and runs them as you ([ADR-0012](docs/adr/0012-the-iris-instance-replaces-the-shared-opencomposer.md)). You prove your workflow there. During the pilot only pilot testers can read it, as only they can run IRIS on Katana. Add it once, from a shell on Katana:
 
-Until then the maintainer also does a **browser run** from the dev clone on your PR's branch: the form opens, `check:` rejects one wrong dataset folder, and one real run finishes, opens with the `iris-view` line its job output prints and appears in MLflow through its `iris-compare` line. A dev run prints the dev clone's full paths, so it is viewed with the branch's code; `module load iris` would run the system clone's.
+1. `mkdir -p ~/ondemand/dev`
+2. `ln -s /srv/scratch/katana_ai/iris/OpenComposer-iris-test ~/ondemand/dev/`
+3. If step 1 made `~/ondemand/dev`, choose **Help → Restart Web Server** in Katana OnDemand, since it turns **Develop** on for anyone who has that folder when their web server starts. If the folder was already there, the test instance shows up without a restart.
+
+It opens at `https://kod.restech.unsw.edu.au/pun/dev/OpenComposer-iris-test/<slug>`, its navbar reading "IRIS test instance" where the IRIS instance's reads "IRIS", and keeps its own history, `~/composer/iris-test`, so your test runs stay out of your IRIS instance history (#174, job 9774480). It finds your clone only at `~/iris` ([ADR-0011](docs/adr/0011-iris-runs-its-own-opencomposer-fork.md)): with no `~/iris/workflows`, every page of the test instance, the list and each form, reads "Internal Server Error" and "application error", then `Errno::ENOENT` and `No such file or directory @ dir_initialize - /home/<zID>/iris/workflows` (the fork at `c5da1b9`, 2026-11-14, #174; #179 asks for a clearer message).
+
+To prove the workflow: `bin/check` clean, your branch checked out in `~/iris`, then submit your form from the test instance on a real dataset in the layout your page documents, and check the run directory it writes: `commit.txt` is your clone's `HEAD`.
+
+Until the Testing tier goes (#144), the maintainer also does a **browser run** from the dev clone on your PR's branch: the form opens, `check:` rejects one wrong dataset folder, and one real run finishes, opens with the `iris-view` line its job output prints and appears in MLflow through its `iris-compare` line. A dev run prints the dev clone's full paths, so it is viewed with the branch's code; `module load iris` would run the system clone's.
 
 ### 6. Run proof
 
-_#140 fills this step with a tool, run on Katana after your test-instance run, that writes the run proof into your workflow's folder, and a CI check that fails a PR whose folder changed after the proof's commit. Until then:_ cite your `qsub` run's job ID in the PR. Any later change to your folder, updating its library copy or moving its environment version included, needs a new run.
+_#140 fills this step with a tool, run on Katana after your test-instance run, that writes the run proof into your workflow's folder, and a CI check that fails a PR whose folder changed after the proof's commit. Until then:_ cite your test-instance run's job ID in the PR. Any later change to your folder, updating its library copy or moving its environment version included, needs a new run.
 
 ### 7. CI and `ready`
 
@@ -212,7 +220,7 @@ The [contribute page](https://docs.restech.unsw.edu.au/iris/contribute/#unmainta
 
 - **Unmaintained**: the workflow moves to the Unmaintained row of the tier table ([Status](#status)).
 - **Handing over**: a PR that names the new owner in place of you ([Owner](#3-owner)).
-- **Adoption**: after the approved proposal, a PR that fixes the workflow, carries a run proof ([Run proof](#6-run-proof); a `qsub` job ID until then) and names the adopter as its workflow owner. It keeps its folder and its WorkflowHub entry.
+- **Adoption**: after the approved proposal, a PR that fixes the workflow, carries a run proof ([Run proof](#6-run-proof); a test-instance job ID until then) and names the adopter as its workflow owner. It keeps its folder and its WorkflowHub entry.
 
 ## Licence
 
