@@ -28,14 +28,24 @@ make_tree() {
     echo '<h1 class="wf-title">Hello world</h1>' > "$tree/workflows/hello-world/index.html"
 }
 
-# The page line naming <login> (<name>) as the workflow owner.
+# The page line naming <login> (<name>) as the workflow owner, with
+# <email> (jdoe@example.org if not given) as their contact, as
+# templates/workflow-page.html has it.
 owner_line() {
-    echo "  <p class=\"wf-owner\">Workflow owner: <a href=\"https://github.com/$1\" target=\"_blank\">$2</a></p>"
+    local email="${3:-jdoe@example.org}"
+    echo "  <p class=\"wf-owner\">Workflow owner: <a href=\"https://github.com/$1\" target=\"_blank\">$2</a> · <a href=\"mailto:$email\">$email</a></p>"
 }
 
-# A manifest naming <login> (<name>) as the workflow owner.
+# A manifest naming <login> (<name>) as the workflow owner, with <email>
+# (jdoe@example.org if not given).
 manifest_with() {
-    printf '%s\n' 'name: Seg' 'category: Imaging' 'owner:' "  name: $2" "  github: $1"
+    printf '%s\n' 'name: Seg' 'category: Imaging' 'owner:' "  name: $2" "  github: $1" "  email: ${3:-jdoe@example.org}"
+}
+
+# replace_owner_line <tree> <line>: the seg page's owner line becomes <line>.
+replace_owner_line() {
+    sed -i '/wf-owner/d' "$scratch/$1/workflows/seg/index.html"
+    echo "$2" >> "$scratch/$1/workflows/seg/index.html"
 }
 
 # owners <pass|fail> <name>: the check over $scratch/<name>, which the
@@ -75,6 +85,22 @@ owners fail page-names-someone-else
 make_tree names-differ
 manifest_with jdoe "Joe Bloggs" > "$scratch/names-differ/workflows/seg/manifest.yml"
 owners fail names-differ
+
+make_tree no-contact-on-page
+replace_owner_line no-contact-on-page '  <p class="wf-owner">Workflow owner: <a href="https://github.com/jdoe" target="_blank">Jane Doe</a></p>'
+owners fail no-contact-on-page
+
+make_tree page-contact-differs
+replace_owner_line page-contact-differs "$(owner_line jdoe "Jane Doe" jane@example.org)"
+owners fail page-contact-differs
+
+make_tree link-text-differs-from-mailto
+replace_owner_line link-text-differs-from-mailto '  <p class="wf-owner">Workflow owner: <a href="https://github.com/jdoe" target="_blank">Jane Doe</a> · <a href="mailto:jdoe@example.org">jane@example.org</a></p>'
+owners fail link-text-differs-from-mailto
+
+make_tree no-email-in-manifest
+printf '%s\n' 'name: Seg' 'owner:' '  name: Jane Doe' '  github: jdoe' > "$scratch/no-email-in-manifest/workflows/seg/manifest.yml"
+owners fail no-email-in-manifest
 
 make_tree with-orcid
 echo '  orcid: 0000-0002-1825-0097' >> "$scratch/with-orcid/workflows/seg/manifest.yml"

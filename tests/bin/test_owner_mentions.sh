@@ -18,7 +18,7 @@ mkdir -p "$tree/bin"
 cp bin/owner-mentions bin/manifest-owner "$tree/bin/"
 owned() {
     mkdir -p "$tree/workflows/$1"
-    printf '%s\n' "name: $1" 'owner:' "  name: $2" "  github: $3" > "$tree/workflows/$1/manifest.yml"
+    printf '%s\n' "name: $1" 'owner:' "  name: $2" "  github: $3" "  email: $3@example.org" > "$tree/workflows/$1/manifest.yml"
 }
 owned seg "Jane Doe" jdoe
 owned denoise "Jane Doe" jdoe

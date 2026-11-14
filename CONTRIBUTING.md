@@ -159,7 +159,7 @@ The template's fixed sections, each with its `id`, are what the workflow does (`
 
 ### 3. Owner
 
-Name yourself as the workflow owner in two places, with the same GitHub login and name in both, which `bin/check` keeps in step:
+Name yourself as the workflow owner in two places, with the same GitHub login, name and email in both, which `bin/check` keeps in step. Your login and email are the contact researchers reach you by:
 
 - **The manifest**, `workflows/<slug>/manifest.yml`, in an `owner:` block beside its menu entry, as the reference workflow's has it:
 
@@ -167,11 +167,12 @@ Name yourself as the workflow owner in two places, with the same GitHub login an
   owner:
     name: Jane Doe                  # as the page shows it
     github: jdoe                    # your GitHub login, without the @
+    email: jdoe@example.org         # the page links it; no mailto:
     orcid: 0000-0002-1825-0097      # optional: your ORCID iD, for WorkflowHub
   ```
 
   `bin/manifest-owner` reads it, and its header gives the rules.
-- **The page**, under the description: `<p class="wf-owner">Workflow owner: <a href="https://github.com/<login>" target="_blank"><name></a></p>`.
+- **The page**, in its owner section: the template's owner line, with `{{OWNER_LOGIN}}`, `{{OWNER_NAME}}` and `{{OWNER_EMAIL}}` filled in, `<p class="wf-owner">Workflow owner: <a href="https://github.com/<login>" target="_blank"><name></a> · <a href="mailto:<email>"><email></a></p>`.
 
 On every PR that touches the folder, the `owner-mention` Action (`.github/workflows/owner-mention.yml`) mentions the owner the manifest on `main` names, so you hear of every change without write access to the repo. It mentions each owner once per PR and never the PR's author, so your own PRs and your first one, whose folder isn't on `main` yet, mention no one. `CODEOWNERS` plays no part, since GitHub asks only people with write access for a review there, and `bin/check` fails a `workflows/` line in it.
 

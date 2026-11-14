@@ -761,15 +761,17 @@ check "name uses a glossary Avoid word (see GLOSSARY.md)" avoid_names
 
 # Every catalogue workflow with a form names its workflow owner in its
 # manifest (bin/manifest-owner gives the shape) and on its page, under the
-# description, as <p class="wf-owner"> linking their GitHub profile, with
-# the same login and name in both. .github/workflows/owner-mention.yml
+# description, as <p class="wf-owner"> linking their GitHub profile and
+# then their email as a mailto: link reading the same address (the
+# owner line in templates/workflow-page.html), with the same login, name
+# and email in both. .github/workflows/owner-mention.yml
 # mentions the manifest's owner on a PR that touches the folder, which
 # reaches them without write access, as CODEOWNERS can't (#136), so no
 # CODEOWNERS file GitHub reads holds a /workflows/ line. hello-world is
 # onboarding, and Planned workflows have no form.
 # tests/bin/test_workflow_owner.sh runs it on fixture trees.
 workflow_owner() {
-    local f d page login name m_login m_name
+    local f d page login name mailto email_text m_login m_name m_email
     for f in .github/CODEOWNERS CODEOWNERS docs/CODEOWNERS; do
         tr -d '\r' 2>/dev/null < "$f" | grep -nE '^[^#]*workflows/' | sed "s|^|$f:|;s|\$| (a workflow's owner goes in its manifest.yml, not CODEOWNERS)|"
     done
@@ -777,18 +779,27 @@ workflow_owner() {
         d=$(dirname "$f")
         [ "$d" = workflows/hello-world ] && continue
         page=$(tr -d '\r' 2>/dev/null < "$d/index.html" |
-            sed -nE 's|.*<p class="wf-owner">Workflow owner: <a href="https://github\.com/([A-Za-z0-9-]+)"[^>]*>([^<]*)</a>.*|\1\t\2|p' | head -n1)
-        IFS=$'\t' read -r login name <<< "$page"
+            sed -nE 's|.*<p class="wf-owner">Workflow owner: <a href="https://github\.com/([A-Za-z0-9-]+)"[^>]*>([^<]*)</a>(.*)|\1\t\2\t\3|p' | head -n1)
+        IFS=$'\t' read -r login name page <<< "$page"
+        mailto=$(sed -nE 's|^ · <a href="mailto:([^"]*)">([^<]*)</a></p>.*|\1|p' <<< "$page")
+        email_text=$(sed -nE 's|^ · <a href="mailto:([^"]*)">([^<]*)</a></p>.*|\2|p' <<< "$page")
         [ -n "$login" ] ||
-            echo "$d/index.html: no workflow owner (<p class=\"wf-owner\">Workflow owner: <a href=\"https://github.com/<login>\" target=\"_blank\"><name></a></p>)"
+            echo "$d/index.html: no workflow owner (templates/workflow-page.html's <p class=\"wf-owner\"> line)"
+        [ -z "$login" ] || [ -n "$mailto" ] ||
+            echo "$d/index.html: the workflow owner line has no contact (· <a href=\"mailto:<email>\"><email></a> after the name, as templates/workflow-page.html has it)"
+        [ -z "$mailto" ] || [ "$mailto" = "$email_text" ] ||
+            echo "$d/index.html: the owner's contact links mailto:$mailto but reads \"$email_text\""
         bin/manifest-owner "$d/manifest.yml" 2>&1 || continue
         m_login=$(bin/manifest-owner "$d/manifest.yml" github)
         m_name=$(bin/manifest-owner "$d/manifest.yml" name)
+        m_email=$(bin/manifest-owner "$d/manifest.yml" email)
         [ -n "$login" ] || continue
         [ "$login" = "$m_login" ] ||
             echo "$d: the page's workflow owner is $login, the manifest's is $m_login"
         [ "$name" = "$m_name" ] ||
             echo "$d: the page names the workflow owner \"$name\", the manifest \"$m_name\""
+        [ -z "$mailto" ] || [ "$mailto" = "$m_email" ] ||
+            echo "$d: the page's owner contact is $mailto, the manifest's email is $m_email"
     done
 }
 check "workflow owner in the manifest and on the page" workflow_owner
