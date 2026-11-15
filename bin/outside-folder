@@ -1,11 +1,14 @@
 #!/bin/bash
 # bin/outside-folder <base> [<head>]: the out-of-folder flag. Prints what a
 # pull request, <base>...<head> (HEAD by default), changes outside its
-# workflow's folder, its card in index.html and its lab's recipe, one line
-# each, in path order:
+# workflow's folder, its card in index.html, its lines in CONTRIBUTING.md's
+# tier table, its lab's recipe and its lab's new environment versions in
+# lib/katana.sh (allowed() has the detail), one line each, in path order:
 #
 #   <path>                                       a file outside them
 #   index.html (outside the card of <slug>)      index.html beyond the card
+#   CONTRIBUTING.md (beyond the tier table's lines for <slug>)
+#   lib/katana.sh (beyond <env>'s new versions in the digest map and <lab>'s lab table line)
 #   workflows/ (more than one workflow's folder: <slug> <slug>)
 #
 # A PR that changes no workflow's folder has everything it changes flagged.
@@ -30,17 +33,25 @@ done
 . lib/katana.sh
 
 # allowed <slug>: what a PR changing workflows/<slug>/ may also change
-# unflagged, one a line: a folder (ending in /) or a file, or "card", the
-# lines of its card in index.html. The one place the allowed set is
-# defined: adjust it here.
+# unflagged, one a line: a folder (ending in /) or a file; "card", the
+# lines of its card in index.html; "tier", its lines in CONTRIBUTING.md's
+# tier table and the line after it citing its job, which bin/new-workflow
+# writes; or "digests <lab> <env>", its lab's new versions of <env> in
+# lib/katana.sh's digest map and its lab's lab table line moved to one, as
+# a new environment version's PR writes them. The one place the allowed
+# set is defined: adjust it here.
 allowed() {
     local lab env
     echo "workflows/$1/"
     echo card
+    echo tier
     lab="$(card_lab "$head" "$1")"
     [ -n "$lab" ] || lab="$(card_lab "$base" "$1")"
+    [ -n "$lab" ] || return 0
     env="${IRIS_LAB_ENVS[$lab]-}"
-    [ -z "$env" ] || echo "envs/${env%/*}/"
+    [ -n "$env" ] || return 0
+    echo "envs/${env%/*}/"
+    echo "digests $lab ${env%/*}"
 }
 
 # index_html <commit>: index.html at <commit>, empty if it has none.
@@ -89,6 +100,54 @@ index_outside() {
         END { exit !bad }'
 }
 
+# tier_norm <commit> <slug>...: CONTRIBUTING.md at <commit> without what
+# the tier lines of these workflows may change: their entries in each tier
+# row's Workflows cell, every entry's shared label written out so that
+# moving one doesn't move another's, their lines citing a job, and blank
+# lines.
+tier_norm() {
+    git show "$1:CONTRIBUTING.md" 2> /dev/null | tr -d '\r' | OF_SLUGS="${*:2}" perl -ne '
+        BEGIN { %s = map { $_ => 1 } split " ", $ENV{OF_SLUGS} }
+        chomp;
+        next if /^\s*$/;
+        next if /^`([^`]+)` ran from the test instance \(job [^)]*\)\.$/ && $s{$1};
+        if (/^(\| \*\*[^|]*\*\* \| )(.*?)( \|.*)$/) {
+            my ($pre, $cell, $post, @n, @l) = ($1, $2, $3);
+            my $ok = 1;
+            for (split /, /, ($cell eq "None" ? "" : $cell)) {
+                if (/^`([^`]+)`(?: \(([^)]*)\))?$/) { push @n, $1; push @l, $2 } else { $ok = 0 }
+            }
+            if ($ok) {
+                for (my $i = $#l - 1; $i >= 0; $i--) { $l[$i] //= $l[$i + 1] }
+                $cell = join ", ", map { "`$n[$_]` (" . ($l[$_] // "") . ")" } grep { !$s{$n[$_]} } 0 .. $#n;
+            }
+            $_ = "$pre$cell$post";
+        }
+        print "$_\n"'
+}
+
+# digest_keys <commit>: the versions in lib/katana.sh's digest map at
+# <commit>, one a line.
+digest_keys() {
+    git show "$1:lib/katana.sh" 2> /dev/null | tr -d '\r' |
+        sed -nE '/^declare -gA IRIS_ENV_DIGESTS=\(/,/^\)/s/^    \[([^]]+)\]=.*/\1/p'
+}
+
+# katana_norm <commit> <lab> <env>: lib/katana.sh at <commit> without the
+# digest map lines of versions of <env> that <base>'s map lacks, and with
+# <lab>'s lab table line pointing at <env>/N, whatever version it names.
+katana_norm() {
+    git show "$1:lib/katana.sh" 2> /dev/null | tr -d '\r' |
+        OF_LAB="$2" OF_ENV="$3" OF_KEYS="$(digest_keys "$base")" perl -ne '
+        BEGIN { %k = map { $_ => 1 } split " ", $ENV{OF_KEYS}; ($lab, $env) = @ENV{qw(OF_LAB OF_ENV)} }
+        $map = 1 if /^declare -gA IRIS_ENV_DIGESTS=\($/;
+        $labs = 1 if /^declare -gA IRIS_LAB_ENVS=\($/;
+        $map = $labs = 0 if /^\)$/;
+        next if $map && /^    \[(\Q$env\E\/[1-9][0-9]*)\]=/ && !$k{$1};
+        s{^    \[\Q$lab\E\]=\Q$env\E/[1-9][0-9]*$}{    [$lab]=$env/N} if $labs;
+        print'
+}
+
 paths="$(git diff --name-only --no-renames "$base...$head")" || exit 2
 mapfile -t slugs < <(sed -n 's|^workflows/\([^/]*\)/.*|\1|p' <<< "$paths" | sort -u)
 flagged=0
@@ -103,6 +162,8 @@ while IFS= read -r p; do
     for a in "${ok[@]}"; do
         case "$a" in
             card) [ "$p" != index.html ] || pass=card ;;
+            tier) [ "$p" != CONTRIBUTING.md ] || pass=tier ;;
+            "digests "*) [ "$p" != lib/katana.sh ] || pass="$a" ;;
             */) [[ "$p" != "$a"* ]] || pass=yes ;;
             *) [ "$p" != "$a" ] || pass=yes ;;
         esac
@@ -111,6 +172,13 @@ while IFS= read -r p; do
     if [ "$pass" = card ]; then
         index_outside "${slugs[@]}" || continue
         echo "index.html (outside the card of ${slugs[*]})"
+    elif [ "$pass" = tier ]; then
+        [ "$(tier_norm "$base" "${slugs[@]}")" != "$(tier_norm "$head" "${slugs[@]}")" ] || continue
+        echo "CONTRIBUTING.md (beyond the tier table's lines for ${slugs[*]})"
+    elif [[ "$pass" = "digests "* ]]; then
+        read -r _ lab env <<< "$pass"
+        [ "$(katana_norm "$base" "$lab" "$env")" != "$(katana_norm "$head" "$lab" "$env")" ] || continue
+        echo "lib/katana.sh (beyond $env's new versions in the digest map and $lab's lab table line)"
     elif [ -z "$pass" ]; then
         echo "$p"
     else

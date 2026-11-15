@@ -26,14 +26,30 @@ card() {
 
 # make_repo <name>: a repo whose main holds the ct-lab section, with seg's
 # card, and the mri-lab section, with mri's; the seg and mri workflows; the
-# lab table [ct-lab]=ct/1 and [mri-lab]=mr/2; the ct and mr recipes; and
+# lab table [ct-lab]=ct/1 and [mri-lab]=mr/2 and the digest map's ct/1 and
+# mr/2; the ct and mr recipes; a CONTRIBUTING.md whose tier table has seg
+# Run and verified, citing its job, and bone and knee Planned; and
 # bin/outside-folder. Then a branch, pr, checked out.
 make_repo() {
     local r="$scratch/$1"
     mkdir -p "$r/bin" "$r/lib" "$r/workflows/seg/src" "$r/workflows/mri" "$r/envs/ct/1" "$r/envs/mr/2"
     cp bin/outside-folder "$r/bin/"
     cp lib/katana.sh "$r/lib/katana.sh"
-    sed -i -e '/^declare -gA IRIS_LAB_ENVS=(/,/^)/c\declare -gA IRIS_LAB_ENVS=(\n    [ct-lab]=ct/1\n    [mri-lab]=mr/2\n)' "$r/lib/katana.sh"
+    sed -i -e '/^declare -gA IRIS_LAB_ENVS=(/,/^)/c\declare -gA IRIS_LAB_ENVS=(\n    [ct-lab]=ct/1\n    [mri-lab]=mr/2\n)' \
+        -e "/^declare -gA IRIS_ENV_DIGESTS=(/,/^)/c\\declare -gA IRIS_ENV_DIGESTS=(\\n    [ct/1]=sha256:$(printf 'a%.0s' {1..64})\\n    [mr/2]=sha256:$(printf 'b%.0s' {1..64})\\n)" \
+        "$r/lib/katana.sh"
+    {
+        echo '# For workflow authors'
+        echo
+        echo '| Tier | Workflows | What exists |'
+        echo '|---|---|---|'
+        echo '| **Run and verified** | `hello-world` (onboarding), `seg` (CT) | Page, form |'
+        echo '| **Planned** | `bone`, `knee` (CT) | Page only |'
+        echo
+        echo '`seg` ran from the test instance (job 1).'
+        echo
+        echo 'The end.'
+    } > "$r/CONTRIBUTING.md"
     {
         echo '<h1>IRIS</h1>'
         echo '  <div class="lab" id="ct-lab">'
@@ -98,6 +114,59 @@ sed -i 's|<div class="card-name">seg</div>|<div class="card-name">Segmentation</
 echo "print(2)" > "$scratch/own-card/workflows/seg/src/run.py"
 commit own-card
 expect own-card 0
+
+# What bin/new-workflow writes in CONTRIBUTING.md for a Planned workflow,
+# bone: its slug moved from the Planned row to Run and verified, and the
+# line citing its job after the table: not flagged.
+make_repo scaffold
+mkdir -p "$scratch/scaffold/workflows/bone"
+echo "script: |" > "$scratch/scaffold/workflows/bone/form.yml.erb"
+sed -i -e 's/^| \*\*Run and verified\*\* | .* (CT) |/| **Run and verified** | `hello-world` (onboarding), `seg`, `bone` (CT) |/' \
+    -e 's/^| \*\*Planned\*\* | .* (CT) |/| **Planned** | `knee` (CT) |/' \
+    -e 's/^`seg` ran from the test instance (job 1)\.$/&\n\n`bone` ran from the test instance (job {{TODO: its job}})./' \
+    "$scratch/scaffold/CONTRIBUTING.md"
+commit scaffold
+expect scaffold 0
+
+# CONTRIBUTING.md beyond its own tier table lines: another workflow's
+# entry in a row, another's job line, or any other line: flagged once.
+for c in 's/`knee` (CT)/`knee` (MRI)/' 's/(job 1)/(job 2)/' 's/^The end\.$/The end!/'; do
+    make_repo tier-other
+    mkdir -p "$scratch/tier-other/workflows/bone"
+    echo "script: |" > "$scratch/tier-other/workflows/bone/form.yml.erb"
+    sed -i -e 's/^| \*\*Run and verified\*\* | .* (CT) |/| **Run and verified** | `hello-world` (onboarding), `seg`, `bone` (CT) |/' \
+        -e 's/^| \*\*Planned\*\* | `bone`, /| **Planned** | /' -e "$c" "$scratch/tier-other/CONTRIBUTING.md"
+    commit tier-other
+    expect tier-other 1 "CONTRIBUTING.md (beyond the tier table's lines for bone)"
+    rm -rf "$scratch/tier-other"
+done
+
+# A new environment version of its lab's environment: its digest map line,
+# its lab's lab table line pointing at it, and its recipe: not flagged.
+make_repo new-version
+mkdir -p "$scratch/new-version/envs/ct/2"
+echo "print(2)" > "$scratch/new-version/workflows/seg/src/run.py"
+echo "numpy==2.0" > "$scratch/new-version/envs/ct/2/requirements.lock"
+sed -i -e 's|^    \[ct-lab\]=ct/1$|    [ct-lab]=ct/2|' \
+    -e "s|^    \\[mr/2\\]=.*|&\\n    [ct/2]=ghcr.io/jdoe/iris-env@sha256:$(printf 'c%.0s' {1..64})|" \
+    "$scratch/new-version/lib/katana.sh"
+commit new-version
+expect new-version 0
+
+# lib/katana.sh beyond that: another environment's new version, a change
+# to a version already in the map, another lab's line, or any other line:
+# flagged once.
+for c in "s|^    \\[mr/2\\]=.*|&\\n    [mr/3]=unpublished|" \
+    "s|^    \\[ct/1\\]=.*|    [ct/1]=unpublished|" \
+    's|^    \[mri-lab\]=mr/2$|    [mri-lab]=ct/1|' \
+    's|^IRIS_PYTHON_MODULE=.*|IRIS_PYTHON_MODULE=python/9|'; do
+    make_repo katana-other
+    echo "print(2)" > "$scratch/katana-other/workflows/seg/src/run.py"
+    sed -i -e "$c" "$scratch/katana-other/lib/katana.sh"
+    commit katana-other
+    expect katana-other 1 "lib/katana.sh (beyond ct's new versions in the digest map and ct-lab's lab table line)"
+    rm -rf "$scratch/katana-other"
+done
 
 # Shared code, the README and another lab's recipe beside the workflow:
 # each flagged, by path, in path order.
