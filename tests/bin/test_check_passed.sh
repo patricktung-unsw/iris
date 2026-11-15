@@ -103,11 +103,21 @@ push refs/heads/main "$merged" "$zero" > /dev/null || fail "pre-push: refused a 
 # A digest map line naming an author's container never reaches main, even
 # checked and with IRIS_UNCHECKED set: the review batch copies it and pins
 # its digest alone first. A branch may carry one, as a PR does.
+# It knows an author's container by lib/katana.sh's iris_is_author_env, as
+# every other tool does, so the org's own package named in full isn't one.
 mkdir -p "$repo/lib"
-printf '%s\n' 'declare -gA IRIS_ENV_DIGESTS=(' "    [ct/2]=ghcr.io/alice-lab/iris-env@sha256:$(printf 'a%.0s' {1..64})" ')' > "$repo/lib/katana.sh"
-git -C "$repo" add lib/katana.sh; commit -m "author line"
-record
+a64=$(printf 'a%.0s' {1..64})
+# map_line <value>: lib/katana.sh with a ct/2 line of <value> in its digest map, committed.
+map_line() {
+    sed "s|^declare -gA IRIS_ENV_DIGESTS=($|&\n    [ct/2]=$1|" lib/katana.sh > "$repo/lib/katana.sh"
+    git -C "$repo" add lib/katana.sh; commit -m "ct/2 is $1"
+    record
+}
+map_line "ghcr.io/alice-lab/iris-env@sha256:$a64"
 author="$(git -C "$repo" rev-parse HEAD)"
 out="$(IRIS_UNCHECKED="CI only" push refs/heads/main "$author" "$merged")" && fail "pre-push: let an author's container line to main"
 grep -qF "ct/2" <<< "$out" || { fail "pre-push: refusal doesn't name the version:"; echo "$out" | sed 's/^/  /'; }
 push refs/heads/side "$author" "$merged" > /dev/null || fail "pre-push: refused an author's container line on a branch"
+map_line "ghcr.io/unsw-restech/iris-env@sha256:$a64"
+out="$(push refs/heads/main "$(git -C "$repo" rev-parse HEAD)" "$merged")" ||
+    { fail "pre-push: refused the org's own package as an author's container:"; echo "$out" | sed 's/^/  /'; }

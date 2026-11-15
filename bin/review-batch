@@ -59,7 +59,9 @@ PR_FIELDS = "number,title,url,author,headRefOid,baseRefName,labels,body,mergeabl
 VERSION = re.compile(r"^[a-z0-9-]+/[1-9][0-9]*$")
 # A digest map line, as lib/katana.sh writes it and bin/check holds it.
 MAP_LINE = re.compile(r"^    \[([a-z0-9-]+/[1-9][0-9]*)\]=(\S+)$")
-AUTHOR = re.compile(r"^ghcr\.io/[a-z0-9]([a-z0-9-]*[a-z0-9])?/iris-env@(sha256:[0-9a-f]{64})$")
+# A copy of lib/katana.sh's IRIS_AUTHOR_ENV, an author's container, which
+# bin/check compares with it.
+AUTHOR = re.compile(r"^ghcr\.io/[a-z0-9]([a-z0-9-]*[a-z0-9])?/iris-env@sha256:[0-9a-f]{64}$")
 PAIR = re.compile(r"^([1-9][0-9]*):([0-9a-f]{7,40})$")
 
 
@@ -83,10 +85,9 @@ def registry():
 
 def author_digest(value):
     """The digest of an author's container, or None if value isn't one."""
-    m = AUTHOR.match(value)
-    if not m or value.startswith(registry() + "@"):
+    if not AUTHOR.match(value) or value.startswith(registry() + "@"):
         return None
-    return m.group(2)
+    return value.split("@", 1)[1]
 
 
 def run(args, cwd=ROOT, check=True):

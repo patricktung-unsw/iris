@@ -236,7 +236,7 @@ check "run directory file names come from iris.rundir" run_dir_names
 # in git's index, notes (*.md, *.in) aside, keeps a constant of its own.
 # tests/bin/test_katana_constants.sh runs it on fixture trees.
 katana_constants() {
-    local IRIS_SYSTEM_CLONE IRIS_PYTHON_MODULE IRIS_ENVS_FOLDER IRIS_INSTANCE_CHECKOUT f vals
+    local IRIS_SYSTEM_CLONE IRIS_PYTHON_MODULE IRIS_ENVS_FOLDER IRIS_INSTANCE_CHECKOUT IRIS_AUTHOR_ENV f vals
     # shellcheck source=lib/katana.sh
     . lib/katana.sh || return
     # keep <file> <what> <want> <value>...: each <value> is <want>, and there is one.
@@ -260,6 +260,17 @@ katana_constants() {
         mapfile -t vals < <(tr -d '\r' < "$f" | sed -nE 's/^ *SYSTEM_APPS_DIR = "([^"]*)".*/\1/p')
         [ ${#vals[@]} = 0 ] || keep "$f" "SYSTEM_APPS_DIR" "$IRIS_SYSTEM_CLONE/workflows" "${vals[@]}"
     done
+    # The author's container pattern, IRIS_AUTHOR_ENV, in the two tools
+    # that can't source this file: the data mover's side of bin/envpull and
+    # bin/review-batch, which is Python.
+    if [ -f bin/envpull-dm.sh ]; then
+        mapfile -t vals < <(tr -d '\r' < bin/envpull-dm.sh | sed -nE "s/^author='(.*)'$/\1/p")
+        keep bin/envpull-dm.sh "the author's container pattern" "$IRIS_AUTHOR_ENV" "${vals[@]}"
+    fi
+    if [ -f bin/review-batch ]; then
+        mapfile -t vals < <(tr -d '\r' < bin/review-batch | sed -nE 's/^AUTHOR = re\.compile\(r"(.*)"\)$/\1/p')
+        keep bin/review-batch "the author's container pattern" "$IRIS_AUTHOR_ENV" "${vals[@]}"
+    fi
     # The IRIS instance's checkout's path starts the test instance's too.
     git grep -nF -e "$IRIS_SYSTEM_CLONE" -e "$IRIS_PYTHON_MODULE" -e "$IRIS_ENVS_FOLDER" -e "$IRIS_INSTANCE_CHECKOUT" -- bin lib module envs ':(exclude)*.md' ':(exclude)*.in' \
         ':(exclude)lib/katana.sh' ':(exclude)module/modulefiles/iris' |

@@ -69,15 +69,18 @@ declare -gA IRIS_LAB_ENVS=(
 # <word> is a digest map value, sha256:<64 hex>, unpublished, or an
 # author's container, ghcr.io/<login>/iris-env@sha256:<64 hex>, <login>
 # lowercase and never the org's, whose own containers are their digest
-# alone. iris_is_author_env <word>: whether it is an author's container.
-# iris_form_pins <form>: the versions a form pins, one a line, from its
-# "  IRIS_ENV_VERSION=<env>/<n>" lines. bin/envpull-dm.sh, which runs on
-# the data mover and can't source this file, keeps its own copies of the
-# first and last.
+# alone. iris_is_author_env <word>: whether it is an author's container,
+# by the pattern IRIS_AUTHOR_ENV, which .githooks/pre-push takes from here
+# too. iris_form_pins <form>: the versions a form pins, one a line, from
+# its "  IRIS_ENV_VERSION=<env>/<n>" lines. bin/envpull-dm.sh, which runs
+# on the data mover and can't source this file, keeps its own copies of
+# the first and last, and bin/review-batch, which is Python, its own of
+# IRIS_AUTHOR_ENV; bin/check's "Katana constants" check compares both
+# pattern copies with it.
+IRIS_AUTHOR_ENV='^ghcr\.io/[a-z0-9]([a-z0-9-]*[a-z0-9])?/iris-env@sha256:[0-9a-f]{64}$'
 iris_is_env_version() { [[ "$1" =~ ^[a-z0-9-]+/[1-9][0-9]*$ ]]; }
 iris_is_author_env() {
-    [[ "$1" =~ ^ghcr\.io/[a-z0-9]([a-z0-9-]*[a-z0-9])?/iris-env@sha256:[0-9a-f]{64}$ ]] &&
-        [[ "$1" != "$IRIS_ENV_REGISTRY@"* ]]
+    [[ "$1" =~ $IRIS_AUTHOR_ENV ]] && [[ "$1" != "$IRIS_ENV_REGISTRY@"* ]]
 }
 iris_is_env_digest() { [[ "$1" =~ ^(sha256:[0-9a-f]{64}|unpublished)$ ]] || iris_is_author_env "$1"; }
 iris_form_pins() { tr -d '\r' < "$1" | sed -nE 's/^  IRIS_ENV_VERSION=(.*)$/\1/p'; }

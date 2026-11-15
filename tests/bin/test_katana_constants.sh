@@ -83,6 +83,27 @@ printf '%s\n' '#!/bin/bash' "CODE=$clone" > "$scratch/job-clone/lib/tests/katana
 git -C "$scratch/job-clone" add -A
 expect fail "$scratch/job-clone" "$name"
 
+# The author's container pattern's copies, in bin/envpull-dm.sh, which
+# can't source lib/katana.sh on the data mover, and in bin/review-batch,
+# which is Python, agree with lib/katana.sh's IRIS_AUTHOR_ENV; a copy that
+# drifts or goes missing fails.
+make_copies() {
+    make_tree "$1"
+    cp bin/envpull-dm.sh bin/review-batch "$scratch/$1/bin/"
+    git -C "$scratch/$1" add -A
+}
+make_copies author-copies
+expect pass "$scratch/author-copies" "$name"
+for f in bin/envpull-dm.sh bin/review-batch; do
+    for script in 's/\[0-9a-f\]{64}/[0-9a-f]{40}/' '/iris-env@sha256/d'; do
+        make_copies author-drift
+        sed -i "$script" "$scratch/author-drift/$f"
+        git -C "$scratch/author-drift" add -A
+        expect fail "$scratch/author-drift" "$name"
+        rm -rf "$scratch/author-drift"
+    done
+done
+
 # hello-world's form isn't an imaging form, so it pins no environment.
 make_tree hello
 mkdir -p "$scratch/hello/workflows/hello-world"

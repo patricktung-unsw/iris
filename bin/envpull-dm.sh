@@ -57,8 +57,8 @@ login() {
     export APPTAINER_DOCKER_USERNAME="${line%%:*}" APPTAINER_DOCKER_PASSWORD="${line#*:}"
 }
 
-# A copy of lib/katana.sh's iris_is_author_env pattern: an author's
-# container, published by CI on their fork (#138).
+# A copy of lib/katana.sh's IRIS_AUTHOR_ENV, iris_is_author_env's pattern, an author's
+# container, published by CI on their fork (#138); bin/check compares it.
 author='^ghcr\.io/[a-z0-9]([a-z0-9-]*[a-z0-9])?/iris-env@sha256:[0-9a-f]{64}$'
 
 # no_digest <env>/<n>: prints why the map gives the version no digest to
