@@ -12,3 +12,5 @@ SIF
 # The shared OpenComposer or the IRIS instance (#163).
 system OpenComposer
 shared instance
+# The own environments folder (#138).
+personal envs

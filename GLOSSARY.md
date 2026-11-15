@@ -149,8 +149,12 @@ Katana's copy of one environment version's container, the file a job runs.
 _Avoid_: SIF, image file
 
 **Environments folder**:
-The folder in `katana_ai` scratch holding a container file for each environment version a live form pins, plus the researcher tools' version, and nothing else.
+The folder in `katana_ai` scratch holding a container file for each environment version a live form pins, plus the researcher tools' version, and nothing else. A workflow author's container files of versions not yet in IRIS's package go in their own environments folder instead.
 _Avoid_: Env cache, envs directory
+
+**Own environments folder**:
+The folder in a workflow author's own scratch, `/srv/scratch/<zID>/.envs`, holding container files laid out as the environments folder is, of versions CI published under the author's own GitHub account. A job from a clone other than the system clone, such as the author's run from the test instance, runs a container file there when the environments folder has none; a job from the system clone never looks there.
+_Avoid_: Personal envs, env cache
 
 **Researcher tools**:
 `iris-view`, `iris-compare`, the importer and rebuild: what a researcher views and compares runs with. They run in one environment version whatever the run's lab.
