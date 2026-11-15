@@ -985,19 +985,19 @@ check "ruff" bash -c 'uvx --quiet ruff@0.17.1 check --quiet --output-format conc
 # The Python tests: lib/tests once, in the researcher tools' version
 # (IRIS_TOOLS_ENV_VERSION), then each workflow's tests/ in the version its
 # form pins, each in that version's container (bin/envrun), on CPU, with
-# no network. A workflow's tests get synthetic_limit seconds, its pull
-# aside, and fail past it. A test file holding the line "# bin/check: on
-# the host" runs with the host's python3 instead: the job library's, which
-# runs outside any container, as a job's does.
-synthetic_limit=120
+# no network. A workflow's tests get IRIS_TEST_TIME_LIMIT seconds, its
+# pull aside, and fail past it. A test file holding the line "# bin/check:
+# on the host" runs with the host's python3 instead: the job library's,
+# which runs outside any container, as a job's does. lib/katana.sh's
+# iris_py_tests sorts them, for envs/report-workflows.sh too.
 # py_tests <dir> <version>: runs <dir>'s test_*.py; prints any failure.
 py_tests() {
-    local dir="$1" version="$2" root="$PWD" t out host=() in_container=() limit=()
-    [ "$dir" = lib/tests ] || limit=(--time-limit "$synthetic_limit")
-    for t in "$dir"/test_*.py; do
-        t="${t##*/}"
-        if tr -d '\r' < "$dir/$t" | grep -qx '# bin/check: on the host'; then host+=("${t%.py}"); else in_container+=("${t%.py}"); fi
-    done
+    local dir="$1" version="$2" root="$PWD" out host=() in_container=() limit=()
+    # shellcheck source=lib/katana.sh
+    . lib/katana.sh
+    [ "$dir" = lib/tests ] || limit=(--time-limit "$IRIS_TEST_TIME_LIMIT")
+    mapfile -t in_container < <(iris_py_tests "$dir" container)
+    mapfile -t host < <(iris_py_tests "$dir" host)
     if [ ${#in_container[@]} -gt 0 ]; then
         [ -n "$version" ] || { echo "FAIL: synthetic-dataset test: $dir: no IRIS_ENV_VERSION in its form to run it in"; failed=1; return; }
         out="$(cd "$dir" && "$root/bin/envrun" --no-network "${limit[@]}" "$version" python -m unittest "${in_container[@]}" 2>&1)" || {

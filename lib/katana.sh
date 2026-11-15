@@ -85,6 +85,24 @@ iris_is_author_env() {
 iris_is_env_digest() { [[ "$1" =~ ^(sha256:[0-9a-f]{64}|unpublished)$ ]] || iris_is_author_env "$1"; }
 iris_form_pins() { tr -d '\r' < "$1" | sed -nE 's/^  IRIS_ENV_VERSION=(.*)$/\1/p'; }
 
+# The Python tests, as bin/check runs them (envs/README.md) and the
+# containers workflow's report on a new version does too (#150): a
+# workflow's tests have IRIS_TEST_TIME_LIMIT seconds, a first run's pull
+# aside. iris_py_tests <dir> <container|host>: <dir>'s test_*.py modules,
+# one a line without .py, that run in a container, or those that run with
+# the host's python3, the files holding the line "# bin/check: on the
+# host".
+IRIS_TEST_TIME_LIMIT=120
+iris_py_tests() {
+    local t on_host
+    for t in "$1"/test_*.py; do
+        [ -f "$t" ] || continue
+        on_host=container
+        tr -d '\r' < "$t" | grep -qx '# bin/check: on the host' && on_host=host
+        [ "$on_host" != "$2" ] || { t="${t##*/}"; echo "${t%.py}"; }
+    done
+}
+
 # iris_env_file <env>/<n> [<folder>]: prints the version's container file
 # in <folder>, IRIS_ENVS_FOLDER unless given.
 iris_env_file() { echo "${2:-$IRIS_ENVS_FOLDER}/$1.sif"; }

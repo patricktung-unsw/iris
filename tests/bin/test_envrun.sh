@@ -173,3 +173,23 @@ out="$(run IRIS_CONTAINER_RUNTIME=docker FAKE_EXEC_SLEEP=5 -- --time-limit 1 mic
     echo "docker --time-limit 1 on a 5 s command: exit 0"
 has "docker past its time limit" "$out" "ran past its 1 s limit"
 lacks "docker --time-limit, second run" "$(log docker)" "[pull]"
+
+# --container <local name> runs the command in a container built under
+# that name and not yet published, such as the one the containers workflow
+# just built (#150), under Docker whatever the runtime, with the same
+# flags; it pulls nothing, and the version needn't be published.
+cat > "$fake/docker" <<'EOS'
+#!/bin/bash
+printf '[%s]' "$@" >> "$(dirname "$0")/docker.log"; echo >> "$(dirname "$0")/docker.log"
+EOS
+rm -f "$fake/docker.log" "$fake/apptainer.log"
+out="$(run -- --container iris-env-build:local --no-network microct/2 python -V)" ||
+    { echo "envrun --container: exit non-zero"; echo "$out" | sed 's/^/  /'; }
+out="$(log docker)"
+has "envrun --container" "$out" "[--network][none]"
+has "envrun --container" "$out" "[--volume][$repo:$repo]"
+has "envrun --container" "$out" "[iris-env-build:local][python][-V]"
+lacks "envrun --container" "$out" "[pull]"
+[ -z "$(log apptainer)" ] || echo "envrun --container: ran apptainer"
+out="$(run -- --container microct/1 python -V)" && echo "envrun --container with no name: exit 0"
+has "envrun --container with no name" "$out" "usage:"

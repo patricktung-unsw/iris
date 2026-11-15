@@ -10,6 +10,10 @@
 # in place of unpublished; once it is there, no later run builds that
 # version again. On any other branch of unsw-restech/iris the same build
 # and checks run, and nothing is published. Nothing builds on Katana.
+# Last, envs/report-workflows.sh runs the tests of every workflow pinning
+# an earlier version of the same environment in the new container and
+# lists each with passed or failed in the summary (#150); it runs after
+# Publish and never fails the run, so no workflow's result stops a version.
 name: containers
 on:
   push:
@@ -84,3 +88,5 @@ jobs:
       - name: Publish
         if: github.ref == 'refs/heads/main' || github.repository != 'unsw-restech/iris'
         run: envs/publish-container.sh "$LOCAL" "$VERSION"
+      - name: Report which workflows pass in it
+        run: envs/report-workflows.sh "$LOCAL" "$VERSION"

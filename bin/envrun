@@ -1,5 +1,5 @@
 #!/bin/bash
-# bin/envrun [--no-network] [--time-limit <seconds>] <env>/<n> <command> [<arg>...]:
+# bin/envrun [--no-network] [--time-limit <seconds>] [--container <local name>] <env>/<n> <command> [<arg>...]:
 # run a command in an environment version's container on the desktop or in
 # CI, on CPU, with this clone bound at its own path and the working folder
 # kept. bin/check runs the Python tests with it, each workflow's in the
@@ -10,6 +10,12 @@
 # --no-network runs the command with no network: loopback only.
 # --time-limit stops the command once it has run that many seconds, says
 # so and exits 124. A first run's pull happens before the limit starts.
+# --container runs the command in the container Docker holds under that
+# local name instead of the version's published one, under Docker whatever
+# the runtime, pulling nothing: the containers workflow runs the tests of
+# every workflow pinning an earlier version of the environment, any lab's,
+# in a version it has just built, before or without publishing it
+# (envs/report-workflows.sh, #150).
 #
 # The container is the version's digest in lib/katana.sh's digest map; an
 # unpublished version, or one not in the map, fails with one line.
@@ -29,20 +35,25 @@ set -eo pipefail
 repo="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
 # shellcheck source=lib/katana.sh
 . "$repo/lib/katana.sh"
-usage() { echo "usage: bin/envrun [--no-network] [--time-limit <seconds>] <env>/<n> <command> [<arg>...]" >&2; exit 2; }
-offline="" limit=""
+usage() { echo "usage: bin/envrun [--no-network] [--time-limit <seconds>] [--container <local name>] <env>/<n> <command> [<arg>...]" >&2; exit 2; }
+offline="" limit="" local_name=""
 while [[ "${1-}" == --* ]]; do
     case "$1" in
         --no-network) offline=yes; shift ;;
         --time-limit) [[ "${2-}" =~ ^[1-9][0-9]*$ ]] || usage; limit="$2"; shift 2 ;;
+        --container) [ -n "${2-}" ] || usage; local_name="$2"; shift 2 ;;
         *) usage ;;
     esac
 done
 iris_is_env_version "${1-}" && [ $# -ge 2 ] || usage
 version="$1"
 shift
-ref="$(iris_env_ref "$version")"
-runtime="${IRIS_CONTAINER_RUNTIME:-$(command -v apptainer > /dev/null && echo apptainer || echo docker)}"
+if [ -n "$local_name" ]; then
+    ref="$local_name" runtime=docker
+else
+    ref="$(iris_env_ref "$version")"
+    runtime="${IRIS_CONTAINER_RUNTIME:-$(command -v apptainer > /dev/null && echo apptainer || echo docker)}"
+fi
 
 # run <command>...: runs the container command, within the time limit if
 # there is one.
@@ -55,7 +66,7 @@ run() {
 }
 
 if [ "$runtime" = docker ]; then
-    docker image inspect "$ref" > /dev/null 2>&1 || docker pull -q "$ref" >&2
+    [ -n "$local_name" ] || docker image inspect "$ref" > /dev/null 2>&1 || docker pull -q "$ref" >&2
     net=()
     [ -z "$offline" ] || net=(--network none)
     # The uid has no passwd entry in the container, so USER carries the

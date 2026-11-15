@@ -215,7 +215,7 @@ A change to the lock after that is a rebuild with a new digest: put the version 
 
 Until IRIS's package is public ([#132](https://github.com/unsw-restech/iris/issues/132)), a fork's CI can't pull from it, so a version built as a layer fails on your fork at its `Build` step, when it pulls the version before it. A version built fresh needs nothing from IRIS's package. Until then a layer version can't be proved before review: leave it `unpublished`, say so in your PR, and the maintainer publishes it from `main` once the review batch merges it, as `envs/README.md`'s [Publishing a version](envs/README.md#publishing-a-version) describes. Making the package public needs one of the org's owners, so nothing in this procedure can do it.
 
-Either way, the lab's other workflows keep the version they pin until their owners prove them in the new one: moving a workflow to a newer version is a change to its folder, which needs a new run proof ([Run proof](#6-run-proof)), and its owner's choice. _#150 fills in which of them would pass: the version's CI run reports it. Until then nothing does._
+Either way, the lab's other workflows keep the version they pin until their owners prove them in the new one: moving a workflow to a newer version is a change to its folder, which needs a new run proof ([Run proof](#6-run-proof)), and its owner's choice. To show them where they stand, the `containers` run that builds your version also runs the tests of every workflow pinning an earlier version of your environment, any lab's, in the new container, and its summary lists each with passed or failed and a failure's first lines. A failure there never stops your version or your PR: it tells that workflow's owner what moving would take.
 
 ### 5. Test instance
 
