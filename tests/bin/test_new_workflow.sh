@@ -138,8 +138,11 @@ cmp -s "$c/lib/iris-job.sh" "$d/lib/iris-job.sh" && [ -s "$d/lib/copied-from" ] 
     echo "fresh: the manifest's owner email isn't jdoe@example.org"
 [ "$(cd "$c" && bin/manifest-owner workflows/scaffold-test/manifest.yml name)" = "Jane Doe" ] ||
     echo "fresh: the manifest's owner name isn't Jane Doe"
-order=$(grep -o 'href="workflows/[a-z0-9-]*/" class="workflow-card[^"]*"' "$c/index.html" | sed -n '1,3p' | tr '\n' ' ')
-[[ "$order" == *'microct-2d-segmentation/" class="workflow-card" href="workflows/scaffold-test/" class="workflow-card" href="workflows/microct-denoising/" class="workflow-card planned"'* ]] ||
+# The cards on either side of it, so the lab may hold any number of Active
+# cards already (#145's dry run scaffolded a second one).
+order=$(grep -o 'href="workflows/[a-z0-9-]*/" class="workflow-card[^"]*"' "$c/index.html" |
+    grep -B1 -A1 'workflows/scaffold-test/' | tr '\n' ' ')
+[[ "$order" =~ ^'href="workflows/'[a-z0-9-]+'/" class="workflow-card" href="workflows/scaffold-test/" class="workflow-card" href="workflows/microct-denoising/" class="workflow-card planned" '$ ]] ||
     echo "fresh: the card isn't after the lab's Active card and before its Planned ones: $order"
 for want in 'bin/check' 'run-proof' 'CONTRIBUTING.md' 'index.html' 'manifest.yml' 'commit'; do
     grep -qF "$want" "$scratch/fresh.out" || echo "fresh: what it prints as left to do doesn't name $want"
