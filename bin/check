@@ -532,7 +532,8 @@ check "README repo map names real paths" readme_paths
 # During the pilot, every Run button opens the system OnDemand (/pun/sys/),
 # the README and the landing page say only pilot testers can run workflows,
 # and the contribute page, CONTRIBUTING and the proposal form say proposals
-# open at launch. Launch removes every notice at once (CONTRIBUTING.md,
+# open at launch, and CONTRIBUTING that every workflow author is a pilot
+# tester until then. Launch removes every notice at once (CONTRIBUTING.md,
 # Status). Buttons still on the dev OnDemand (/pun/dev/) work for no one
 # else, so they need every notice.
 prelaunch_notice() {
@@ -554,6 +555,7 @@ README.md|work only for pilot testers until launch
 index.html|work only for pilot testers until launch
 contribute/index.html|Proposals open at launch
 CONTRIBUTING.md|Proposals open at launch
+CONTRIBUTING.md|Until launch, every workflow author is a pilot tester
 .github/ISSUE_TEMPLATE/proposal.yml|Proposals open at launch
 NOTICES
     if [ -n "$dev" ]; then

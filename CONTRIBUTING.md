@@ -219,7 +219,9 @@ Either way, the lab's other workflows keep the version they pin until their owne
 
 ### 5. Test instance
 
-The test instance is an OpenComposer you add to your own Katana OnDemand, under **Develop**, on the same fork commit as the IRIS instance, that shows you the forms in your own clone and runs them as you ([ADR-0012](docs/adr/0012-the-iris-instance-replaces-the-shared-opencomposer.md)). You prove your workflow there. During the pilot only pilot testers can read it, as only they can run IRIS on Katana. Add it once, from a shell on Katana:
+**Until launch, every workflow author is a pilot tester.** The test instance, its checkout in `katana_ai` scratch, and so the [run proof](#6-run-proof), which only a test-instance run gives, need `katana_ai_ro` membership, which only pilot testers have, and no other route proves a workflow, a `qsub` run included. Proposals and pull requests from authors outside the pilot open at launch, so before then no one outside it needs these steps; launch removes this notice with the others ([Status](#status)).
+
+The test instance is an OpenComposer you add to your own Katana OnDemand, under **Develop**, on the same fork commit as the IRIS instance, that shows you the forms in your own clone and runs them as you ([ADR-0012](docs/adr/0012-the-iris-instance-replaces-the-shared-opencomposer.md)). You prove your workflow there. Add it once, from a shell on Katana:
 
 1. `mkdir -p ~/ondemand/dev`
 2. `ln -s /srv/scratch/katana_ai/iris/OpenComposer-iris-test ~/ondemand/dev/`
@@ -308,7 +310,7 @@ The OpenComposer forms reach Katana separately: OpenComposer's `apps_dir` points
 
 ## Status
 
-IRIS is in a **pilot**. The "Run on Katana" buttons point at the system OnDemand instance (`/pun/sys/OpenComposer/...`), whose workflows only pilot testers (members of `katana_ai_ro`) can reach. At launch, remove every pre-launch notice: the pilot notices in the README and on the landing page, and the line saying proposals open at launch on the contribute page, in step 2 of [From fork to DOI](#from-fork-to-doi) and in the proposal form. `bin/check` fails if only some are gone.
+IRIS is in a **pilot**. The "Run on Katana" buttons point at the system OnDemand instance (`/pun/sys/OpenComposer/...`), whose workflows only pilot testers (members of `katana_ai_ro`) can reach. At launch, remove every pre-launch notice: the pilot notices in the README and on the landing page, the line saying proposals open at launch on the contribute page, in step 2 of [From fork to DOI](#from-fork-to-doi) and in the proposal form, and the notice that every workflow author is a pilot tester at the top of [Test instance](#5-test-instance). `bin/check` fails if only some are gone.
 
 The catalogue is **imaging only**, grouped into one section per lab. Each card carries a modality tag and a compute tag; Planned cards are labelled Planned and have no Run button. Every card reads Active or Planned: Active in the **Run and verified** tier, which a new workflow joins with its test-instance run ([Test instance](#5-test-instance)), and Planned in **Planned**. An Unmaintained workflow has no card. `hello-world` sits outside the catalogue as onboarding.
 

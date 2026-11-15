@@ -1,8 +1,9 @@
 #!/bin/bash
 # bin/check's pre-launch pairing against copies of the site in a scratch
 # repo: every pre-launch notice (the README's and the landing page's pilot
-# notices, and "Proposals open at launch" on the contribute page, in
-# CONTRIBUTING and in the proposal form) goes together at launch, and Run
+# notices, "Proposals open at launch" on the contribute page, in
+# CONTRIBUTING and in the proposal form, and CONTRIBUTING's notice that
+# every workflow author is a pilot tester until then) goes together at launch, and Run
 # buttons on /pun/dev/ need them all. Prints each failed case and nothing on
 # success, so bin/check can run it.
 #
@@ -21,6 +22,7 @@ notices=(
     'index.html|work only for pilot testers until launch'
     'contribute/index.html|Proposals open at launch'
     'CONTRIBUTING.md|Proposals open at launch'
+    'CONTRIBUTING.md|Until launch, every workflow author is a pilot tester'
     '.github/ISSUE_TEMPLATE/proposal.yml|Proposals open at launch'
 )
 
@@ -67,8 +69,9 @@ copy_site launched
 for notice in "${notices[@]}"; do drop_notice launched "$notice"; done
 pairing pass launched
 
-for notice in "${notices[@]}"; do
-    name="${notice%%|*}"; name="${name//\//-}"
+for i in "${!notices[@]}"; do
+    notice="${notices[$i]}"
+    name="${notice%%|*}"; name="$i-${name//\//-}"
     copy_site "$name-dev-notice-gone"
     dev_buttons "$name-dev-notice-gone"
     drop_notice "$name-dev-notice-gone" "$notice"
