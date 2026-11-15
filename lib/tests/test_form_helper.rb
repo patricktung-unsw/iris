@@ -31,21 +31,35 @@ class FormHelperTest < Minitest::Test
   end
 
   # A form rendered for another clone, such as the system clone a new
-  # workflow isn't in yet, reads its own files from its own folder, so
-  # the render is this commit as that clone would serve it (#145).
+  # workflow isn't in yet, reads and queries its own files in its own
+  # folder, while CODE names that clone's and check: keeps ::File (#145).
   def test_a_render_for_another_clone_reads_the_forms_own_files
     path = File.join(@apps, "fixture", "form.yml.erb")
     FileUtils.mkdir_p(File.join(@apps, "fixture", "src"))
     File.write(File.join(@apps, "fixture", "src", "entry.txt"), "own entry")
     File.write(path, <<~YAML)
       <%- code = File.expand_path(File.join(@apps_dir, @OC_DIR_NAME)) -%>
+      <%- entry = File.join(code, "src", "entry.txt") -%>
       form: {}
-      script: "CODE=<%= code %> <%= File.read(File.join(code, "src", "entry.txt")) %>"
+      script: "CODE=<%= code %> <%= File.exist?(entry) ? File.read(entry) : "none" %>"
+      check: |
+        oc_assert(File.equal?(::File), "check: sees another File")
     YAML
     other = File.join(@apps, "elsewhere", "workflows")
-    assert_equal "CODE=#{other}/fixture own entry", FormHelper.render(path, other)["script"]
+    f = FormHelper.render(path, other)
+    assert_equal "CODE=#{other}/fixture own entry", f["script"]
     assert_equal "CODE=#{@apps}/fixture own entry", FormHelper.render(path)["script"]
     assert_raises(Errno::ENOENT) { File.read(File.join(other, "fixture", "src", "entry.txt")) }
+    assert_nil FormHelper.check(f, FormHelper.defaults(f))
+  end
+
+  def test_a_render_that_fails_leaves_no_clone_behind
+    path = File.join(@apps, "fixture", "form.yml.erb")
+    FileUtils.mkdir_p(File.dirname(path))
+    File.write(path, %(<% raise "broken" %>\n))
+    assert_raises(RuntimeError) { FormHelper.render(path, File.join(@apps, "elsewhere")) }
+    assert_nil FormHelper::Context::File.served
+    assert_nil FormHelper::Context::File.own
   end
 
   def test_halt_in_check_rejects_with_its_message

@@ -10,10 +10,13 @@
 #   render     ERB with @apps_dir and @OC_DIR_NAME set (the GET), then YAML
 #              (run.rb read_yaml); @apps_dir is the folder holding the
 #              form's workflow folder unless given (nil, as on run.rb's
-#              re-read at submit); a file the form reads from its folder
-#              under another @apps_dir, such as its entry script under the
-#              system clone's, comes from the form's own folder, so the
-#              render is this commit as that clone would serve it
+#              re-read at submit); a file in the form's folder under
+#              another @apps_dir, such as its entry script under the
+#              system clone's, which a new workflow isn't in yet, is read
+#              from the form's own folder by File's reads and queries
+#              (Context::File), though not by Dir, IO or a subprocess, so
+#              the reference form's COMMIT still names that clone's commit,
+#              or none
 #   defaults   each field's value; a checkbox's or multi_select's chosen
 #              labels become their data values, a multi_select entry that
 #              is no option stays as typed (form.js getValue), joined by
@@ -53,22 +56,26 @@ require "yaml"
 
 module FormHelper
   class Context
-    # The form's File, which reads a file in its workflow folder under
-    # @apps_dir, such as its entry script, from the form's own folder, so
-    # a render for another clone's @apps_dir, such as the system clone's,
-    # is this commit as that clone would serve it, even before it is
-    # deployed there (#145). Everything else is ::File.
+    # The File a form's ERB sees, by constant lookup in get_binding: its
+    # reads and queries of a path in the form's folder under @apps_dir,
+    # such as its entry script, go to the form's own folder, so a render
+    # for another clone's @apps_dir, such as the system clone's, works
+    # before the workflow is deployed there (#145). Path arithmetic
+    # (join, expand_path) and everything else is ::File's. served and own
+    # are set only for the length of one render.
     module File
+      READS = %i[read readlines foreach exist? file? directory? size size? zero? empty? readable?].freeze
+
       class << self
         attr_accessor :served, :own
 
-        def read(path, *args, **opts)
-          path = path.to_s
-          path = own + path.delete_prefix(served) if served && path.start_with?(served + "/")
-          ::File.read(path, *args, **opts)
+        def method_missing(name, *args, **opts, &block)
+          path = args.first
+          if READS.include?(name) && served && path.is_a?(String) && path.start_with?(served + "/")
+            args = [own + path.delete_prefix(served), *args.drop(1)]
+          end
+          ::File.public_send(name, *args, **opts, &block)
         end
-
-        def method_missing(name, *args, **opts, &block) = ::File.public_send(name, *args, **opts, &block)
         def respond_to_missing?(name, include_private = false) = ::File.respond_to?(name, include_private)
       end
 
