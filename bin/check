@@ -736,6 +736,18 @@ page_template() {
 }
 check "page template rules (templates/workflow-page.html)" page_template
 
+# bin/new-workflow leaves {{TODO: ...}} placeholders on a new workflow's
+# card and in its manifest, as on its page, for its author to write, and
+# the tier table's line citing its job (tier_jobs). Any "{{" fails here.
+# tests/bin/test_new_workflow.sh runs it on a scaffold.
+placeholders() {
+    local f
+    for f in index.html workflows/*/manifest.yml; do
+        [ -f "$f" ] && tr -d '\r' < "$f" | grep -n '{{' | sed "s|^\([0-9]*\):.*|$f:\1: a placeholder left to fill ({{...}})|"
+    done
+}
+check "placeholders left in index.html or a manifest" placeholders
+
 # Page text keeps to GLOSSARY.md's terms (CODING_STANDARDS.md). Only the
 # Avoid words that have drifted onto pages are matched, since most Avoid
 # words (sync, results, app) are fine in other senses: "scan" for Volume,
