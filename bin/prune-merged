@@ -16,8 +16,11 @@
 # locked, missing, has uncommitted or untracked files, or is the working
 # directory of a running process (a shell sitting in a removed worktree
 # fails each later call; /proc shows no Windows process, but git worktree
-# remove then fails and is reported). The listing ends with the --apply
-# line for origin/main's tip. --apply fetches again, refuses if
+# remove then fails and is reported). An ssh ControlMaster (mux) doesn't
+# count: it keeps the folder its first ssh ran in, such as the worktree a
+# bin/syspull ran from, until ControlPersist ends it, and never reads it.
+# An ssh command still running there counts like any process. The listing
+# ends with the --apply line for origin/main's tip. --apply fetches again, refuses if
 # origin/main has moved, then removes what a listing would show now: plain
 # `git worktree remove`, then `git branch -D`, each its own git command.
 # -D, since -d checks against the branch's upstream or the main clone's
@@ -59,9 +62,13 @@ while IFS= read -r line; do
 done < <(git worktree list --porcelain)
 
 # Every running process's working directory we can read, as
-# "<pid>\t<name>\t<dir>", tab-separated since a folder name may hold spaces.
+# "<pid>\t<name>\t<dir>", tab-separated since a folder name may hold spaces,
+# leaving out ssh muxes, whose command line reads "ssh: <socket> [mux]". A
+# process gone before its command line is read counts, as an unreadable
+# working directory doesn't.
 cwds=$(for p in /proc/[0-9]*; do
-    d=$(readlink "$p/cwd" 2>/dev/null) && printf '%s\t%s\t%s\n' "${p#/proc/}" "$(cat "$p/comm" 2>/dev/null)" "$d"
+    [[ "$(tr '\0' ' ' 2>/dev/null < "$p/cmdline")" != "ssh: "*" [mux]"* ]] &&
+        d=$(readlink "$p/cwd" 2>/dev/null) && printf '%s\t%s\t%s\n' "${p#/proc/}" "$(cat "$p/comm" 2>/dev/null)" "$d"
 done)
 # busy <dir>: prints "pid <pid> <name>" for the first process working in <dir>.
 busy() {

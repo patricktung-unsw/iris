@@ -9,8 +9,8 @@
 
 cd "$(dirname "$(readlink -f "$0")")/../.." || exit 1
 fake="$(mktemp -d)"
-sleeper=
-trap '[ -z "$sleeper" ] || kill "$sleeper" 2>/dev/null; rm -rf "$fake"' EXIT
+sleeper='' mux='' ssh_client=''
+trap 'kill $sleeper $mux $ssh_client 2>/dev/null; rm -rf "$fake"' EXIT
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@example.com GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@example.com
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
 
@@ -58,6 +58,16 @@ branch merged-busy "$fake/iris-4" && land merged-busy
 mkdir "$fake/iris-4/sub dir"
 (cd "$fake/iris-4/sub dir" && exec sleep 300) &
 sleeper=$!
+# An ssh ControlMaster (mux) keeps the folder its first ssh ran in as its
+# working directory until ControlPersist ends it, but never reads it: no
+# reason to keep the worktree (one held #150's retro worktree). An ssh
+# command still running in a worktree, a mux's client included, keeps it.
+branch merged-mux "$fake/iris-7" && land merged-mux
+(cd "$fake/iris-7" && exec -a "ssh: $fake/cm-0123 [mux]" sleep 300) &
+mux=$!
+branch merged-ssh "$fake/iris-8" && land merged-ssh
+(cd "$fake/iris-8" && exec -a "ssh katana" sleep 300) &
+ssh_client=$!
 # A worktree just made from origin/main, as a starting subagent's is: clean,
 # no process in it, no commit of its own yet.
 git -C "$clone" worktree add -q -b fresh "$clone/.claude/worktrees/agent-2" origin/main
@@ -87,6 +97,8 @@ has locked "^  merged-locked  \(worktree $fake/iris-5\): its worktree is locked$
 has missing "^  merged-missing  \(worktree $fake/iris-6\): its worktree folder is missing"
 has dirty "^  merged-dirty  \(worktree $fake/iris-2\): uncommitted or untracked files$"
 has untracked "^  merged-untracked  \(worktree $fake/iris-3\): uncommitted or untracked files$"
+has mux "^  merged-mux  \(worktree $fake/iris-7\)$"
+has ssh "^  merged-ssh  \(worktree $fake/iris-8\): a running process has it as its working directory \(pid $ssh_client sleep\)$"
 has busy "^  merged-busy  \(worktree $fake/iris-4\): a running process has it as its working directory \(pid $sleeper sleep\)$"
 last=$(tail -n1 <<< "$out")
 [ "$last" = "To remove them: bin/prune-merged --apply $tip" ] || echo "prune-merged: last line is '$last'"
@@ -127,11 +139,13 @@ gone apply merged-plain
 gone apply merged-wt "$wt_plain"
 gone apply merged-harness "$wt_harness"
 gone apply moved
+gone apply merged-mux "$fake/iris-7"
 kept apply unmerged
 kept apply main
 kept apply merged-dirty "$fake/iris-2"
 kept apply merged-untracked "$fake/iris-3"
 kept apply merged-busy "$fake/iris-4"
+kept apply merged-ssh "$fake/iris-8"
 kept apply fresh "$clone/.claude/worktrees/agent-2"
 kept apply merged-locked "$fake/iris-5"
 kept apply merged-missing
