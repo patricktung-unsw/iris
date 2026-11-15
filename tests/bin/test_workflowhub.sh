@@ -14,7 +14,7 @@ fake="$(mktemp -d)"
 trap 'rm -rf "$fake"' EXIT
 tree="$fake/tree"
 mkdir -p "$fake/bin" "$fake/home" "$tree/bin"
-cp bin/workflowhub "$tree/bin/"
+cp bin/workflowhub bin/manifest-owner "$tree/bin/"
 
 # seg: a catalogue workflow with a form, an entry script, an owner and
 # tags. later: a Planned workflow, a page and nothing else. hello-world:
@@ -37,7 +37,8 @@ description: |
 owner:
   name: Jane Doe
   github: jdoe
-  orcid: 0000-0002-1825-0097
+  email: jdoe@example.org  # the page links it
+  orcid: "0000-0002-1825-0097"
 YAML
 printf '%s\n' 'name: IRIS Hello World' 'description: |' '  A test.' > "$tree/workflows/hello-world/manifest.yml"
 cite_page() {  # cite_page [<li> line]: seg's page, listing that citable version
@@ -134,6 +135,23 @@ sed -i '/^tags:/d' "$tree/workflows/seg/manifest.yml"
 run "" --values seg
 exits no-tags 2
 has no-tags "workflows/seg/manifest.yml has no tags:"
+cp "$fake/manifest.yml" "$tree/workflows/seg/manifest.yml"
+# The owner is read by bin/manifest-owner, so an owner block it refuses is
+# refused with its reason, and an unset ORCID is asked for.
+sed -i '/^  email:/d' "$tree/workflows/seg/manifest.yml"
+run "" --values seg
+exits no-email 2
+has no-email "owner has no email"
+cp "$fake/manifest.yml" "$tree/workflows/seg/manifest.yml"
+sed -i '/^owner:/,$d' "$tree/workflows/seg/manifest.yml"
+run "" --values seg
+exits no-owner 2
+has no-owner "no owner block"
+cp "$fake/manifest.yml" "$tree/workflows/seg/manifest.yml"
+sed -i '/^  orcid:/d' "$tree/workflows/seg/manifest.yml"
+run "" --values seg
+exits no-orcid 0
+has no-orcid "Creator: Jane Doe, ORCID asked for"
 cp "$fake/manifest.yml" "$tree/workflows/seg/manifest.yml"
 IRIS_WORKFLOWHUB=http://example.com run "" --values seg
 exits bad-host 2

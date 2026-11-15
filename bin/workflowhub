@@ -236,7 +236,7 @@ for f in form.yml.erb manifest.yml src/run.py index.html; do
 done
 
 # manifest_value <key>: one value from the workflow's manifest.yml, a key at
-# the top level (name) or one level down (owner.name), given on the key's
+# the top level (name) or one level down (a.b), given on the key's
 # line or as a | block under it. It reads only that plain YAML, so it needs
 # no YAML library on the owner's desktop; a missing key prints nothing.
 manifest_value() {
@@ -273,10 +273,12 @@ PY
 }
 
 # owner_field <name|orcid>: the workflow owner's name or ORCID iD from the
-# manifest's owner block (owner: with name:, github: and an optional orcid:,
-# #136); this is the one place that reads them. Empty when unset, so the
-# walkthrough asks.
-owner_field() { manifest_value "owner.$1"; }
+# manifest's owner block, read by bin/manifest-owner (#136), which reads that
+# block for every tool. The ORCID is empty when unset, so the walkthrough
+# asks. An owner block it refuses is refused here, with its reason.
+owner_field() { (cd "$ROOT" && bin/manifest-owner "$WF/manifest.yml" "$1"); }
+OWNER_PROBLEM=$(cd "$ROOT" && bin/manifest-owner "$WF/manifest.yml" 2>&1) ||
+  refuse "$OWNER_PROBLEM; the WorkflowHub entry's creator is the workflow owner in the manifest"
 
 TITLE_NAME=$(manifest_value name)
 TAGS=$(manifest_value tags)
@@ -287,8 +289,8 @@ for k in name description tags; do
 done
 # The manifest's name, prefixed so it reads on its own in WorkflowHub's search.
 TITLE="UNSW HPC Katana - $TITLE_NAME"
-OWNER=$(owner_field name || true)
-OWNER_ORCID=$(owner_field orcid || true)
+OWNER=$(owner_field name)
+OWNER_ORCID=$(owner_field orcid)
 
 WH="${IRIS_WORKFLOWHUB:-https://workflowhub.eu}"
 WH="${WH%/}"
@@ -343,7 +345,7 @@ fi
 if [[ $VALUES_ONLY == yes ]]; then
   printf '%s\n' "Instance: $WH" "Team: $TEAM_URL ($TEAM_NAME)" "Repository: $REPO_URL" "Branch: $BRANCH" \
     "Main workflow file: $MAIN_FILE" "Workflow type: $WF_TYPE" "Licence: $LICENCE" "Title: $TITLE" "Tags: $TAGS"
-  echo "Creator: ${OWNER:-the workflow owner (the manifest has no owner name, so it asks)}, ORCID ${OWNER_ORCID:-asked for}"
+  echo "Creator: $OWNER, ORCID ${OWNER_ORCID:-asked for}"
   echo "Creator: $ORG_CREATOR"
   if [[ -n "$ENTRY_URL" ]]; then echo "Entry: $ENTRY_URL (from $ENTRY_FROM), so it adds a new version"
   else echo "Entry: none yet, so it registers a new one"; fi
@@ -412,13 +414,8 @@ say "Each is permanent, and it stops for a yes before each one."
 [[ $PRODUCTION == yes ]] || note "On $WH, which mints no DOIs, it stops after Publish."
 pause "Signed in and listed? Press Enter."
 printf '\n'
-# The workflow owner's name and ORCID iD go in the creators list; asked for
-# only when the manifest lacks them.
-if [[ -z "$OWNER" ]]; then
-  OWNER=$(_existing OWNER || true)
-  until [[ -n "${OWNER:-}" ]]; do ask OWNER ">>> ENTER YOUR NAME, as the workflow owner:"; done
-  write_env OWNER "$OWNER"
-fi
+# The workflow owner's name and ORCID iD go in the creators list. The
+# manifest always gives the name; the ORCID is asked for when it lacks one.
 if ! [[ "${OWNER_ORCID:-}" =~ $ORCID_RE ]]; then
   printf '  %s%sOWNER ORCID NEEDED%s\n' "$BOLD" "$YELLOW" "$RESET"
   say "Your ORCID iD goes in the creators list, and belongs in $WF/manifest.yml."
