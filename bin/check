@@ -636,7 +636,8 @@ check "Run and verified workflows cite a job" tier_jobs
 # commits still lead somewhere, carries the unmaintained-banner. Demoting
 # one takes the Run button off the page, the card off the catalogue, the
 # form into _archive/<slug>/, so OpenComposer stops serving it, and its
-# line out of CODEOWNERS, since it has no workflow owner; this fails
+# manifest with it, since it has no workflow owner left to mention on a
+# PR (.github/workflows/owner-mention.yml reads workflows/); this fails
 # until every step is done, whichever of the row or the banner came first.
 # tests/bin/test_unmaintained.sh runs it on fixture trees.
 unmaintained() {
@@ -659,11 +660,11 @@ unmaintained() {
             echo "index.html: $slug is Unmaintained, but has a catalogue card"
         [ -e "workflows/$slug/form.yml.erb" ] &&
             echo "workflows/$slug/form.yml.erb: $slug is Unmaintained; move its form to _archive/$slug/"
-        tr -d '\r' 2>/dev/null < .github/CODEOWNERS | grep -qE "^/workflows/$slug/ " &&
-            echo ".github/CODEOWNERS: $slug is Unmaintained; remove its /workflows/$slug/ line"
+        [ -e "workflows/$slug/manifest.yml" ] &&
+            echo "workflows/$slug/manifest.yml: $slug is Unmaintained; move its manifest to _archive/$slug/"
     done
 }
-check "unmaintained workflows have no Run button, card, live form or CODEOWNERS line" unmaintained
+check "unmaintained workflows have no Run button, card, live form or manifest" unmaintained
 
 # The guide owns staging and viewing (CONTRIBUTING.md, Page): its data mover host,
 # scratch quota, WinSCP note, Globus link (app.globus.org) and Katana scratch
@@ -673,6 +674,67 @@ guide_copies() {
     workflow_pages | xargs -r grep -H -n -i 'kdm\.restech\|128 GB\|winscp\|app\.globus\.org\|ee4d18e3-a68d-447a-8acc-8b97771239d4'
 }
 check "workflow page repeats the guide (link guide/#stage or #view)" guide_copies
+
+# A workflow page is written from templates/workflow-page.html
+# (CONTRIBUTING.md, Page), whose placeholders are {{NAME}}, filled by
+# bin/new-workflow, and {{TODO: ...}}, written by the author. Every
+# workflow page fails with a placeholder left ("{{" anywhere), or with a
+# script (a <script>, an on...= attribute in a tag, a javascript: link),
+# an <iframe>, <object> or <embed>. Every one but hello-world, which keeps
+# its own styles, fails with styles from outside IRIS: a <style> element, a
+# style= attribute, or a <link> whose href the template's <link>s don't
+# have. A page with a form, hello-world apart, keeps the template's fixed
+# sections, each id="..." the template has, and its wf-review line, word
+# for word. tests/bin/test_page_template.sh runs it on fixture trees.
+page_template() {
+    local tpl=templates/workflow-page.html f d styles sections
+    [ -f "$tpl" ] || { echo "$tpl is missing"; return; }
+    for f in $(workflow_pages); do
+        d=$(dirname "$f")
+        styles=1; sections=1
+        [ "$d" = workflows/hello-world ] && { styles=0; sections=0; }
+        [ -f "$d/form.yml.erb" ] || sections=0
+        awk -v f="$f" -v tpl="$tpl" -v styles="$styles" -v sections="$sections" '
+            function trim(s) { sub(/^[ \t]+/, "", s); sub(/[ \t]+$/, "", s); return s }
+            # The href of each <link> tag in s, as keys of out.
+            function links(s, out,   t) {
+                while (match(s, /<[Ll][Ii][Nn][Kk][ \t][^>]*>/)) {
+                    t = substr(s, RSTART, RLENGTH); s = substr(s, RSTART + RLENGTH)
+                    out[match(t, /href="[^"]*"/) ? substr(t, RSTART + 6, RLENGTH - 7) : "(no href)"] = 1
+                }
+            }
+            # The value of each id="..." in s, as keys of out.
+            function ids(s, out) {
+                while (match(s, / id="[^"]*"/)) { out[substr(s, RSTART + 5, RLENGTH - 6)] = 1; s = substr(s, RSTART + RLENGTH) }
+            }
+            { sub(/\r$/, "") }
+            FNR == NR {
+                links($0, ok); ids($0, need)
+                if (review == "" && /class="wf-review"/) review = trim($0)
+                next
+            }
+            {
+                lc = tolower($0)
+                if (index($0, "{{")) print f ":" FNR ": a placeholder left to fill ({{...}})"
+                if (lc ~ /<(script|iframe|object|embed)[ \t>\/]|<script$/ || lc ~ /<[a-z][^>]*[ \t]on[a-z]+[ \t]*=/ || lc ~ /javascript:/)
+                    print f ":" FNR ": a script, iframe or embed; IRIS pages carry none"
+                if (styles && (lc ~ /<style[ \t>]/ || lc ~ /<[a-z][^>]*[ \t]style[ \t]*=/))
+                    print f ":" FNR ": a style of its own; pages use IRIS'"'"'s styles, assets/iris.css"
+                if (styles) {
+                    split("", got); links($0, got)
+                    for (h in got) if (!(h in ok)) print f ":" FNR ": a <link> to " h ", which " tpl " does not have"
+                }
+                ids($0, have)
+                if (review != "" && trim($0) == review) has_review = 1
+            }
+            END {
+                if (!sections) exit
+                for (i in need) if (!(i in have)) print f ": no id=\"" i "\" section, which " tpl " has"
+                if (!has_review) print f ": no wf-review line as " tpl " words it"
+            }' "$tpl" "$f"
+    done
+}
+check "page template rules (templates/workflow-page.html)" page_template
 
 # Page text keeps to GLOSSARY.md's terms (CODING_STANDARDS.md). Only the
 # Avoid words that have drifted onto pages are matched, since most Avoid
@@ -698,34 +760,50 @@ avoid_names() {
 }
 check "name uses a glossary Avoid word (see GLOSSARY.md)" avoid_names
 
-# Every catalogue workflow with a form names its workflow owner on its
-# page, under the description, as <p class="wf-owner"> linking their GitHub
-# profile, and .github/CODEOWNERS has a "/workflows/<slug>/ @<login>" line
-# so that owner reviews changes to its folder. hello-world is onboarding,
-# and Planned workflows have no form. Every /workflows/ line names a folder
-# with a form.
+# Every catalogue workflow with a form names its workflow owner in its
+# manifest (bin/manifest-owner gives the shape) and on its page, under the
+# description, as <p class="wf-owner"> linking their GitHub profile and
+# then their email as a mailto: link reading the same address (the
+# owner line in templates/workflow-page.html), with the same login, name
+# and email in both. .github/workflows/owner-mention.yml
+# mentions the manifest's owner on a PR that touches the folder, which
+# reaches them without write access, as CODEOWNERS can't (#136), so no
+# CODEOWNERS file GitHub reads holds a /workflows/ line. hello-world is
+# onboarding, and Planned workflows have no form.
+# tests/bin/test_workflow_owner.sh runs it on fixture trees.
 workflow_owner() {
-    local f d owners p login
-    owners=$(tr -d '\r' 2>/dev/null < .github/CODEOWNERS)
-    grep -oE '^/workflows/[^ ]*' <<< "$owners" | while IFS= read -r p; do
-        [[ "$p" =~ ^/workflows/[a-z0-9-]+/$ ]] && [ -f ".${p}form.yml.erb" ] ||
-            echo ".github/CODEOWNERS: $p is not a workflow folder with a form (/workflows/<slug>/)"
+    local f d page login name mailto email_text m_login m_name m_email
+    for f in .github/CODEOWNERS CODEOWNERS docs/CODEOWNERS; do
+        tr -d '\r' 2>/dev/null < "$f" | grep -nE '^[^#]*workflows/' | sed "s|^|$f:|;s|\$| (a workflow's owner goes in its manifest.yml, not CODEOWNERS)|"
     done
     for f in workflows/*/form.yml.erb; do
         d=$(dirname "$f")
         [ "$d" = workflows/hello-world ] && continue
-        login=$(tr -d '\r' 2>/dev/null < "$d/index.html" |
-            sed -nE 's|.*<p class="wf-owner">Workflow owner: <a href="https://github\.com/([A-Za-z0-9-]+)".*|\1|p' | head -n1)
-        if [ -z "$login" ]; then
-            echo "$d/index.html: no workflow owner (<p class=\"wf-owner\">Workflow owner: <a href=\"https://github.com/<login>\" ...)"
-        elif ! grep -qE "^/$d/ +@" <<< "$owners"; then
-            echo ".github/CODEOWNERS: no \"/$d/ @$login\" line"
-        elif ! grep -E "^/$d/ " <<< "$owners" | grep -qE " @$login( |$)"; then
-            echo ".github/CODEOWNERS: /$d/ does not name @$login, the owner on its page"
-        fi
+        page=$(tr -d '\r' 2>/dev/null < "$d/index.html" |
+            sed -nE 's|.*<p class="wf-owner">Workflow owner: <a href="https://github\.com/([A-Za-z0-9-]+)"[^>]*>([^<]*)</a>(.*)|\1\t\2\t\3|p' | head -n1)
+        IFS=$'\t' read -r login name page <<< "$page"
+        mailto=$(sed -nE 's|^ · <a href="mailto:([^"]*)">([^<]*)</a></p>.*|\1|p' <<< "$page")
+        email_text=$(sed -nE 's|^ · <a href="mailto:([^"]*)">([^<]*)</a></p>.*|\2|p' <<< "$page")
+        [ -n "$login" ] ||
+            echo "$d/index.html: no workflow owner (templates/workflow-page.html's <p class=\"wf-owner\"> line)"
+        [ -z "$login" ] || [ -n "$mailto" ] ||
+            echo "$d/index.html: the workflow owner line has no contact (· <a href=\"mailto:<email>\"><email></a> after the name, as templates/workflow-page.html has it)"
+        [ -z "$mailto" ] || [ "$mailto" = "$email_text" ] ||
+            echo "$d/index.html: the owner's contact links mailto:$mailto but reads \"$email_text\""
+        bin/manifest-owner "$d/manifest.yml" 2>&1 || continue
+        m_login=$(bin/manifest-owner "$d/manifest.yml" github)
+        m_name=$(bin/manifest-owner "$d/manifest.yml" name)
+        m_email=$(bin/manifest-owner "$d/manifest.yml" email)
+        [ -n "$login" ] || continue
+        [ "$login" = "$m_login" ] ||
+            echo "$d: the page's workflow owner is $login, the manifest's is $m_login"
+        [ "$name" = "$m_name" ] ||
+            echo "$d: the page names the workflow owner \"$name\", the manifest \"$m_name\""
+        [ -z "$mailto" ] || [ "$mailto" = "$m_email" ] ||
+            echo "$d: the page's owner contact is $mailto, the manifest's email is $m_email"
     done
 }
-check "workflow owner on the page and in CODEOWNERS" workflow_owner
+check "workflow owner in the manifest and on the page" workflow_owner
 
 # A workflow page lists its citable versions by DOI, date and commit, never
 # as a version number (ADR-0002): one line each in its "Cite this workflow"

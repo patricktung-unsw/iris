@@ -42,10 +42,12 @@ iris/
 ├── assets/
 │   └── iris.css                      # Shared styles for workflow detail pages and the guide
 ├── guide/index.html                  # "Using IRIS on Katana": staging and viewing, shared by imaging workflows
+├── templates/workflow-page.html      # The page template every workflow page is written from (Page)
 ├── _archive/<slug>/                  # Retired OpenComposer forms, never served by OpenComposer
 ├── .github/workflows/check.yml       # CI: runs bin/check on every push and pull request
 ├── .github/workflows/ready.yml       # CI: labels a pull request ready once check passes, and outside-folder if bin/outside-folder flags it
 ├── .github/workflows/containers.yml  # CI: builds and checks each unpublished environment version; publishes it from main, and on a fork under its owner's account
+├── .github/workflows/owner-mention.yml  # CI: mentions each touched workflow's owner, from its manifest, on a PR
 ├── .github/ISSUE_TEMPLATE/proposal.yml  # Issue form for a workflow author's proposal
 ├── .github/pull_request_template.md  # The checklist a workflow PR is ready for review on
 ├── .githooks/commit-msg              # Refuses AI attribution, git's conflict list or a glossary Avoid word in a commit message; AGENTS.md turns the hooks on
@@ -68,6 +70,8 @@ iris/
 │   ├── iris-rebuild                  # Rebuild a lost tracking store from run directories
 │   ├── iris-view                     # View a run's labels over its volume in napari (in a Virtual Desktop)
 │   ├── katana-test                   # Run the form, module and job-library tests on Katana (desktop)
+│   ├── manifest-owner                # Read a workflow owner from its manifest.yml, checking the owner block's shape
+│   ├── owner-mentions                # The comment the owner-mention Action posts on a PR (CI)
 │   ├── libcopy                       # Copy the library's job side into a workflow's lib/, recording the commit; check every copy (bin/check runs it)
 │   ├── ocpull                        # Show, then deploy, what moving the fork's two checkouts to its main brings the instances (desktop)
 │   ├── ocpull-checkouts.sh           # ocpull's side on Katana: list a move, or move both checkouts or neither
@@ -99,7 +103,7 @@ iris/
     │   └── local/run_local.sh, run_local.ps1
     └── microct-2d-segmentation/      # Reference workflow: copy it to start a new one
         ├── index.html
-        ├── form.yml.erb, manifest.yml  # OpenComposer form
+        ├── form.yml.erb, manifest.yml  # OpenComposer form; the manifest names the workflow owner
         ├── src/run.py                # Entry point: train, then segment into a run directory
         ├── lib/                      # Its own copy of the library's job side, which its jobs run (bin/libcopy; never edited by hand)
         ├── run-proof.json            # Its run proof, from a test-instance run (bin/run-proof), once it has one
@@ -150,11 +154,30 @@ If the workflow ships a `local/run_local.ps1`, **keep it ASCII-only**. These fil
 
 ### 2. Page
 
-_#135 fills this step with a page template of fixed sections and `bin/check` rules for it. Until then:_ write the page text in `index.html`, starting from the reference workflow's page. Document the dataset layout your workflow reads, since workflows differ, and link the guide (`../../guide/#stage` and `../../guide/#view`) for staging and viewing rather than repeating its steps. Use relative links only: root-absolute links like `href="/"` resolve outside `/iris/` and 404.
+Your workflow's `index.html` is written from the page template, `templates/workflow-page.html`, so every workflow page has the same sections and looks like IRIS; you write the words. Its placeholders come in two kinds: `{{NAME}}`, a value the [scaffold](#1-scaffold) fills, or you do while that step is by hand (`{{SLUG}}`, `{{TITLE}}`, `{{LAB_ID}}`, `{{LAB_NAME}}`, `{{OWNER_LOGIN}}`, `{{OWNER_NAME}}`, `{{OWNER_EMAIL}}`), and `{{TODO: ...}}`, which says what you write in its place. Replace each with your text, braces and all.
+
+The template's fixed sections, each with its `id`, are what the workflow does (`what`, under the title), its workflow owner with their contact (`owner`), how to run it (`run`, the Run button and the "You're ready when" checklist, then `fields`, what each form field does), the data it needs (`data`, the dataset layout your form's `check:` validates, since workflows differ), what a run writes (`run-directory`) and how to cite it (`cite`). Keep them all, keep the owner section's line saying IRIS reviewed the workflow for safety and fit and its owner answers for its science word for word, and add sections of your own if your workflow needs them, as the reference workflow's page does. Link the guide (`../../guide/#stage` and `../../guide/#view`) for staging and viewing rather than repeating its steps. Use relative links only: root-absolute links like `href="/"` resolve outside `/iris/` and 404.
+
+`bin/check`'s page template rules fail a workflow page with a placeholder left, a script (a `<script>`, an `on...=` attribute or a `javascript:` link), an `<iframe>`, `<object>` or `<embed>`, or styles from outside IRIS (a `<style>`, a `style=` attribute, or a `<link>` the template doesn't have), and a page with a form that lacks one of the template's sections or its review line.
 
 ### 3. Owner
 
-_#136 fills this step: the owner goes in the workflow's `manifest.yml`, and a small Action @-mentions them on every PR that touches its folder. Until then:_ name yourself as the workflow owner on the page, under the description (`<p class="wf-owner">`, linking your GitHub profile), and add a `/workflows/<slug>/ @<login>` line to `.github/CODEOWNERS`. `bin/check` keeps the two in step.
+Name yourself as the workflow owner in two places, with the same GitHub login, name and email in both, which `bin/check` keeps in step. Your login and email are the contact researchers reach you by:
+
+- **The manifest**, `workflows/<slug>/manifest.yml`, in an `owner:` block beside its menu entry, as the reference workflow's has it:
+
+  ```yaml
+  owner:
+    name: Jane Doe                  # as the page shows it
+    github: jdoe                    # your GitHub login, without the @
+    email: jdoe@example.org         # the page links it; no mailto:
+    orcid: 0000-0002-1825-0097      # optional: your ORCID iD, for WorkflowHub
+  ```
+
+  `bin/manifest-owner` reads it, and its header gives the rules.
+- **The page**, in its owner section: the template's owner line, with `{{OWNER_LOGIN}}`, `{{OWNER_NAME}}` and `{{OWNER_EMAIL}}` filled in, `<p class="wf-owner">Workflow owner: <a href="https://github.com/<login>" target="_blank"><name></a> · <a href="mailto:<email>"><email></a></p>`.
+
+On every PR that touches the folder, the `owner-mention` Action (`.github/workflows/owner-mention.yml`) mentions the owner the manifest on `main` names, so you hear of every change without write access to the repo. It mentions each owner once per PR and never the PR's author, so your own PRs and your first one, whose folder isn't on `main` yet, mention no one. `CODEOWNERS` plays no part, since GitHub asks only people with write access for a review there, and `bin/check` fails a `workflows/` line in it.
 
 ### 4. New environment versions
 
@@ -243,18 +266,18 @@ To try it without minting anything, run it against WorkflowHub's development ins
 
 ## The workflow owner
 
-Once your PR merges, you are the workflow's **workflow owner**, named on its page. Support for your workflow comes to you, not the maintainer: the guide's help routes and the README send researchers to the owner named on the workflow's page. Your duties:
+Once your PR merges, you are the workflow's **workflow owner**, named on its page and in its manifest. Support for your workflow comes to you, not the maintainer: the guide's help routes and the README send researchers to the owner named on the workflow's page. Your duties:
 
 - **Answer issues about your workflow**, on GitHub Issues and from researchers who contact you, and fix it when it breaks.
-- **Review PRs that change its folder**; you are asked on each one ([Owner](#3-owner)).
+- **Review PRs that change its folder**; you are mentioned on each one ([Owner](#3-owner)).
 - **Keep it working**: update its library copy or move it to a newer environment version only when you choose, each with a new run ([Run proof](#6-run-proof)), and keep its page accurate.
 - **Register it on WorkflowHub and mint its citable versions** ([WorkflowHub](#9-workflowhub)).
 
 The [contribute page](https://docs.restech.unsw.edu.au/iris/contribute/#unmaintained) owns the rules for an owner who stops answering, handing over and adoption. The mechanics:
 
 - **Unmaintained**: the workflow moves to the Unmaintained row of the tier table ([Status](#status)).
-- **Handing over**: a PR that names the new owner in place of you ([Owner](#3-owner)).
-- **Adoption**: after the approved proposal, a PR that fixes the workflow, carries a run proof ([Run proof](#6-run-proof)) and names the adopter as its workflow owner. It keeps its folder and its WorkflowHub entry.
+- **Handing over**: a PR that names the new owner in place of you, in the manifest and on the page ([Owner](#3-owner)).
+- **Adoption**: after the approved proposal, a PR that fixes the workflow, carries a run proof ([Run proof](#6-run-proof)) and names the adopter as its workflow owner, moving its manifest back from `_archive/<slug>/` with its form. It keeps its folder and its WorkflowHub entry.
 
 ## Licence
 
@@ -276,7 +299,7 @@ The catalogue is **imaging only**, grouped into one section per lab. Each card c
 |---|---|---|
 | **Run and verified** | `hello-world` (onboarding), `microct-2d-segmentation` (microCT) | Page, form, job script, executed end to end |
 | **Planned** | `microct-denoising`, `microct-super-resolution`, `microct-reconstruction` (microCT), `mri-rat-brain-tumour-segmentation` (MRI) | Page only, describing what the workflow will do. No form, no Run button |
-| **Unmaintained** | None | Page only, with the `unmaintained-banner` saying it can't be run, so its citable versions and cited commits still lead somewhere. No card, no Run button, form moved to `_archive/<slug>/`, and its `CODEOWNERS` line removed, since it has no workflow owner. When a workflow lands here, and how one is adopted: [The workflow owner](#the-workflow-owner) |
+| **Unmaintained** | None | Page only, with the `unmaintained-banner` saying it can't be run, so its citable versions and cited commits still lead somewhere. No card, no Run button, form and manifest moved to `_archive/<slug>/`, since it has no workflow owner to mention on a PR. When a workflow lands here, and how one is adopted: [The workflow owner](#the-workflow-owner) |
 
 `hello-world` ran from the browser through the system OnDemand instance (job 9622779), and so did `microct-2d-segmentation` (job 9622783), both from `/pun/sys/` at `3fa4177`. Both had earlier run through the dev clone (`hello-world` job 9584951, #53; `microct-2d-segmentation` job 9577519, #46). Since 2026-11-12, `/pun/sys/OpenComposer/` is the IRIS instance, on the fork ([ADR-0012](docs/adr/0012-the-iris-instance-replaces-the-shared-opencomposer.md)): `hello-world` has run there on the fork at `88d45b1` (job 9751644), and so has `microct-2d-segmentation` (job 9752576).
 

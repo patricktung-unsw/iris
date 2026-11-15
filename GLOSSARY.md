@@ -29,7 +29,7 @@ The ResTech member who approves proposals, reviews and merges workflows, and bui
 _Avoid_: Admin, owner, reviewer
 
 **Workflow owner**:
-The workflow author answerable for keeping one workflow working, named on its page. A workflow whose owner stops answering is taken out of service.
+The workflow author answerable for keeping one workflow working, named on its page and in its manifest, which is how they are mentioned on every PR that touches its folder. A workflow whose owner stops answering is taken out of service.
 _Avoid_: Maintainer, contributor
 
 **Proposal**:
@@ -91,6 +91,10 @@ _Avoid_: App, template
 **Imaging form**:
 A form whose script carries its workflow's entry script, so a researcher can edit it for one run, and runs it in an environment. The `hello-world` form is not one.
 _Avoid_: Python form, real form
+
+**Page template**:
+The HTML every workflow page is written from, `templates/workflow-page.html`: fixed sections for what the workflow does, its workflow owner, how to run it, the data it needs and how to cite it, with placeholders the scaffold and the workflow author fill. "Template" alone means this, never a form.
+_Avoid_: Page skeleton, boilerplate
 
 **Two-click launch**:
 The path from catalogue to running job: one click on the workflow's IRIS page, one click to submit its form.

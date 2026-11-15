@@ -48,6 +48,8 @@ body > nav {
 .wf-title { font-family: 'Syne', sans-serif; font-size: 40px; font-weight: 800; color: #fff; margin-bottom: 12px; }
 .wf-desc { font-size: 16px; color: var(--muted); line-height: 1.7; max-width: 640px; margin-bottom: 32px; }
 .wf-owner { font-size: 14px; color: var(--muted); margin: -20px 0 32px; }
+.wf-owner:has(+ .wf-review) { margin-bottom: 6px; }
+.wf-review { font-size: 13px; color: var(--muted); line-height: 1.6; max-width: 640px; margin-bottom: 32px; }
 .run-btn {
   display: inline-flex; align-items: center; gap: 10px;
   padding: 14px 28px; border-radius: 6px;

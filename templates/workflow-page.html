@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{TITLE}} — IRIS</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../assets/iris.css">
+</head>
+<body>
+<nav>
+  <a href="../../" class="nav-logo">
+    <div class="nav-logo-mark">I</div>
+    <span class="nav-logo-text">UNSW IRIS</span>
+  </a>
+  <a href="../../#workflows" class="nav-back">← Back to catalogue</a>
+</nav>
+<div class="page">
+  <div class="breadcrumb"><a href="../../">IRIS</a> / <a href="../../#workflows">Workflows</a> / <a href="../../#{{LAB_ID}}">{{LAB_NAME}}</a> / {{TITLE}}</div>
+  <span class="wf-domain imaging">Imaging</span>
+  <h1 class="wf-title">{{TITLE}}</h1>
+  <p class="wf-desc" id="what">{{TODO: what the workflow does, in two or three sentences a researcher follows: what it reads, what it makes and what they get from a run}}</p>
+  <div id="owner">
+    <p class="wf-owner">Workflow owner: <a href="https://github.com/{{OWNER_LOGIN}}" target="_blank">{{OWNER_NAME}}</a> · <a href="mailto:{{OWNER_EMAIL}}">{{OWNER_EMAIL}}</a></p>
+    <p class="wf-review">IRIS reviewed this workflow for safety and fit, not for its science: its workflow owner answers for its method and its results, so ask them about either.</p>
+  </div>
+
+  <div class="launch" id="run">
+    <div>
+      <a href="https://kod.restech.unsw.edu.au/pun/sys/OpenComposer/{{SLUG}}" class="run-btn" target="_blank">▶&nbsp; Run on Katana</a>
+      <span class="run-note">Opens the form in Katana OnDemand. Pick your dataset folder and submit: the other fields have working defaults.</span>
+    </div>
+    <div class="ready">
+      <div class="ready-title">You're ready when</div>
+      <ul class="checklist">
+        <li>Your dataset folder is inside your scratch, <code>/srv/scratch/&lt;zID&gt;</code></li>
+        <li>{{TODO: one line for each thing the form's check: tests in the dataset folder}}</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="cols">
+    <div class="col">
+      <div class="col-when">Once per dataset</div>
+      <h3>1 · Stage</h3>
+      <p>Lay out one dataset folder as in <a href="#data">The data it needs</a>, then send it to your scratch with Globus from your browser.</p>
+      <p><a href="../../guide/#stage">Staging a dataset</a></p>
+    </div>
+    <div class="col">
+      <div class="col-when">Every run · two clicks</div>
+      <h3>2 · Run</h3>
+      <p>Click Run on Katana, pick the dataset folder and submit. You get an email when the job ends.</p>
+      <p>Change one setting at a time and keep the experiment name, so the runs compare.</p>
+    </div>
+    <div class="col">
+      <div class="col-when">After it finishes</div>
+      <h3>3 · View</h3>
+      <p>In a terminal in a Virtual Desktop, run <code>module load iris</code>, then <code>iris-view</code> to see the run's output over your volume and <code>iris-compare</code> to compare your runs.</p>
+      <p><a href="../../guide/#view">Viewing and comparing runs</a></p>
+    </div>
+  </div>
+
+  <details id="data">
+    <summary>The data it needs</summary>
+    <p>{{TODO: what one dataset folder holds}}</p>
+    <ul>
+      <li>{{TODO: one line per folder or file the workflow reads: its name, what it holds, its format and any rule the form's check: or the job enforces}}</li>
+    </ul>
+    <p>The form checks this layout before it submits. Lay out and copy the folder to your scratch as in <a href="../../guide/#stage">Staging a dataset</a>.</p>
+  </details>
+
+  <details id="fields">
+    <summary>What each form field does</summary>
+    <!-- {{TODO: the job ID of the timing run each memory, walltime and epochs default comes from}} -->
+    <table class="param-table">
+      <thead><tr><th>Field</th><th>Default</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td>Dataset folder</td><td>—</td><td>Your dataset in scratch. The form checks its layout before it submits.</td></tr>
+        <tr><td>Experiment name</td><td><code>{{SLUG}}</code></td><td>Groups runs you want to compare. Use a new name for a new dataset or question.</td></tr>
+        <tr><td colspan="3">{{TODO: one row per other form field, in the form's order: its label, its default and what it does}}</td></tr>
+      </tbody>
+    </table>
+    <p>To start from an earlier run's settings, open <strong>History</strong> in the form's top bar, click the <strong>Script Name</strong> in the run's row (not its job ID), then <strong>Load parameters</strong>.</p>
+  </details>
+
+  <details>
+    <summary>Editing the workflow code for one run</summary>
+    <p>The form's script pane holds this workflow's code, <code>run.py</code>, below the comment <code># Edit the workflow code below</code>. To try a change to the method, edit it there before you submit: the job runs the code exactly as it appears in the pane. The change belongs to that run alone, which makes it an <strong>edited run</strong>; the workflow itself is unchanged. Record keeping and reading and writing volumes stay in IRIS, out of the pane, and an edited run uses the same Python packages.</p>
+    <ul>
+      <li><strong>Change the fields whenever you like.</strong> A field change rewrites only the lines that hold that field, so your edits to the code are kept.</li>
+      <li><strong>Only the workflow code can be edited.</strong> The rest of the pane is shaded and locked: the <code>#PBS</code> lines at its top, the <code>python</code> line at its bottom and every other line the form writes. Hover over a locked line to see the field that sets it, or <em>Fixed by the form</em>, and click a field's line to go to that field.</li>
+      <li><strong>To rerun an edited run</strong>, open <strong>History</strong>, click the <strong>Script Name</strong> in its row, then <strong>Load parameters</strong>: it restores the fields and your edited code, and the job output says the run is edited.</li>
+      <li>Every run directory keeps the code its run ran as <code>run.py</code>, and your changes as <code>run.diff</code>. The job writes both and prints the diff near the top of its output before the code starts, so a run whose code crashes, even one Python cannot read, still shows them. In the rare case the job cannot tell which commit the form showed, it warns, writes no <code>run.diff</code>, and <code>run.json</code> records that whether the run is edited is unknown.</li>
+    </ul>
+  </details>
+
+  <details id="run-directory">
+    <summary>What a run writes and how to view it</summary>
+    <p>Each run writes into your dataset, in <code>runs/&lt;job number&gt;/</code>:</p>
+    <table class="param-table">
+      <thead><tr><th>File</th><th>What it holds</th></tr></thead>
+      <tbody>
+        <tr><td colspan="2">{{TODO: one row per file the workflow's code writes: its name and what it holds}}</td></tr>
+        <tr><td><code>params.json</code></td><td>Every form field</td></tr>
+        <tr><td><code>dataset.json</code></td><td>What the run read: the dataset folder's path, file count, total size and newest change</td></tr>
+        <tr><td><code>run.json</code></td><td>The experiment, job ID, how the run ended and whether it is an edited run</td></tr>
+        <tr><td><code>commit.txt</code></td><td>The IRIS commit that ran, as the form showed it</td></tr>
+        <tr><td><code>run.py</code></td><td>The workflow code the run ran, as submitted from the form</td></tr>
+        <tr><td><code>run.diff</code></td><td>Your changes to that code against the commit in <code>commit.txt</code>; empty unless the run is edited, and missing if the job could not tell which commit the form showed</td></tr>
+        <tr><td><code>lib_commit.txt</code></td><td>Only if IRIS was updated between opening the form and the job starting: the commit of the IRIS code outside the pane that the run used</td></tr>
+      </tbody>
+    </table>
+    <p>The job output sits beside it, as <code>runs/&lt;job ID&gt;.OU</code>. When the job succeeds, the output ends with the commands to run in a terminal in a Virtual Desktop: <code>module load iris</code>, then <code>iris-view</code> with the run directory, which shows the run's output over your volume in napari, and <code>iris-compare</code>, which opens your runs in MLflow. The <a href="../../guide/#view">guide</a> covers the Virtual Desktop to start, both commands, and copying a run directory home.</p>
+    <p>To cite a run, use the commit in its <code>commit.txt</code>, as in <a href="#cite">Cite this workflow</a>.</p>
+  </details>
+
+  <details id="cite">
+    <summary>Cite this workflow</summary>
+    <p>Each citable version of this workflow is a frozen copy of the IRIS code on WorkflowHub, with its own DOI. Newest first:</p>
+    <ul>
+      <li>No citable version yet.</li>
+      <!-- Mint one as CONTRIBUTING.md says, add its DOI to CITATION.cff, then add one line per citable version above the newest, never a version number, and remove "No citable version yet" (bin/check "citable versions"):
+      <li><a href="https://doi.org/DOI" target="_blank">DOI</a> · YYYY-MM-DD · commit <code>SHORT-SHA</code></li> -->
+    </ul>
+    <p>If you publish results from a run, cite the latest citable version at or before the commit in the run's <code>commit.txt</code>, and give that commit. If none is listed, or every one listed is newer than your commit, cite IRIS with this workflow's name and that commit instead. For an edited run, cite the same citable version and commit, and publish the run's <code>run.py</code> or <code>run.diff</code> alongside. Either way, acknowledge Katana and cite its DOI. <a href="https://github.com/unsw-restech/iris#citing-iris" target="_blank">The exact wording</a></p>
+  </details>
+
+  <details>
+    <summary>Something went wrong</summary>
+    <ul>
+      <li><strong>The form won't submit.</strong> Its warning names the rule your dataset folder broke, and your values are kept. Fix the folder and submit again.</li>
+      <li><strong>The job stopped at once with "the IRIS imaging environment is missing".</strong> Nothing is wrong with your data. Email the <a href="#owner">workflow owner</a> with the job ID.</li>
+      <li>{{TODO: one line per way the workflow's own job can fail, in bold, then what to do about it}}</li>
+      <li><strong>The job ran out of walltime.</strong> Submit again with more walltime. <strong>Load parameters</strong> in <strong>History</strong> keeps your other settings.</li>
+      <li><strong>The job output doesn't end with the <code>iris-view</code> line.</strong> The job stopped at its first error, which is the last thing in the output. The same commands are printed near the start of the output, so the run directory they name may be incomplete.</li>
+      <li><strong>Anything else.</strong> Email the <a href="#owner">workflow owner</a> with the job ID and the end of the job output.</li>
+    </ul>
+  </details>
+</div>
+<footer>
+  <span>IRIS · UNSW ResTech</span>
+  <span>
+    <a href="../../#workflows">← Back to catalogue</a> ·
+    <a href="https://github.com/unsw-restech/iris" target="_blank">GitHub</a> ·
+    <a href="mailto:patrick.tung@unsw.edu.au">patrick.tung@unsw.edu.au</a>
+  </span>
+</footer>
+</body>
+</html>
