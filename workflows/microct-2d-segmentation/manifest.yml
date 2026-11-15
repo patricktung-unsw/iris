@@ -12,10 +12,10 @@ owner:
   email: patrick.tung@unsw.edu.au
   orcid: 0000-0002-2741-3177
 description: |
-  Train a 2D U-Net from scratch on a few labelled slices of a microCT scan,
-  then segment the whole scan slice by slice.
+  Train a 2D U-Net from scratch on a few labelled slices of a microCT volume,
+  then segment the whole volume slice by slice.
 
-  Pick a dataset folder in your scratch holding `volume/` (the scan's
+  Pick a dataset folder in your scratch holding `volume/` (the volume's
   netCDF blocks) and `train/images/` with `train/labels/` (TIFF pairs with
   matching names, 0 = unlabelled). The job runs in the pre-built IRIS
   imaging environment, so nothing is installed.

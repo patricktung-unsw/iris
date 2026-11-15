@@ -98,7 +98,7 @@ form:
       - [ "32 GB",  "32gb"  ]
       - [ "64 GB",  "64gb"  ]
       - [ "124 GB", "124gb" ]
-    help: "16 GB covers a 2520 x 2520 x 1280 scan, which used 6 GB. Larger slices may need more."
+    help: "16 GB covers a 2520 x 2520 x 1280 volume, which used 6 GB. Larger slices may need more."
 
   time:
     widget: number
@@ -230,7 +230,7 @@ check: |
   oc_assert(ds == scratch || ds.start_with?(scratch + "/"), "The dataset folder must be inside your scratch, " + scratch + ".")
   oc_assert(ds !~ /\s/, "The dataset folder's path cannot contain spaces: rename " + ds + ".")
   oc_assert(File.directory?(ds), "No folder at " + ds + ".")
-  oc_assert(!Dir.glob(File.join(ds, "volume", "*.nc")).empty?, "No .nc files in " + ds + "/volume. Copy the scan's blocks there.")
+  oc_assert(!Dir.glob(File.join(ds, "volume", "*.nc")).empty?, "No .nc files in " + ds + "/volume. Copy the volume's blocks there.")
   imgs = File.join(ds, "train", "images")
   labs = File.join(ds, "train", "labels")
   oc_assert(File.directory?(imgs) && File.directory?(labs), "Missing train/images or train/labels in " + ds + ".")
