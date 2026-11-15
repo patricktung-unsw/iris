@@ -57,6 +57,10 @@ clone() {
     local c="$scratch/$1"
     git clone -q --shared --no-checkout . "$c"
     git -C "$c" checkout -q --detach "$(git rev-parse HEAD)"
+    # A clone with core.autocrlf on has CRLF files in its working tree,
+    # which this copy carries over, and git warns on adding them; any
+    # output is a failure in bin/check.
+    git -C "$c" config core.safecrlf false
     git ls-files -z --cached --others --exclude-standard |
         tar --null -T - --ignore-failed-read -cf - 2> /dev/null | tar -xf - -C "$c"
     git -C "$c" add -A
