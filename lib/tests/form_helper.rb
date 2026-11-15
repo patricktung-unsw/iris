@@ -10,7 +10,10 @@
 #   render     ERB with @apps_dir and @OC_DIR_NAME set (the GET), then YAML
 #              (run.rb read_yaml); @apps_dir is the folder holding the
 #              form's workflow folder unless given (nil, as on run.rb's
-#              re-read at submit)
+#              re-read at submit); a file the form reads from its folder
+#              under another @apps_dir, such as its entry script under the
+#              system clone's, comes from the form's own folder, so the
+#              render is this commit as that clone would serve it
 #   defaults   each field's value; a checkbox's or multi_select's chosen
 #              labels become their data values, a multi_select entry that
 #              is no option stays as typed (form.js getValue), joined by
@@ -50,6 +53,29 @@ require "yaml"
 
 module FormHelper
   class Context
+    # The form's File, which reads a file in its workflow folder under
+    # @apps_dir, such as its entry script, from the form's own folder, so
+    # a render for another clone's @apps_dir, such as the system clone's,
+    # is this commit as that clone would serve it, even before it is
+    # deployed there (#145). Everything else is ::File.
+    module File
+      class << self
+        attr_accessor :served, :own
+
+        def read(path, *args, **opts)
+          path = path.to_s
+          path = own + path.delete_prefix(served) if served && path.start_with?(served + "/")
+          ::File.read(path, *args, **opts)
+        end
+
+        def method_missing(name, *args, **opts, &block) = ::File.public_send(name, *args, **opts, &block)
+        def respond_to_missing?(name, include_private = false) = ::File.respond_to?(name, include_private)
+      end
+
+      # File::NULL and the rest, which the reference form's git call uses.
+      def self.const_missing(name) = ::File.const_get(name)
+    end
+
     def initialize(apps_dir, dir_name)
       @apps_dir = apps_dir
       @OC_DIR_NAME = dir_name
@@ -59,9 +85,14 @@ module FormHelper
   end
 
   def self.render(form, apps_dir = File.dirname(File.dirname(File.expand_path(form))))
-    workflow = File.basename(File.dirname(File.expand_path(form)))
+    own = File.dirname(File.expand_path(form))
+    workflow = File.basename(own)
+    Context::File.served = apps_dir && File.join(File.expand_path(apps_dir), workflow)
+    Context::File.own = own
     text = ERB.new(File.read(form), trim_mode: "-").result(Context.new(apps_dir, workflow).get_binding)
     YAML.load(text)
+  ensure
+    Context::File.served = Context::File.own = nil
   end
 
   # Whether a field with this widget holds its chosen options' values,
