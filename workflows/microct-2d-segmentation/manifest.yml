@@ -7,6 +7,7 @@ icon: bi-layers
 owner:
   name: Patrick Tung
   github: PatrickTung
+  email: patrick.tung@unsw.edu.au
   orcid: 0000-0002-2741-3177
 description: |
   Train a 2D U-Net from scratch on a few labelled slices of a microCT scan,
