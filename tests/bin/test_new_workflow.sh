@@ -4,8 +4,9 @@
 # remains, on the page, its card, its manifest or the tier table's job
 # citation, and passes once they are all filled. It extends a Planned
 # workflow's folder in place, and refuses, writing nothing, a slug that is
-# taken or malformed, a lab with no lab table line and an owner
-# bin/manifest-owner refuses. Prints each failed case and nothing on
+# taken or malformed, a removed or unmaintained workflow's, each saying
+# which, a lab with no lab table line and an owner bin/manifest-owner
+# refuses. Prints each failed case and nothing on
 # success, so bin/check can run it.
 #
 #   tests/bin/test_new_workflow.sh
@@ -185,3 +186,23 @@ refuse "a login with an @" scaffold-test --title T --lab microct-lab --owner-nam
 refuse "no owner email" scaffold-test --title T --lab microct-lab --owner-name "Jane Doe" --owner-github jdoe
 refuse "no title" scaffold-test --lab microct-lab "${owner[@]}"
 refuse "a title with markup" scaffold-test --title "Bone <b>Seg</b>" --lab microct-lab "${owner[@]}"
+
+# A slug whose form _archive/ keeps: a workflow removed from the catalogue,
+# or an unmaintained one, whose page stays. Each refusal says which, and
+# sends an unmaintained one to adoption; neither calls it retired, the
+# glossary's Avoid word for an unmaintained workflow.
+# says <why> <text>: the last refusal's reason holds <text>, and not "retired".
+says() {
+    grep -qF "$2" "$scratch/refused.out" || { echo "refused: $1: its reason doesn't say '$2':"; sed 's/^/  /' "$scratch/refused.out"; }
+    ! grep -qi retired "$scratch/refused.out" || echo "refused: $1: its reason says retired: $(cat "$scratch/refused.out")"
+}
+refuse "a removed workflow's slug" mnist-classification --title T --lab microct-lab "${owner[@]}"
+says "a removed workflow's slug" "removed from the catalogue"
+mkdir -p "$c/workflows/old-seg" "$c/_archive/old-seg"
+echo '<div class="unmaintained-banner">Unmaintained</div>' > "$c/workflows/old-seg/index.html"
+echo "script: |" > "$c/_archive/old-seg/form.yml.erb"
+git -C "$c" add -A
+git -C "$c" -c user.name=t -c user.email=t@example.org commit -qm "old-seg, unmaintained"
+refuse "an unmaintained workflow's slug" old-seg --title T --lab microct-lab "${owner[@]}"
+says "an unmaintained workflow's slug" "is an unmaintained workflow"
+says "an unmaintained workflow's slug" "adopt"

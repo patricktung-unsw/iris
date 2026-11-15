@@ -35,8 +35,9 @@
 # come from its card unless given. Its page is rewritten from the template,
 # its card made Active in place and its tier row moved.
 #
-# It refuses, writing nothing, a slug that is taken, retired (_archive/)
-# or malformed, a lab with no section or lab table line, an owner
+# It refuses, writing nothing, a slug that is taken, an unmaintained
+# workflow's (adopting it is CONTRIBUTING.md's The workflow owner), a
+# removed workflow's whose form _archive/ keeps, or malformed, a lab with no section or lab table line, an owner
 # bin/manifest-owner refuses, a title or name holding < > & " \ { or },
 # and lib/ with uncommitted changes, since the library copy records a
 # commit. Exit 0: made. 1: refused. 2: usage.
@@ -99,12 +100,14 @@ if [ -e "workflows/$slug" ]; then
     others=$(cd "workflows/$slug" && find . -mindepth 1 ! -name index.html | head -n1)
     if [ -z "$others" ] && grep -q "href=\"workflows/$slug/\" class=\"workflow-card planned\"" <<< "$index"; then
         planned=1
+    elif [ -f "workflows/$slug/index.html" ] && grep -q 'class="unmaintained-banner"' "workflows/$slug/index.html"; then
+        die "$slug is an unmaintained workflow; to adopt it, follow CONTRIBUTING.md's The workflow owner, which brings back its folder, not a new workflow"
     else
         die "workflows/$slug/ already exists, and isn't a Planned workflow's folder; choose another slug"
     fi
 fi
 [ ! -e "_archive/$slug" ] ||
-    die "$slug is a retired workflow's (_archive/$slug/); adopting it is CONTRIBUTING.md's The workflow owner, not a new workflow"
+    die "$slug was a workflow removed from the catalogue, whose form _archive/$slug/ keeps; choose another slug"
 if [ "$planned" = 1 ]; then
     card_lab=$(card_field "$slug" lab)
     [ -n "$lab" ] || lab="$card_lab"

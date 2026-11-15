@@ -43,7 +43,7 @@ iris/
 │   └── iris.css                      # Shared styles for workflow detail pages and the guide
 ├── guide/index.html                  # "Using IRIS on Katana": staging and viewing, shared by imaging workflows
 ├── templates/workflow-page.html      # The page template every workflow page is written from (Page)
-├── _archive/<slug>/                  # Retired OpenComposer forms, never served by OpenComposer
+├── _archive/<slug>/                  # The forms of workflows removed from the catalogue and of unmaintained ones, never served by OpenComposer
 ├── .github/workflows/check.yml       # CI: runs bin/check on every push and pull request
 ├── .github/workflows/ready.yml       # CI: labels a pull request ready once check passes, and outside-folder if bin/outside-folder flags it
 ├── .github/workflows/containers.yml  # CI: builds and checks each unpublished environment version; publishes it from main, and on a fork under its owner's account
@@ -155,7 +155,7 @@ bin/new-workflow <slug> --title "<title>" --lab <lab> \
 - **Its library copy**, `lib/`, made by `bin/libcopy <slug>`, so the workflow's `lib/` is the library's job side as your clone has it now ([The library's two sides](#the-librarys-two-sides)).
 - **Its manifest**, naming you as its workflow owner, **its page**, from the page template ([Page](#2-page)), **its card**, reading Active, in its lab's section of `index.html`, before the lab's Planned cards, and **its row** in the tier table ([Status](#status)): Run and verified, with a line under the table citing the job of your test-instance run.
 
-To build a Planned workflow, give its slug: it keeps its folder, so its URL never changes, and takes its title, lab, modality and card text from its card; it rewrites its page from the template, turns its card Active in place and moves its tier row. It refuses, writing nothing, a slug that is taken, retired (`_archive/<slug>/`) or malformed, a lab with no section or no lab table line, an owner `bin/manifest-owner` refuses, and `lib/` with uncommitted changes, since the copy records a commit.
+To build a Planned workflow, give its slug: it keeps its folder, so its URL never changes, and takes its title, lab, modality and card text from its card; it rewrites its page from the template, turns its card Active in place and moves its tier row. It refuses, writing nothing, a slug that is taken, an unmaintained workflow's (adopt it instead: [The workflow owner](#the-workflow-owner)), one whose form `_archive/<slug>/` keeps from a workflow removed from the catalogue, or a malformed one, a lab with no section or no lab table line, an owner `bin/manifest-owner` refuses, and `lib/` with uncommitted changes, since the copy records a commit.
 
 It ends by printing what's left for you, which is:
 

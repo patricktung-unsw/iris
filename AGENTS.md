@@ -13,7 +13,7 @@ IRIS_github_pages\               <- parent directory, not a git repo
 ├── available-modules.md         <- what is installed on Katana
 ├── OpenComposer\                <- IRIS's OpenComposer fork (github.com/unsw-restech/OpenComposer), with its own AGENTS.md
 └── iris\                        <- this repo (github.com/unsw-restech/iris)
-    └── _archive\                <- retired forms, public but never served by OpenComposer
+    └── _archive\                <- removed and unmaintained workflows' forms, public but never served by OpenComposer
 ```
 
 Working plans go in `plan.md` at the repo root. Delete it when the work is done.
@@ -89,7 +89,7 @@ Each live form is `workflows/<slug>/form.yml.erb`, beside its `manifest.yml`, pa
 - **The entry script runs from the pane** (ADR-0006). Each imaging form reads its entry script (`src/run.py`) at render time into a quoted heredoc in `script:`; the job writes it to the run directory as `run.py` and runs that, so a researcher's edit is what runs. The form sets `CODE` from `@apps_dir` and records the clone's commit at render time; between writing `run.py` and running it, the job's `iris_record_code` writes that commit to `commit.txt` and the edits to `run.diff`, through `iris.rundir`, which names every file in a run directory. `hello-world` keeps its plain script. No job downloads its own code, and no job loads the `iris` module.
 - **`module load iris` puts `iris-view` and `iris-compare` on the PATH**, from the system clone's `module/bin` and nothing else (ADR-0003). Researchers can't read the dev clone, so the module never points at it. `iris-rebuild` and the maintainer tools in `bin/` stay off the PATH and are given as full paths.
 
-`_archive\<slug>\` in the repo keeps the forms of the 28 retired workflows (`mnist-classification`, `cellpose-segmentation` and `qupath-pathology` included). It is public and OpenComposer never serves it.
+`_archive\<slug>\` in the repo keeps the forms of the 28 workflows removed from the catalogue (`mnist-classification`, `cellpose-segmentation` and `qupath-pathology` included). It is public and OpenComposer never serves it.
 
 - **Written is not installed.** A form counts as working only once a real job from `/pun/sys/` has run; cite its job ID.
 - **Start a new form from `hello-world`**, the reference schema.
