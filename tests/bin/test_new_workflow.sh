@@ -138,11 +138,13 @@ cmp -s "$c/lib/iris-job.sh" "$d/lib/iris-job.sh" && [ -s "$d/lib/copied-from" ] 
     echo "fresh: the manifest's owner email isn't jdoe@example.org"
 [ "$(cd "$c" && bin/manifest-owner workflows/scaffold-test/manifest.yml name)" = "Jane Doe" ] ||
     echo "fresh: the manifest's owner name isn't Jane Doe"
-# The cards on either side of it, so the lab may hold any number of Active
-# cards already (#145's dry run scaffolded a second one).
-order=$(grep -o 'href="workflows/[a-z0-9-]*/" class="workflow-card[^"]*"' "$c/index.html" |
+# The cards on either side of it in its lab's section, an Active one before
+# and a Planned one after, so the lab may hold any number of either already
+# (#145's dry run scaffolded a second Active one).
+order=$(awk '/<div class="lab" id="/ { on = /id="microct-lab"/ } on' "$c/index.html" |
+    grep -o 'href="workflows/[a-z0-9-]*/" class="workflow-card[^"]*"' |
     grep -B1 -A1 'workflows/scaffold-test/' | tr '\n' ' ')
-[[ "$order" =~ ^'href="workflows/'[a-z0-9-]+'/" class="workflow-card" href="workflows/scaffold-test/" class="workflow-card" href="workflows/microct-denoising/" class="workflow-card planned" '$ ]] ||
+[[ "$order" =~ ^'href="workflows/'[a-z0-9-]+'/" class="workflow-card" href="workflows/scaffold-test/" class="workflow-card" href="workflows/'[a-z0-9-]+'/" class="workflow-card planned" '$ ]] ||
     echo "fresh: the card isn't after the lab's Active card and before its Planned ones: $order"
 for want in 'bin/check' 'run-proof' 'CONTRIBUTING.md' 'index.html' 'manifest.yml' 'commit'; do
     grep -qF "$want" "$scratch/fresh.out" || echo "fresh: what it prints as left to do doesn't name $want"
