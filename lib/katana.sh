@@ -53,7 +53,6 @@ IRIS_TOOLS_ENV_VERSION=tools/1
 # digest alone (#138). A version's digest never changes once written.
 declare -gA IRIS_ENV_DIGESTS=(
     [microct/1]=sha256:c1022d8514acbdb80dc038a72ac193699fb1a4b7a75fa1b2905c7b41fd04eb4f
-    [microct/2]=unpublished
     [tools/1]=sha256:02aec588cda0544f122b12a0ddeb6cd8e34a83724ed643b2712de46e4d3677ed
 )
 
