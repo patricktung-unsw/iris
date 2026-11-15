@@ -40,7 +40,9 @@ IRIS_ENV_REGISTRY tagged <env>-<n> with docker buildx imagetools, and
 checks the tag then has that digest. A tag already at that digest is left
 alone; one at another digest is refused, since a version's digest never
 changes once written. It needs docker logged in to ghcr.io with a token
-that can write IRIS's package.
+that can write IRIS's package, as an account with write access to it: the
+package is the org's, so granting that access may need one of the org's
+owners (AGENTS.md, Org rights).
 
 Exit 0 done; 1 refused or failed, saying why; 2 usage, or gh or git failed.
 """
@@ -349,7 +351,9 @@ def copy(version, ref):
         die("%s is at %s, not %s; a version's digest never changes once written, so nothing copied" % (dst, now, digest))
     p = subprocess.run(["docker", "buildx", "imagetools", "create", "--tag", dst, ref])
     if p.returncode != 0:
-        die("the copy failed (above). It needs docker logged in to ghcr.io with a token that can write %s" % reg)
+        die("the copy failed (above). It needs docker logged in to ghcr.io with a token that can write %s, "
+            "and the account behind it needs write access to that org package; if the registry denies it, "
+            "granting that may need one of the org's owners (AGENTS.md, Org rights)" % reg)
     now = tagged()
     if now != digest:
         die("%s is at %s after the copy, not %s: don't push the batch, whose digest map pins %s" % (dst, now, digest, digest))

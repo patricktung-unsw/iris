@@ -320,3 +320,11 @@ has "ghcr.io/unsw-restech/iris-env:ct-2 is at sha256:$a64, not sha256:$b64" copy
 ! grep -q 'imagetools create' "$fake/calls" || fail "review-batch copy-other: copied over it"
 [ "$(cat "$fake/registry/ct-2")" = "sha256:$a64" ] || fail "review-batch copy-other: changed ct-2"
 show
+# A copy ghcr.io denies: refused, naming the org owner it may need.
+touch "$fake/docker-denied"
+run --copy ct/3 "ghcr.io/alice-lab/iris-env@sha256:$b64"
+[ "$rc" = 1 ] || fail "review-batch copy-denied: exit $rc, expected 1"
+has "permission_denied" copy-denied
+has "one of the org's owners" copy-denied
+[ ! -e "$fake/registry/ct-3" ] || fail "review-batch copy-denied: tagged ct-3"
+show
