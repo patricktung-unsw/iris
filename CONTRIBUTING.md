@@ -71,6 +71,7 @@ iris/
 │   ├── iris-view                     # View a run's labels over its volume in napari (in a Virtual Desktop)
 │   ├── katana-test                   # Run the form, module and job-library tests on Katana (desktop)
 │   ├── manifest-owner                # Read a workflow owner from its manifest.yml, checking the owner block's shape
+│   ├── new-workflow                  # Make a new workflow from the reference workflow, with its library copy, page, manifest, card and tier row, and print what's left
 │   ├── owner-mentions                # The comment the owner-mention Action posts on a PR (CI)
 │   ├── libcopy                       # Copy the library's job side into a workflow's lib/, recording the commit; check every copy (bin/check runs it)
 │   ├── ocpull                        # Show, then deploy, what moving the fork's two checkouts to its main brings the instances (desktop)
@@ -101,7 +102,7 @@ iris/
     │   ├── src/hello_world.sh
     │   ├── katana/iris_hello_world.pbs
     │   └── local/run_local.sh, run_local.ps1
-    └── microct-2d-segmentation/      # Reference workflow: copy it to start a new one
+    └── microct-2d-segmentation/      # Reference workflow: bin/new-workflow copies it to start a new one
         ├── index.html
         ├── form.yml.erb, manifest.yml  # OpenComposer form; the manifest names the workflow owner
         ├── src/run.py                # Entry point: train, then segment into a run directory
@@ -140,21 +141,37 @@ The workflow author's checklist, one section per step. Each section names the ti
 
 ### 1. Scaffold
 
-_#137 fills this step with `bin/new-workflow <slug>`, which makes the whole folder and prints what's left. Until then, by hand:_
+One command makes the whole workflow, from your clone:
 
-- **Copy the reference folder**, `workflows/microct-2d-segmentation/`, to `workflows/<slug>/`. Its `tests/` holds only that workflow's own tests: the entry script's end-to-end synthetic run (`test_synthetic.py`, building its dataset and clone with `lib/tests/datasets.py` and `run_dirs.py`) and the form tests (`test_form.rb`, on `lib/tests/form_helper.rb`). The shared library's tests and the rendered-form checks, and the Katana jobs for the library, the module and the environment, are in `lib/tests/` and `lib/tests/katana/`, so the copy carries none of them, and `bin/check` and `bin/katana-test` run them once for every workflow. Then run `bin/libcopy <slug>` and commit, so the workflow's `lib/` is the library's job side as `main` has it now ([The library's two sides](#the-librarys-two-sides)). To build a Planned workflow, extend its existing folder instead, so its URL never changes.
-- **Change the slug everywhere**: the folder name, `#PBS -A iris-<slug>` in the form's script header, the Experiment name default and the job name default. The folder name is also the OpenComposer URL segment.
-- **Pin the environment version** in the form's `IRIS_ENV_VERSION`: a new workflow starts on the version `lib/katana.sh`'s lab table gives its lab, and `bin/check` fails a version that isn't in the digest map. If it needs packages that version lacks, see [New environment versions](#4-new-environment-versions); never change a built version.
+```bash
+bin/new-workflow <slug> --title "<title>" --lab <lab> \
+    --owner-name "<your name>" --owner-github <your login> --owner-email <your email> \
+    [--owner-orcid <your ORCID iD>]
+```
+
+`<slug>` is the folder name and the OpenComposer URL segment: lowercase words joined by hyphens. `<lab>` is your lab's section id in `index.html`, such as `microct-lab`; `--modality <x>` sets the card's modality tag when it isn't the first in your lab's section. The owner is you, the workflow owner, as `bin/manifest-owner` reads it ([Owner](#3-owner)). It makes `workflows/<slug>/` from the reference workflow, `workflows/microct-2d-segmentation/`:
+
+- **The form, `src/` and `tests/`**, the reference's, with its slug changed to yours everywhere it appears: the usage tag `#PBS -A iris-<slug>`, the Experiment name default and the job name default, `iris_<slug>`. The form pins, in `IRIS_ENV_VERSION`, the environment version `lib/katana.sh`'s lab table gives your lab. `tests/` holds only the workflow's own tests: the entry script's end-to-end synthetic run (`test_synthetic.py`, building its dataset and clone with `lib/tests/datasets.py` and `run_dirs.py`) and the form tests (`test_form.rb`, on `lib/tests/form_helper.rb`). The shared library's tests and the rendered-form checks, and the Katana jobs for the library, the module and the environment, are in `lib/tests/` and `lib/tests/katana/`, so it copies none of them, and `bin/check` and `bin/katana-test` run them once for every workflow.
+- **Its library copy**, `lib/`, made by `bin/libcopy <slug>`, so the workflow's `lib/` is the library's job side as your clone has it now ([The library's two sides](#the-librarys-two-sides)).
+- **Its manifest**, naming you as its workflow owner, **its page**, from the page template ([Page](#2-page)), **its card**, reading Active, in its lab's section of `index.html`, before the lab's Planned cards, and **its row** in the tier table ([Status](#status)): Run and verified, with a line under the table citing the job of your test-instance run.
+
+To build a Planned workflow, give its slug: it keeps its folder, so its URL never changes, and takes its title, lab, modality and card text from its card; it rewrites its page from the template, turns its card Active in place and moves its tier row. It refuses, writing nothing, a slug that is taken, retired (`_archive/<slug>/`) or malformed, a lab with no section or no lab table line, an owner `bin/manifest-owner` refuses, and `lib/` with uncommitted changes, since the copy records a commit.
+
+It ends by printing what's left for you, which is:
+
+- **Write each `{{TODO: ...}}`** it leaves as it says, braces and all: on the page ([Page](#2-page)), on the card, its description and compute tag, and in the manifest, its `tags:` and `description:`. `bin/check` fails each one left. The line citing your job holds one too, which you fill with the job ID of your test-instance run once you have it ([Run proof](#6-run-proof)): until then `bin/check` fails it, as it fails any Run and verified workflow without a cited job.
+- **Make the form, `src/` and `tests/` your workflow's**: they are still the reference workflow's, for its dataset. Then `git add` the folder, `index.html` and `CONTRIBUTING.md`, commit and run `bin/check`.
+- **Pin a newer environment version** only if your workflow needs packages its lab's version lacks: see [New environment versions](#4-new-environment-versions); never change a built version. `bin/check` fails a version that isn't in the digest map.
 - **Set the fields and `check:` rules** in `form.yml.erb`, and the entry point under `src/`. `check:` validates the dataset layout your page documents, so a researcher who picks the wrong folder is told before the job runs. Add a synthetic-dataset test under `tests/`, as the reference workflow's `tests/test_synthetic.py` does, so `bin/check` runs your workflow end to end on made-up data, on CPU in the container your form pins (`envs/README.md`). Defaults for memory, walltime and epochs cite the timing run that measured them. A select's, radio's or checkbox's `value:` names its default by an option's label, and a script line names a checkbox or multi_select as `#{field}`, never `#{:field}`: its line drops when nothing is chosen, colon or not, so a field a run must record goes in a select or a radio (#184). `bin/check` checks both (`lib/tests/form_fields.rb`).
 
   **Embed the entry script** in the form's `script:`, as the reference form does, so researchers can edit it for one run (ADR-0006): the form reads it from `src/` at render time into a quoted heredoc below the one-line hint `# Edit the workflow code below`, and the job writes it into the run directory as `run.py`, runs `iris_record_code` on the next line to record the run's code, writing its `commit.txt` and writing and printing its `run.diff`, and runs it from there. Beside `script:`, the form's `editable_region` key names the heredoc's opener and its end marker, as the reference form's does, so on the IRIS fork the entry script is the only part of the pane a researcher can edit. The form sources the job library from the workflow's own copy, `source "$CODE/lib/iris-job.sh"`, which keeps it out of the pane. The entry script may contain neither `#{` (OpenComposer substitutes a field there) nor `<%` (ERB); `bin/check` renders every imaging form as OpenComposer does and checks the script it submits, in order, its `editable_region` and the workflow page's quote of the hint, against what `lib/tests/imaging_form.rb`'s header lists. So `bin/check` needs Ruby: `sudo apt install ruby` once in WSL. `hello-world` keeps its plain script.
-- **Add the catalogue card** to `index.html`, in its lab's section, with its modality tag and compute tag, and the workflow's row in the tier table (see [Status](#status)): **Run and verified**, so the card reads Active, citing the job ID of your test-instance run ([Test instance](#5-test-instance)). A new modality also needs a `.card-domain.<x>` style and the card's `<span class="card-domain <x>">` tag, and a new lab its own `<div class="lab" id="<x>">` section, which its pages' breadcrumbs link (`../../#<x>`), and its line in the lab table; each needs an approved proposal.
+- **A new modality or lab** needs an approved proposal first, and its parts in place before `bin/new-workflow` takes it: a new modality a `.card-domain.<x>` style in `index.html`, and a new lab its own `<div class="lab" id="<x>">` section there, which its pages' breadcrumbs link (`../../#<x>`), and its line in the lab table.
 
 If the workflow ships a `local/run_local.ps1`, **keep it ASCII-only**. These files have no BOM, and Windows PowerShell 5.1 reads a BOM-less UTF-8 file as ANSI — an em dash or box-drawing character decodes into a byte PowerShell treats as a string delimiter, and the script fails to parse before it runs a single line. Use `-` and `=` in banners. The `.sh` files are unaffected.
 
 ### 2. Page
 
-Your workflow's `index.html` is written from the page template, `templates/workflow-page.html`, so every workflow page has the same sections and looks like IRIS; you write the words. Its placeholders come in two kinds: `{{NAME}}`, a value the [scaffold](#1-scaffold) fills, or you do while that step is by hand (`{{SLUG}}`, `{{TITLE}}`, `{{LAB_ID}}`, `{{LAB_NAME}}`, `{{OWNER_LOGIN}}`, `{{OWNER_NAME}}`, `{{OWNER_EMAIL}}`), and `{{TODO: ...}}`, which says what you write in its place. Replace each with your text, braces and all.
+Your workflow's `index.html` is written from the page template, `templates/workflow-page.html`, so every workflow page has the same sections and looks like IRIS; you write the words. Its placeholders come in two kinds: `{{NAME}}`, a value `bin/new-workflow` fills ([Scaffold](#1-scaffold)) (`{{SLUG}}`, `{{TITLE}}`, `{{LAB_ID}}`, `{{LAB_NAME}}`, `{{OWNER_LOGIN}}`, `{{OWNER_NAME}}`, `{{OWNER_EMAIL}}`), and `{{TODO: ...}}`, which says what you write in its place. Replace each with your text, braces and all.
 
 The template's fixed sections, each with its `id`, are what the workflow does (`what`, under the title), its workflow owner with their contact (`owner`), how to run it (`run`, the Run button and the "You're ready when" checklist, then `fields`, what each form field does), the data it needs (`data`, the dataset layout your form's `check:` validates, since workflows differ), what a run writes (`run-directory`) and how to cite it (`cite`). Keep them all, keep the owner section's line saying IRIS reviewed the workflow for safety and fit and its owner answers for its science word for word, and add sections of your own if your workflow needs them, as the reference workflow's page does. Link the guide (`../../guide/#stage` and `../../guide/#view`) for staging and viewing rather than repeating its steps. Use relative links only: root-absolute links like `href="/"` resolve outside `/iris/` and 404.
 
@@ -162,7 +179,7 @@ The template's fixed sections, each with its `id`, are what the workflow does (`
 
 ### 3. Owner
 
-Name yourself as the workflow owner in two places, with the same GitHub login, name and email in both, which `bin/check` keeps in step. Your login and email are the contact researchers reach you by:
+Name yourself as the workflow owner in two places, with the same GitHub login, name and email in both, which `bin/check` keeps in step; `bin/new-workflow` writes both from its `--owner-` options ([Scaffold](#1-scaffold)). Your login and email are the contact researchers reach you by:
 
 - **The manifest**, `workflows/<slug>/manifest.yml`, in an `owner:` block beside its menu entry, as the reference workflow's has it:
 

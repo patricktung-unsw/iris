@@ -1,0 +1,307 @@
+#!/bin/bash
+# Scaffold a new workflow from the reference workflow (#137), so its
+# mechanical steps can't go wrong, then print what is left to do:
+#
+#   bin/new-workflow <slug> --title <title> --lab <lab>
+#       --owner-name <name> --owner-github <login> --owner-email <email>
+#       [--owner-orcid <iD>] [--modality <x>]
+#
+# <slug> is the folder name and the OpenComposer URL segment: lowercase
+# letters and digits in hyphen-joined words. <lab> is the id of its lab's
+# section in index.html, which needs a line in lib/katana.sh's lab table.
+# The owner is the workflow owner, as bin/manifest-owner reads them; the
+# ORCID iD is optional. <x> is the card's modality tag, a .card-domain.<x>
+# style in index.html, by default the first one in the lab's section.
+#
+# It makes workflows/<slug>/ and changes two shared files:
+#   - the reference workflow's form, src/ and tests/, the reference's slug
+#     changed to <slug> everywhere (the usage tag, the Experiment name
+#     default), its job name default to iris_<slug>, its title to <title>,
+#     and its environment version to the one the lab table gives <lab>
+#   - its library copy, lib/, by bin/libcopy
+#   - its manifest.yml, naming <title> and the owner
+#   - its page, index.html, from templates/workflow-page.html with every
+#     {{NAME}} filled
+#   - its card in index.html, in <lab>'s section, before the lab's Planned
+#     cards, reading Active
+#   - its row in CONTRIBUTING.md's tier table, Run and verified, and the line
+#     there that cites its job
+# The {{TODO: ...}} placeholders it leaves on the page, the card, the
+# manifest and that line are the author's, and bin/check fails each one
+# left. The job is the test-instance run that proves the workflow.
+#
+# A Planned workflow keeps its folder, so its URL never changes: give its
+# slug, and its title, lab, modality, card description and compute tag
+# come from its card unless given. Its page is rewritten from the template,
+# its card made Active in place and its tier row moved.
+#
+# It refuses, writing nothing, a slug that is taken, retired (_archive/)
+# or malformed, a lab with no section or lab table line, an owner
+# bin/manifest-owner refuses, a title or name holding < > & " \ { or },
+# and lib/ with uncommitted changes, since the library copy records a
+# commit. Exit 0: made. 1: refused. 2: usage.
+
+cd "$(dirname "$(readlink -f "$0")")/.." || exit 1
+REF=microct-2d-segmentation
+TEMPLATE=templates/workflow-page.html
+
+usage() {
+    sed -n '/^#   bin\/new-workflow/,/^#$/p' "$0" | sed 's/^# \{0,1\}//' >&2
+    exit 2
+}
+die() { echo "new-workflow: $*" >&2; exit 1; }
+
+slug="" title="" lab="" modality="" name="" login="" email="" orcid=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --title|--lab|--modality|--owner-name|--owner-github|--owner-email|--owner-orcid)
+            [ $# -ge 2 ] || usage
+            case "$1" in
+                --title) title="$2" ;;
+                --lab) lab="$2" ;;
+                --modality) modality="$2" ;;
+                --owner-name) name="$2" ;;
+                --owner-github) login="$2" ;;
+                --owner-email) email="$2" ;;
+                --owner-orcid) orcid="$2" ;;
+            esac
+            shift 2 ;;
+        -*) usage ;;
+        *) [ -z "$slug" ] || usage; slug="$1"; shift ;;
+    esac
+done
+[ -n "$slug" ] || usage
+
+# shellcheck source=lib/katana.sh
+. <(tr -d '\r' < lib/katana.sh) || exit 1
+index=$(tr -d '\r' < index.html) || exit 1
+
+# card_field <slug> <what>: from <slug>'s card in index.html, its lab
+# section's id (lab), its name, its description (desc), its compute tag
+# (compute) or its modality class (domain); empty if it has no card.
+card_field() {
+    awk -v s="$1" -v want="$2" '
+        function inner(l) { sub(/^[^>]*>/, "", l); sub(/<.*/, "", l); return l }
+        /class="lab[" ]/ { lab = $0; if (!sub(/.* id="/, "", lab)) lab = ""; else sub(/".*/, "", lab) }
+        !on && index($0, "href=\"workflows/" s "/\"") && /class="workflow-card/ { on = 1; v["lab"] = lab }
+        on && /class="card-name"/ { l = $0; sub(/.*class="card-name"/, "", l); v["name"] = inner(l) }
+        on && /class="card-desc"/ { l = $0; sub(/.*class="card-desc"/, "", l); v["desc"] = inner(l) }
+        on && /class="compute-tag"/ { l = $0; sub(/.*class="compute-tag"/, "", l); v["compute"] = inner(l) }
+        on && /class="card-domain / { l = $0; sub(/.*class="card-domain /, "", l); sub(/".*/, "", l); v["domain"] = l }
+        on && /<\/a>/ { print v[want]; exit }' <<< "$index"
+}
+
+# ── What it is asked for ──────────────────────────────────────────────
+[[ "$slug" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]] ||
+    die "$slug is not a slug: lowercase letters and digits in words joined by single hyphens, as $REF"
+planned=0
+if [ -e "workflows/$slug" ]; then
+    others=$(cd "workflows/$slug" && find . -mindepth 1 ! -name index.html | head -n1)
+    if [ -z "$others" ] && grep -q "href=\"workflows/$slug/\" class=\"workflow-card planned\"" <<< "$index"; then
+        planned=1
+    else
+        die "workflows/$slug/ already exists, and isn't a Planned workflow's folder; choose another slug"
+    fi
+fi
+[ ! -e "_archive/$slug" ] ||
+    die "$slug is a retired workflow's (_archive/$slug/); adopting it is CONTRIBUTING.md's The workflow owner, not a new workflow"
+if [ "$planned" = 1 ]; then
+    card_lab=$(card_field "$slug" lab)
+    [ -n "$lab" ] || lab="$card_lab"
+    [ "$lab" = "$card_lab" ] || die "$slug is Planned in the $card_lab section of index.html, not $lab"
+    [ -n "$title" ] || title=$(card_field "$slug" name)
+    [ -n "$modality" ] || modality=$(card_field "$slug" domain)
+    desc=$(card_field "$slug" desc)
+    compute=$(card_field "$slug" compute)
+fi
+[ -n "$title" ] || die "no --title: the workflow's name, as its page and card show it"
+[ -n "$lab" ] || die "no --lab: the id of its lab's section in index.html"
+[ -n "$name" ] && [ -n "$login" ] && [ -n "$email" ] ||
+    die "the workflow owner needs --owner-name, --owner-github and --owner-email (--owner-orcid is optional)"
+for v in "$title" "$name" "$email"; do
+    [[ "$v" != *[\<\>\&\"\\{}]* && "$v" != *$'\n'* ]] ||
+        die "\"$v\" holds one of < > & \" \\ { }, which the page, the card or the manifest can't hold as written"
+done
+
+[[ "$lab" =~ ^[a-z0-9-]+$ ]] && grep -qE "class=\"lab\"[^>]* id=\"$lab\"" <<< "$index" ||
+    die "index.html has no lab section with id=\"$lab\"; a new lab needs an approved proposal (CONTRIBUTING.md, Scaffold)"
+env="${IRIS_LAB_ENVS[$lab]-}"
+[ -n "$env" ] ||
+    die "lib/katana.sh's lab table has no line for $lab, so no environment version for its new workflows; a lab's line comes with its approved proposal"
+lab_name=$(awk -v lab="$lab" '
+    /class="lab[" ]/ { on = index($0, "id=\"" lab "\"") > 0 }
+    on && /class="lab-title"/ { l = $0; sub(/.*class="lab-title">/, "", l); sub(/<.*/, "", l); print l; exit }' <<< "$index")
+[ -n "$lab_name" ] || die "the $lab section of index.html has no lab-title"
+if [ -z "$modality" ]; then
+    modality=$(awk -v lab="$lab" '
+        /class="lab[" ]/ { on = index($0, "id=\"" lab "\"") > 0 }
+        on && /class="card-domain / { l = $0; sub(/.*class="card-domain /, "", l); sub(/".*/, "", l); print l; exit }' <<< "$index")
+    [ -n "$modality" ] || die "the $lab section has no card to take a modality from; give --modality"
+fi
+[[ "$modality" =~ ^[a-z0-9-]+$ ]] && grep -qE "\.card-domain\.${modality}[ {]" <<< "$index" ||
+    die "index.html has no .card-domain.$modality style; a new modality needs an approved proposal (CONTRIBUTING.md, Scaffold)"
+modality_label=$(sed -nE "s|.*<span class=\"card-domain $modality\">([^<]*)</span>.*|\1|p" <<< "$index" | head -n1)
+[ -n "$modality_label" ] || modality_label="${modality^}"
+
+owner_block() {
+    printf '%s\n' "owner:" "  name: $name" "  github: $login" "  email: $email"
+    [ -z "$orcid" ] || echo "  orcid: $orcid"
+}
+tmp=$(mktemp -d) || exit 1
+trap 'rm -rf "$tmp"' EXIT
+owner_block > "$tmp/manifest.yml"
+problem=$(bin/manifest-owner "$tmp/manifest.yml" 2>&1) || die "the workflow owner: ${problem#*: }"
+
+git diff --quiet HEAD -- lib/ ||
+    die "lib/ has uncommitted changes; commit them first, since the library copy records the commit it is copied from"
+ref_pin=$(iris_form_pins "workflows/$REF/form.yml.erb" | head -n1)
+ref_title=$(tr -d '\r' < "workflows/$REF/manifest.yml" | sed -nE 's/^name: *"?([^"]*)"? *$/\1/p')
+ref_job=$(tr -d '\r' < "workflows/$REF/form.yml.erb" | awk '/^  job_name:/ { on = 1 } on && /^    value:/ { v = $0; sub(/^    value: *"?/, "", v); sub(/"? *$/, "", v); print v; exit }')
+icon=$(tr -d '\r' < "workflows/$REF/manifest.yml" | sed -n 's/^icon: //p')
+[ -n "$ref_pin" ] && [ -n "$ref_title" ] && [ -n "$ref_job" ] && [ -n "$icon" ] ||
+    die "can't read the reference workflow's environment version, title, job name or icon from workflows/$REF/"
+job="iris_${slug//-/_}"
+
+# ── The folder ────────────────────────────────────────────────────────
+dir="workflows/$slug"
+export NW_REF="$REF" NW_SLUG="$slug" NW_REF_JOB="$ref_job" NW_JOB="$job" NW_REF_PIN="$ref_pin" NW_PIN="$env" \
+    NW_REF_TITLE="$ref_title" NW_TITLE="$title" NW_LAB="$lab" NW_LAB_NAME="$lab_name" \
+    NW_LOGIN="$login" NW_NAME="$name" NW_EMAIL="$email"
+# The reference's committed form, code and tests, its page, manifest,
+# library copy and run proof aside, which are the new workflow's own.
+git ls-files -s -- "workflows/$REF" | while read -r mode _ _ path; do
+    rel="${path#"workflows/$REF/"}"
+    case "$rel" in index.html|manifest.yml|run-proof.json|lib/*) continue ;; esac
+    mkdir -p "$(dirname "$dir/$rel")" || exit 1
+    git show "HEAD:$path" | perl -pe 's/\Q$ENV{NW_REF}\E/$ENV{NW_SLUG}/g; s/\Q$ENV{NW_REF_JOB}\E/$ENV{NW_JOB}/g;
+        s/\Q$ENV{NW_REF_PIN}\E/$ENV{NW_PIN}/g; s/\Q$ENV{NW_REF_TITLE}\E/$ENV{NW_TITLE}/g' > "$dir/$rel" || exit 1
+    [ "$mode" != 100755 ] || chmod +x "$dir/$rel"
+done || exit 1
+
+{
+    echo "name: \"$title\""
+    echo "# The WorkflowHub entry's tags, which bin/workflowhub reads; OpenComposer ignores them."
+    echo "tags: \"{{TODO: the WorkflowHub entry's tags on one line, comma-separated, as microCT, segmentation, imaging, HPC}}\""
+    echo "category: Imaging"
+    echo "icon: $icon"
+    echo "# The workflow owner, mentioned on every PR that touches this folder;"
+    echo "# bin/manifest-owner gives the shape, and bin/check keeps it in step with"
+    echo "# the page's wf-owner line."
+    owner_block
+    echo "description: |"
+    echo "  {{TODO: what the workflow does and the dataset folder it takes, for its form in OpenComposer and its WorkflowHub entry}}"
+    echo
+    echo "  Documentation: https://docs.restech.unsw.edu.au/iris/workflows/$slug/"
+} > "$dir/manifest.yml"
+
+tr -d '\r' < "$TEMPLATE" | perl -pe 's/\{\{SLUG\}\}/$ENV{NW_SLUG}/g; s/\{\{TITLE\}\}/$ENV{NW_TITLE}/g;
+    s/\{\{LAB_ID\}\}/$ENV{NW_LAB}/g; s/\{\{LAB_NAME\}\}/$ENV{NW_LAB_NAME}/g; s/\{\{OWNER_LOGIN\}\}/$ENV{NW_LOGIN}/g;
+    s/\{\{OWNER_NAME\}\}/$ENV{NW_NAME}/g; s/\{\{OWNER_EMAIL\}\}/$ENV{NW_EMAIL}/g' > "$dir/index.html" || exit 1
+
+bin/libcopy "$slug" > /dev/null || exit 1
+
+# ── The card ──────────────────────────────────────────────────────────
+card="$tmp/card.html"
+[ -n "${desc-}" ] || desc="{{TODO: what a researcher gets from it, in one or two sentences}}"
+[ -n "${compute-}" ] || compute="{{TODO: where it runs, as Katana GPU · IRIS imaging env}}"
+cat > "$card" << EOF
+      <a href="workflows/$slug/" class="workflow-card">
+        <div class="card-top">
+          <span class="card-domain $modality">$modality_label</span>
+        </div>
+        <div class="card-name">$title</div>
+        <div class="card-desc">$desc</div>
+        <div class="card-compute">
+          <span class="compute-tag">$compute</span>
+        </div>
+        <div class="card-meta">
+          <span><span class="status-dot"></span> Active</span>
+          <span>$email</span>
+        </div>
+      </a>
+EOF
+if [ "$planned" = 1 ]; then
+    # In place of its Planned card.
+    awk -v s="$slug" -v cardfile="$card" '
+        !done && index($0, "href=\"workflows/" s "/\"") && /class="workflow-card/ { skip = 1 }
+        skip { if (/<\/a>/) { while ((getline l < cardfile) > 0) print l; skip = 0; done = 1 } next }
+        { print }' <<< "$index" > index.html.new
+else
+    # At the end of its lab's Active cards: before the first Planned card in
+    # its section's grid, or the grid's end.
+    awk -v lab="$lab" -v cardfile="$card" '
+        /class="lab[" ]/ { on = index($0, "id=\"" lab "\"") > 0 }
+        on && !done && /class="workflow-grid"/ { grid = 1; end = $0; sub(/<.*/, "</div>", end); print; next }
+        grid && !done && (/class="workflow-card planned"/ || $0 == end) {
+            while ((getline l < cardfile) > 0) print l
+            print ""; done = 1
+        }
+        { print }' <<< "$index" > index.html.new
+fi
+mv index.html.new index.html
+
+# ── The tier table ────────────────────────────────────────────────────
+# The workflow joins Run and verified (leaving Planned), and a line after
+# the table cites the job of its test-instance run, which bin/check's
+# tier_jobs reads. A row's workflows are `<slug>`s, each run sharing a
+# modality ending in it, "(microCT)", and are rewritten that way.
+export NW_LABEL="$modality_label" NW_PLANNED="$planned"
+tr -d '\r' < CONTRIBUTING.md | perl -pe '
+    BEGIN { $s = $ENV{NW_SLUG} }
+    # The row cell $_[0] with $s added (label $_[1]) or, with no label, removed.
+    sub cell {
+        my ($text, $add) = @_;
+        my (@names, @labels);
+        for (split /, /, ($text eq "None" ? "" : $text)) {
+            /^`([^`]+)`(?: \(([^)]*)\))?$/ or return $text;
+            push @names, $1; push @labels, $2;
+        }
+        for (my $i = $#labels - 1; $i >= 0; $i--) { $labels[$i] //= $labels[$i + 1] }
+        my @keep = grep { $names[$_] ne $s } 0 .. $#names;
+        @names = @names[@keep]; @labels = @labels[@keep];
+        if (defined $add) { push @names, $s; push @labels, $add }
+        my @out;
+        for my $i (0 .. $#names) {
+            my $t = "`$names[$i]`";
+            $t .= " ($labels[$i])" if defined $labels[$i] && ($i == $#names || $labels[$i] ne ($labels[$i + 1] // ""));
+            push @out, $t;
+        }
+        return @out ? join(", ", @out) : "None";
+    }
+    s/^(\| \*\*Run and verified\*\* \| )(.*?)( \|)/$1 . cell($2, $ENV{NW_LABEL}) . $3/e;
+    s/^(\| \*\*Planned\*\* \| )(.*?)( \|)/$1 . cell($2) . $3/e if $ENV{NW_PLANNED};
+    $table = 1 if /^\| \*\*/;
+    if ($table && /^$/) {
+        $_ .= "`$s` ran from the test instance (job {{TODO: the job ID of its test-instance run, which its run-proof.json records}}).\n\n";
+        $table = 0;
+    }' > CONTRIBUTING.md.new
+mv CONTRIBUTING.md.new CONTRIBUTING.md
+
+# ── What is left ──────────────────────────────────────────────────────
+card_todos=$(awk -v s="$slug" 'index($0, "href=\"workflows/" s "/\"") { on = 1 } on && /\{\{TODO/ { n++ } on && /<\/a>/ { print n + 0; exit }' index.html)
+kept=""
+[ "$planned" = 0 ] || kept=", keeping its Planned folder"
+cat << EOF
+Made $dir/ from workflows/$REF/$kept:
+  - its form, src/ and tests/, the reference workflow's for $slug: usage tag
+    iris-$slug, job name $job, environment version $env
+  - its library copy, lib/ (bin/libcopy)
+  - its manifest, naming $name ($login) as its workflow owner
+  - its page, from $TEMPLATE
+  - its card, Active, in index.html's $lab section
+  - its row in CONTRIBUTING.md's tier table, Run and verified
+
+Left to do, as CONTRIBUTING.md's Adding a new workflow says:
+  1. Write each {{TODO: ...}} as it says, braces and all; bin/check fails
+     while any is left:
+       $(grep -c '{{TODO' "$dir/index.html") on its page, $dir/index.html
+       $(grep -c '{{TODO' "$dir/manifest.yml") in its manifest, $dir/manifest.yml
+       $card_todos on its card in index.html
+  2. Make the form's fields and check: rules, src/run.py and tests/ your
+     workflow's: they are still the reference workflow's, for its dataset.
+  3. git add $dir index.html CONTRIBUTING.md, commit, and run bin/check.
+  4. Prove it on the test instance and write its run proof with
+     bin/run-proof (steps 5 and 6), then put that run's job ID in
+     CONTRIBUTING.md's line "\`$slug\` ran from the test instance" in
+     place of its {{TODO: ...}}, which bin/check fails until then.
+EOF
