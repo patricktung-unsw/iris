@@ -171,6 +171,20 @@ has dev "Your three clicks, in order: Freeze, Publish, Generate a DOI" "Stage 6/
 lacks dev "Stage 7" "workflowhub.eu/projects/472"
 grep -qx "WH_ENTRY_URL='https://dev.workflowhub.eu/workflows/12'" "$fake/wizard.env" ||
     echo "dev: the entry URL was not kept"
+# Published, the entry is read back, there as before a DOI: with no API
+# to read, it says to check by eye; a different commit is warned of.
+has dev "What the published entry says:" "couldn't read the entry's commit from WorkflowHub"
+printf '%s' '{"data":{"attributes":{"title":"UNSW HPC Katana - Seg Thing (U-Net)","license":"Apache-2.0","versions":[{"version":1,"commit":"'$main_sha'"}]}}}' > "$fake/entry.json"
+IRIS_WORKFLOWHUB=https://dev.workflowhub.eu IRIS_WORKFLOWHUB_TEAM=9 run "$dev_answers" seg
+exits dev-read-back 0
+has dev-read-back "✓ title: UNSW HPC Katana - Seg Thing (U-Net)" "✓ licence: Apache-2.0" "✓ commit: $main_sha"
+printf '%s' '{"data":{"attributes":{"title":"UNSW HPC Katana - Seg Thing (U-Net)","license":"Apache-2.0","versions":[{"version":1,"commit":"2222222"}]}}}' > "$fake/entry.json"
+IRIS_WORKFLOWHUB=https://dev.workflowhub.eu IRIS_WORKFLOWHUB_TEAM=9 run "$dev_answers" seg
+exits dev-other-commit 0
+has dev-other-commit "the entry's commit is \"2222222\", not \"$main_sha\"" "fix it with Actions → Edit Workflow" \
+    "but the entry differs from what was entered"
+lacks dev-other-commit "Done up to Publish"
+rm -f "$fake/entry.json"
 # An entry URL on the wrong host is asked for again.
 IRIS_WORKFLOWHUB=https://dev.workflowhub.eu IRIS_WORKFLOWHUB_TEAM=9 \
     run '\n\n\n\nhttps://workflowhub.eu/workflows/12\nhttps://dev.workflowhub.eu/workflows/12\ny\n\ny\n\n' seg
@@ -197,6 +211,14 @@ has prod "Stage 8/8 · List the citable version" "✓ title: UNSW HPC Katana - S
     "<li><a href=\"https://doi.org/10.48546/workflowhub.workflow.12.1\" target=\"_blank\">10.48546/workflowhub.workflow.12.1</a> · $(date +%F) · commit <code>1111111</code></li>" \
     "    value: 10.48546/workflowhub.workflow.12.1" \
     "    description: \"seg's citable version of $(date +%F), commit 1111111\""
+
+# A different commit on WorkflowHub is warned of before the DOI, which
+# still goes ahead on a yes.
+printf '%s' '{"data":{"attributes":{"title":"UNSW HPC Katana - Seg Thing (U-Net)","license":"Apache-2.0","versions":[{"version":1,"commit":"2222222","doi":"10.48546/workflowhub.workflow.12.1"}]}}}' > "$fake/entry.json"
+run '\n\n\n\nhttps://workflowhub.eu/workflows/12\ny\n\ny\n\ny\n' seg
+exits prod-other-commit 0
+has prod-other-commit "the entry's commit is \"2222222\", not \"$main_sha\"" \
+    "fix it with Actions → Edit Workflow before the DOI" "Stage 8/8 · List the citable version"
 
 # A later citable version: the page names the entry, so it is not asked
 # for, and the walkthrough adds a new version to it.

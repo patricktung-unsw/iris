@@ -211,8 +211,9 @@ finish() {
 #
 # IRIS_WORKFLOWHUB=https://dev.workflowhub.eu, with IRIS_WORKFLOWHUB_TEAM set
 # to a team there, runs it against WorkflowHub's development instance, which
-# mints no DOIs, so it stops after Publish. That instance's entries are its
-# own: IRIS_WORKFLOWHUB_ENTRY=<entry URL> adds a new version to one.
+# mints no DOIs, so it stops after Publish, once it has read the entry back
+# as it would before a DOI. That instance's entries are its own:
+# IRIS_WORKFLOWHUB_ENTRY=<entry URL> adds a new version to one.
 #
 # Answers are kept in $IRIS_WIZARD_ENV (default below, outside the repo), one
 # file per workflow and instance, so a re-run offers them back: press Enter
@@ -395,6 +396,21 @@ expect_field() {
   else ok "$1: $got"; fi
 }
 
+# read_back [<when>]: checks the published entry's title, licence and
+# newest version's commit, from its API, against what was entered, and
+# warns to fix any that differ, adding <when> (such as "before the DOI"),
+# and fails if any did.
+read_back() {
+  local matches=yes
+  say "What the published entry says:"
+  expect_field title "$TITLE" || matches=no
+  expect_field licence "$LICENCE" || matches=no
+  if [[ -n "${WH_IMPORT_COMMIT:-}" ]]; then expect_field commit "$WH_IMPORT_COMMIT" || matches=no; fi
+  [[ "$matches" == yes ]] && return
+  warn "fix it with Actions → Edit Workflow${1:+ $1}, or the value in $WF/manifest.yml"
+  return 1
+}
+
 ORCID_RE='^[0-9]{4}-[0-9]{4}-[0-9]{4}-[0-9]{3}[0-9X]$'
 if [[ $PRODUCTION == yes ]]; then TOTAL_STAGES=8; else TOTAL_STAGES=6; fi
 if [[ -n "$ENTRY_URL" ]]; then banner "Add a citable version of $SLUG on WorkflowHub"
@@ -533,7 +549,13 @@ pause "Published? Press Enter."
 
 if [[ $PRODUCTION != yes ]]; then
   printf '\n'
-  ok "Done up to Publish on $WH: $WH_ENTRY_URL"
+  if read_back; then
+    printf '\n'
+    ok "Done up to Publish on $WH: $WH_ENTRY_URL"
+  else
+    printf '\n'
+    warn "Published on $WH, but the entry differs from what was entered: $WH_ENTRY_URL"
+  fi
   note "DOIs mint only on https://workflowhub.eu, so the walkthrough ends here."
   finish
   exit 0
@@ -547,12 +569,7 @@ step "On the frozen version, in the Citation panel, Generate a DOI."
 step "It reminds you to review the metadata, then asks you to confirm."
 printf '\n'
 # Published, the entry is public, so the API shows what the DOI will carry.
-say "What the published entry says:"
-matches=yes
-expect_field title "$TITLE" || matches=no
-expect_field licence "$LICENCE" || matches=no
-if [[ -n "${WH_IMPORT_COMMIT:-}" ]]; then expect_field commit "$WH_IMPORT_COMMIT" || matches=no; fi
-[[ "$matches" == yes ]] || warn "fix it with Actions → Edit Workflow first, or the value in $WF/manifest.yml"
+read_back "before the DOI" || true
 printf '\n'
 confirm "Generate the DOI for this frozen snapshot now? It can't be undone" ||
   stop_here "Stopped before Generate a DOI."

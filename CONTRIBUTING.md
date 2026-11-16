@@ -279,7 +279,7 @@ It reads every value from `workflows/<slug>/`: the title from the manifest's `na
 4. **Make your three clicks**, which it lists in order and stops for a yes before each: **Freeze** the version, **Publish** the entry, then **Generate a DOI**, which makes it a citable version. None can be undone. It reads the published entry back to check its title, licence and commit before the DOI, and reads the DOI back after.
 5. **Open a PR** adding the citable version to the workflow's page: its DOI, its date and its commit, never a version number, and its DOI to `identifiers` in `CITATION.cff`, above that workflow's older ones. The walkthrough ends by printing both lines.
 
-To try it without minting anything, run it against WorkflowHub's development instance, which mints no DOIs, so it stops after Publish: `IRIS_WORKFLOWHUB=https://dev.workflowhub.eu IRIS_WORKFLOWHUB_TEAM=<a team there> bin/workflowhub <slug>`. That instance's entries are its own, so `IRIS_WORKFLOWHUB_ENTRY=<its entry URL>` adds a new version to one.
+To try it without minting anything, run it against WorkflowHub's development instance, which mints no DOIs, so it stops after Publish, once it has checked the published entry's title, licence and commit: `IRIS_WORKFLOWHUB=https://dev.workflowhub.eu IRIS_WORKFLOWHUB_TEAM=<a team there> bin/workflowhub <slug>`. That instance's entries are its own, so `IRIS_WORKFLOWHUB_ENTRY=<its entry URL>` adds a new version to one.
 
 **When to mint:** the first citable version straight after your workflow merges; after that, only when its code or defaults change in a way that changes results, not on every merge. A citable version's commit may include unrelated changes to other workflows; that is harmless, since each run's `commit.txt` pins exactly what ran.
 
