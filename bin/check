@@ -1,7 +1,11 @@
 #!/bin/bash
 # Every check to pass before committing, as CI runs them on each push
 # (.github/workflows/check.yml). Run from anywhere in the clone; it prints
-# each failure and exits 1 if there was any.
+# each failure and exits 1 if there was any, its last line then naming
+# every check that failed (FAILED: <name> | <name>), so run it bare or
+# redirect it to a file: a pipe into tail or grep gives the
+# pipe's exit status, not the run's (#145's session read a failed run as
+# passed and a passed one as failed).
 #
 #   bin/check
 #   bin/check <text>    run only the checks whose name contains <text>
@@ -28,6 +32,7 @@ cd "$(dirname "$(readlink -f "$0")")/.." || exit 1
 [ $# -le 1 ] || { echo "usage: bin/check [<text>]; quote a name with spaces" >&2; exit 2; }
 only="$1"
 failed=0
+failures=()
 # The tree this run checks, taken before any check reads a file.
 start_tree="$(bin/tracked-tree 2> /dev/null)"
 ran=0
@@ -38,6 +43,13 @@ selected() {
     [[ "$1" == *"$only"* ]] && ran=$((ran + 1))
 }
 
+# failed_check <name>: prints the FAIL: line and counts the failure.
+failed_check() {
+    echo "FAIL: $1"
+    failures+=("$1")
+    failed=1
+}
+
 # Run a check; any output is its failure.
 check() {
     local name="$1"; shift
@@ -45,9 +57,8 @@ check() {
     selected "$name" || return 0
     out="$("$@" 2>&1)"
     if [ -n "$out" ]; then
-        echo "FAIL: $name"
+        failed_check "$name"
         echo "$out" | sed 's/^/  /'
-        failed=1
     fi
 }
 
@@ -999,18 +1010,16 @@ py_tests() {
     mapfile -t in_container < <(iris_py_tests "$dir" container)
     mapfile -t host < <(iris_py_tests "$dir" host)
     if [ ${#in_container[@]} -gt 0 ]; then
-        [ -n "$version" ] || { echo "FAIL: synthetic-dataset test: $dir: no IRIS_ENV_VERSION in its form to run it in"; failed=1; return; }
+        [ -n "$version" ] || { failed_check "synthetic-dataset test: $dir: no IRIS_ENV_VERSION in its form to run it in"; return; }
         out="$(cd "$dir" && "$root/bin/envrun" --no-network "${limit[@]}" "$version" python -m unittest "${in_container[@]}" 2>&1)" || {
-            echo "FAIL: synthetic-dataset test: $dir in $version"
+            failed_check "synthetic-dataset test: $dir in $version"
             echo "$out" | tail -40 | sed 's/^/  /'
-            failed=1
         }
     fi
     if [ ${#host[@]} -gt 0 ]; then
         out="$(cd "$dir" && python3 -m unittest "${host[@]}" 2>&1)" || {
-            echo "FAIL: synthetic-dataset test: $dir on the host"
+            failed_check "synthetic-dataset test: $dir on the host"
             echo "$out" | tail -40 | sed 's/^/  /'
-            failed=1
         }
     fi
 }
@@ -1044,5 +1053,8 @@ if [ "$failed" = 0 ]; then
     else
         echo "Checks matching '$only' passed ($ran run)."
     fi
+else
+    printf -v list '%s | ' "${failures[@]}"
+    echo "FAILED: ${list% | }"
 fi
 exit "$failed"

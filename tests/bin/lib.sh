@@ -5,7 +5,7 @@
 # expect <pass|fail> <tree> <check name>: runs <tree>/bin/check on the
 # checks whose name holds <check name>, and prints the tree's name and the
 # output if the verdict isn't the one wanted. A failure must be that
-# check's own.
+# check's own, and named again on the run's last line, FAILED: <names>.
 expect() {
     local want="$1" tree="$2" name="$3" out rc
     out="$("$tree/bin/check" "$name" 2>&1)"
@@ -14,6 +14,8 @@ expect() {
         echo "${tree##*/}: failed, expected a pass"
     elif [ "$want" = fail ] && { [ "$rc" != 1 ] || ! grep '^FAIL: ' <<< "$out" | grep -qF -- "$name"; }; then
         echo "${tree##*/}: passed (exit $rc), expected a failure"
+    elif [ "$want" = fail ] && ! tail -n1 <<< "$out" | grep '^FAILED: ' | grep -qF -- "$name"; then
+        echo "${tree##*/}: its last line doesn't name the failed check: $(tail -n1 <<< "$out")"
     else
         return 0
     fi
