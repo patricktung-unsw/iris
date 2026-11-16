@@ -33,7 +33,7 @@ printf '%s\n' "$@" > "$dir/args"
 cat > "$dir/tree.tar"
 if [ -f "$dir/run-remote" ]; then
     cmd="$(sed -e "s|/srv/scratch/[$]USER|$dir/scratch|g" -e "s|/etc/profile.d/modules.sh|$dir/modules.sh|g" \
-        -e "s|log_wait=[0-9]*|log_wait=$(cat "$dir/run-remote")|" <<< "${*: -1}")"
+        -e "s|log_wait=[0-9][0-9]*|log_wait=$(cat "$dir/run-remote")|" -e "s|rm_wait=[0-9][0-9]*|rm_wait=2|" <<< "${*: -1}")"
     exec bash -c "$cmd" < "$dir/tree.tar"
 fi
 exit "$(cat "$dir/exit-code" 2>/dev/null || echo 0)"
@@ -50,7 +50,25 @@ while [ $# -gt 1 ]; do [ "$1" = -o ] && log="$2"; shift; done
 echo 1234.kman
 exit 0
 EOF
-chmod +x "$fake/bin/ssh" "$fake/bin/qsub"
+# PBS can copy the job's log into the scratch folder while it is being
+# deleted, so rm -rf fails with "Directory not empty" (#198). While
+# $fake/rm-fails holds a count above 0, an rm of a katana-test folder
+# deletes it, puts a file straight back, as PBS's late copy did, counts
+# down and fails; anything else is the real rm.
+cat > "$fake/bin/rm" <<'EOF'
+#!/bin/bash
+dir="$(cd "$(dirname "$0")/.." && pwd)"
+n="$(cat "$dir/rm-fails" 2> /dev/null || echo 0)"
+case "${*: -1}" in "$dir"/scratch/katana-test.*)
+    if [ "$n" -gt 0 ]; then
+        /bin/rm "$@"; mkdir -p "${*: -1}"; echo late > "${*: -1}/job_lib.log"
+        echo $((n - 1)) > "$dir/rm-fails"
+        echo "rm: cannot remove '${*: -1}': Directory not empty" >&2; exit 1
+    fi
+esac
+exec /bin/rm "$@"
+EOF
+chmod +x "$fake/bin/ssh" "$fake/bin/qsub" "$fake/bin/rm"
 
 # A repo holding the script, the push hook, a tracked file and a link like
 # module/bin's.
@@ -161,6 +179,41 @@ echo 2 > "$fake/run-remote"
 if out="$(run)"; then fail "exit 0 when the job-library log never arrived"; fi
 grep -qF "job_lib.log" <<< "$out" || { fail "didn't name the missing job-library log:"; echo "$out" | sed 's/^/  /'; }
 [ -z "$(ls "$fake/scratch")" ] || fail "left its scratch folder behind"
+rm -f "$fake/no-log"
+echo 10 > "$fake/run-remote"
+
+# A file landing once in the folder as it is deleted is deleted with it,
+# on a later try (#198).
+echo 1 > "$fake/rm-fails"
+out="$(run)" || { fail "a file landing once during cleanup: exit $?, expected 0:"; echo "$out" | sed 's/^/  /'; }
+[ -z "$(ls "$fake/scratch")" ] || fail "a file landing once during cleanup: left its scratch folder behind"
+! grep -qF "left behind" <<< "$out" || fail "a file landing once during cleanup: said it left the folder behind"
+# One that keeps coming back past the bound leaves the folder, ends on a
+# line naming it and exits 3, apart from a test failure; the passing tests
+# still record the tree.
+# By line count, since an earlier run stamped this same tree already.
+stamped() { wc -l 2> /dev/null < "$repo/.git/iris/katana-tested" || echo 0; }
+before="$(stamped)"
+echo 999 > "$fake/rm-fails"
+out="$(run)"; r=$?
+left="$(ls -d "$fake"/scratch/katana-test.* 2> /dev/null)"
+[ -n "$left" ] || fail "a file that keeps coming back: no folder left, so the case tested nothing"
+[ "$r" = 3 ] || fail "a file that keeps coming back: exit $r, expected 3"
+[ "$(tail -1 <<< "$out")" = "katana-test: left behind $left" ] ||
+    { fail "a file that keeps coming back: doesn't end naming the folder:"; tail -4 <<< "$out" | sed 's/^/  /'; }
+[ "$(stamped)" = $((before + 1)) ] || fail "a file that keeps coming back: the passing tests didn't record the tree"
+# With a test failing too, the test failure's exit wins, the folder still
+# named, and the tree isn't recorded.
+before="$(stamped)"
+echo 999 > "$fake/rm-fails"
+echo 'exit 1' > "$repo/module/tests/test_module.sh"
+out="$(run)"; r=$?
+[ "$r" = 1 ] || fail "a failing test and a folder left behind: exit $r, expected 1"
+tail -1 <<< "$out" | grep -qF "katana-test: left behind $fake/scratch/katana-test." ||
+    fail "a failing test and a folder left behind: doesn't end naming the folder"
+[ "$(stamped)" = "$before" ] || fail "a failing test and a folder left behind: recorded the tree as tested"
+git -C "$repo" checkout -q module/tests/test_module.sh
+rm -r "$fake/rm-fails" "$fake"/scratch/katana-test.*
 
 # A passing run records the tree it tested, by the tested files alone, and
 # a failing one records nothing.

@@ -4,7 +4,9 @@
 # uncommitted edits included. No push needed: run it from any clone or
 # worktree before committing. The tree goes to a folder of its own in
 # /srv/scratch/$USER, deleted when the run ends, so no clone on Katana is
-# touched and nothing is left behind.
+# touched and nothing is left behind; a folder it can't delete within 10
+# seconds is named on the run's last line, "katana-test: left behind
+# <folder>", and exits 3, or 1 if a test failed too.
 #
 # The job-library test runs jobs in a container, so it runs as a small PBS
 # job (lib/tests/katana/job_lib.pbs, sized in its header) that qsub -W block
@@ -30,8 +32,11 @@
 #
 # It ends with a summary, one line per test: a form test's minitest
 # totals, the module test's result, and the job-library test's job ID and
-# exit status. Exits 0 only if every test passed. Files git doesn't track
-# stay behind, so it names any under workflows/, module/ or lib/: `git add`
+# exit status. Exits 0 only if every test passed and the folder is gone, 3
+# if every test passed but the folder was left behind, which still records
+# the tree as tested, 1 if a test or its setup on Katana failed, and
+# non-zero for anything else that stops it. Files git doesn't track stay
+# behind, so it names any under workflows/, module/ or lib/: `git add`
 # a new test first. The module test needs katana_ai_ro membership. `git archive` keeps
 # module/bin's links, which a desktop clone with core.symlinks off checks
 # out as plain files. Over `ssh katana`, and `ssh katana-dm` for the
@@ -76,7 +81,20 @@ ssh katana-dm 'bash -s -- --pull' < lib/tests/katana/stand-in.sh ||
 # shellcheck disable=SC2016  # expanded on Katana
 git archive --format=tar "$tree" | ssh katana '
     d=$(mktemp -d "/srv/scratch/$USER/katana-test.XXXXXX") || exit 1
-    trap '\''chmod -R u+rwx "$d"; rm -rf "$d"'\'' EXIT
+    # PBS can copy the job log in while the folder is being deleted, failing
+    # the delete with "Directory not empty" (#198), so it is tried once a
+    # second for up to rm_wait seconds. A folder still there is named last
+    # and exits 3, or the test failure'\''s 1.
+    clean() {
+        local e=$? rm_wait=10
+        while chmod -R u+rwx "$d" 2> /dev/null; rm -rf "$d" 2> /dev/null; [ -e "$d" ] && [ $((rm_wait--)) -gt 0 ]; do sleep 1; done
+        if [ -e "$d" ]; then
+            ls -lA "$d"; echo "katana-test: left behind $d"
+            [ "$e" = 0 ] && e=3
+        fi
+        exit "$e"
+    }
+    trap clean EXIT
     mkdir "$d/iris" && cd "$d/iris" && tar xf - || exit 1
     # The job library records the clone'\''s commit, so the tree is a repo.
     git init -q && git add -A && git -c user.name=katana-test -c user.email=- commit -q --no-verify -m tree || exit 1
@@ -105,8 +123,13 @@ git archive --format=tar "$tree" | ssh katana '
         { echo "katana-test: $log has no last line, exit <status>, so the job-library test output is missing" >&2; s=1; }
     echo "lib/tests/katana/job_lib.pbs: job ${job:-not submitted}, ${last:-no exit line in its log}" >> "$sum"
     echo "== summary"; cat "$sum"
-    exit $s' || exit
+    exit $s'
+st=("${PIPESTATUS[@]}"); r=${st[1]}
+[ "${st[0]}" = 0 ] || { echo "katana-test: git archive failed, so Katana tested a partial tree" >&2; exit 1; }
+[ "$r" = 0 ] || [ "$r" = 3 ] || exit "$r"
 
-# Every test passed: record the tree, so a push of it to main goes through.
+# Every test passed, whether or not the folder went: record the tree, so a
+# push of it to main goes through.
 mkdir -p "${stamps%/*}" &&
-    echo "$(tested_hash "$tree") $(date -u +%FT%TZ) $(git rev-parse --short HEAD)" >> "$stamps"
+    echo "$(tested_hash "$tree") $(date -u +%FT%TZ) $(git rev-parse --short HEAD)" >> "$stamps" || exit 1
+exit "$r"
