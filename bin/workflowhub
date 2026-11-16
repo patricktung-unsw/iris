@@ -205,16 +205,16 @@ finish() {
 # tags and owner, the entry script src/run.py, and the entry itself, from the
 # newest DOI the page's "Cite this workflow" lists; with none listed it
 # registers a new entry. It does every step WorkflowHub documents and leaves
-# the owner two clicks, in order and each behind a yes: Register, which
-# publishes the entry and freezes its version (dev.workflowhub.eu showed
-# both, #196), and Generate a DOI. It reads the published entry back
-# between them, and ends with the lines that list the new citable version on
-# the page and in CITATION.cff, for the owner's PR.
+# the owner two clicks, in order and each behind a yes: Register (Update,
+# for a new version), which publishes the version and freezes it
+# (dev.workflowhub.eu showed both, #196), and Generate a DOI. It reads the
+# published entry back between them, and ends with the lines that list the
+# new citable version on the page and in CITATION.cff, for the owner's PR.
 #
 # IRIS_WORKFLOWHUB=https://dev.workflowhub.eu, with IRIS_WORKFLOWHUB_TEAM set
 # to a team there, runs it against WorkflowHub's development instance, which
-# mints no DOIs, so it stops after Register, once it has read the entry
-# back as it would before a DOI. That instance's entries are its own:
+# mints no DOIs, so it stops after Register or Update, once it has read the
+# entry back as it would before a DOI. That instance's entries are its own:
 # IRIS_WORKFLOWHUB_ENTRY=<entry URL> adds a new version to one.
 #
 # Answers are kept in $IRIS_WIZARD_ENV (default below, outside the repo), one
@@ -417,6 +417,9 @@ read_back() {
 }
 
 ORCID_RE='^[0-9]{4}-[0-9]{4}-[0-9]{4}-[0-9]{3}[0-9X]$'
+# The button that publishes: Register for a new entry, Update for a new
+# version of one (dev.workflowhub.eu, #196).
+SUBMIT=Register; [[ -z "$ENTRY_URL" ]] || SUBMIT=Update
 if [[ $PRODUCTION == yes ]]; then TOTAL_STAGES=7; else TOTAL_STAGES=5; fi
 if [[ -n "$ENTRY_URL" ]]; then banner "Add a citable version of $SLUG on WorkflowHub"
 else banner "Register $SLUG on WorkflowHub"; fi
@@ -425,9 +428,12 @@ else banner "Register $SLUG on WorkflowHub"; fi
 stage "Sign in, and check you are in $TEAM_NAME"
 say "If a browser opens on a different machine from the one you're reading this on,"
 say "click the printed URLs instead."
-say "To copy from here, select the text and right-click → Copy, or use your terminal's"
-say "copy key (often Ctrl+Shift+C). Ctrl+C with nothing selected stops the walkthrough;"
-say "if it does, re-run it: it offers back every answer you gave."
+say "To copy text from here, select it, then any of:"
+step "right-click → Copy"
+step "Edit → Copy, in the menu bar"
+step "your terminal's copy key, often Ctrl+Shift+C"
+note "Ctrl+C with nothing selected stops the walkthrough. If it does, re-run it: it"
+note "offers back every answer you gave."
 open_url "$TEAM_URL"
 step "Sign in to WorkflowHub (top right) if you aren't already."
 step "On the $TEAM_NAME page, check you're listed under its people."
@@ -437,12 +443,12 @@ note "the list, or keep typing its full name to pick it from ROR (UNSW Sydney's 
 note "03r8z3t63), add your department, Submit, and wait for approval."
 printf '\n'
 say "This walkthrough does every other step with you. Your clicks, in order:"
-say "  1. Register, which makes the entry public and freezes its version."
+say "  1. $SUBMIT, which makes the version public and freezes it."
 if [[ $PRODUCTION == yes ]]; then
   say "  2. Generate a DOI, which is permanent."
   say "It stops for a yes before each one."
 else
-  say "It stops for a yes before it. On $WH, which mints no DOIs, it ends after Register."
+  say "It stops for a yes before it. On $WH, which mints no DOIs, it ends after $SUBMIT."
 fi
 confirm "Signed in and listed in $TEAM_NAME?" ||
   stop_here "Request Membership on $TEAM_URL, and re-run once you're listed."
@@ -477,12 +483,13 @@ else
 fi
 if [[ -n "$ENTRY_URL" ]]; then
   open_url "$ENTRY_URL"
-  step "Actions → Upload a new version."
-  note "WorkflowHub documents only that item's name. On an entry imported from git it should"
-  note "read the repository again; whatever its form asks, keep the values below."
-  paste_block "Git repository URL, if it asks" "$REPO_URL"
+  step "Actions → New Version."
+  step "It shows the Git repository URL, filled in: check it's this one, then click Continue."
+  paste_block "Git repository URL" "$REPO_URL"
   paste_block "Branch (not a release tag)" "$BRANCH"
   step "Click Register."
+  note "It skips the main workflow file, going straight to the New Workflow Version page."
+  pause "On the New Workflow Version page? Press Enter."
 else
   open_url "$WH/workflows/new"
   step "If that isn't the new-workflow page: Create (top menu) → Workflow."
@@ -491,26 +498,29 @@ else
   step "Click Register."
   paste_block "Branch (not a release tag)" "$BRANCH"
   step "Click Register again."
+  paste_block "Main workflow file (pick it from the list)" "$MAIN_FILE"
+  step "Leave Abstract CWL and Diagram empty."
+  step "Workflow type: $WF_TYPE"
+  note "WorkflowHub then lists the entry as an Unrecognized workflow type; that's $WF_TYPE."
+  step "Click Continue."
+  pause "On the metadata step? Press Enter."
 fi
-paste_block "Main workflow file (pick it from the list)" "$MAIN_FILE"
-step "Leave Abstract CWL and Diagram empty."
-step "Workflow type: $WF_TYPE"
-note "WorkflowHub then lists the entry as an Unrecognized workflow type; that's $WF_TYPE."
-step "Click Continue."
-pause "On the metadata step? Press Enter."
 
 # ──────────────────────────────────────────────────────────────────────────
 stage "Title and description"
-[[ -z "$ENTRY_URL" ]] || note "A new version keeps the entry's metadata; if this step isn't offered, check them under Actions → Edit Workflow."
-say "The title field is on this page, with the description. It comes filled in from"
-say "the repo's CITATION.cff, which describes all of IRIS: replace it, and any"
-say "description filled in, with the text below."
+[[ -n "$ENTRY_URL" ]] || say "The title field is on this page, with the description."
+say "Both come filled in from the repo's CITATION.cff, which describes all of IRIS,"
+say "or empty: replace or fill each with the text below."
 paste_block "Title (replace the one filled in)" "$TITLE"
 paste_block "Description (replace any filled in)" "$DESCRIPTION"
 pause "Both replaced? Press Enter."
 
 # ──────────────────────────────────────────────────────────────────────────
-stage "Team, licence, sharing, tags and creators, then Register"
+stage "Team, licence, sharing, tags and creators, then $SUBMIT"
+if [[ -n "$ENTRY_URL" ]]; then
+  say "Tags and creators come filled in: check each against these. Teams, Licence and"
+  say "Sharing, wherever this page shows them, take the values below."
+fi
 step "Teams: $TEAM_NAME (team $TEAM_ID)."
 step "Licence: $LICENCE (Apache License 2.0)."
 warn "a team's default licence may be CC-BY-4.0: change it, since IRIS is $LICENCE"
@@ -524,19 +534,19 @@ say "  2. Your co-authors, with ORCIDs where they have them."
 say "  3. $ORG_CREATOR: if there's no organisation creator, put it in the"
 say "     free-text other-creators field."
 printf '\n'
-printf '  %s%sYour click 1: Register, which publishes it.%s\n' "$BOLD" "$RED" "$RESET"
-say "Register previews the sharing: Public Visibility, all visitors can view it."
+printf '  %s%sYour click 1: %s, which publishes it.%s\n' "$BOLD" "$RED" "$SUBMIT" "$RESET"
+say "$SUBMIT previews the sharing: Public Visibility, all visitors can view it."
 say "It may add that the team's gatekeepers are emailed to approve publishing;"
-say "a team with none publishes it at once. OK makes the entry public, with its"
-say "version frozen: its files and metadata are what a DOI will point at."
-note "An entry public from an earlier citable version is public already."
-confirm "Check every field above once more. Register and publish it now?" ||
-  stop_here "Stopped before Register."
-step "Click Register, then OK on the sharing preview."
+say "a team with none publishes it at once."
+say "OK makes the version public, and frozen: its files and metadata are what a"
+say "DOI will point at."
+confirm "Check every field above once more. $SUBMIT and publish it now?" ||
+  stop_here "Stopped before $SUBMIT."
+step "Click $SUBMIT, then OK on the sharing preview."
 printf '\n'
 if [[ -n "$ENTRY_URL" ]]; then
   WH_ENTRY_URL=$ENTRY_URL
-  pause "Registered? Press Enter."
+  pause "Updated? Press Enter."
 else
   WH_ENTRY_URL=$(_existing WH_ENTRY_URL || true)
   [[ "${WH_ENTRY_URL:-}" =~ ^$WH_RE/workflows/[0-9]+ ]] || WH_ENTRY_URL=""
@@ -554,13 +564,13 @@ ENTRY_ID=${WH_ENTRY_URL##*/}
 stage "Check the published entry"
 open_url "$WH_ENTRY_URL"
 step "Check Description, Creators (ORCID on yours) and Team by eye."
-step "Version History should show the version as Frozen${WH_IMPORT_COMMIT:+, at $BRANCH ${WH_IMPORT_COMMIT:0:7}}."
-# dev.workflowhub.eu froze the version on Register (#196); a DOI needs it
+step "Version History should show the new version as Frozen${WH_IMPORT_COMMIT:+, at $BRANCH ${WH_IMPORT_COMMIT:0:7}}."
+# dev.workflowhub.eu froze the version on Register and Update (#196); a DOI needs it
 # frozen, so workflowhub.eu stops here if it didn't.
 if ! confirm "Does Version History show it Frozen?"; then
   [[ $PRODUCTION == yes ]] &&
     stop_here "Stopped before the DOI: a DOI points at a frozen version. Tell the IRIS maintainer what Version History shows."
-  warn "not frozen on Register: tell the IRIS maintainer what Version History shows"
+  warn "not frozen on $SUBMIT: tell the IRIS maintainer what Version History shows"
 fi
 printf '\n'
 # Published, the entry is public, so the API shows what a DOI would carry.
@@ -570,10 +580,10 @@ if [[ $PRODUCTION == yes ]]; then
 else
   if read_back; then
     printf '\n'
-    ok "Done up to Register on $WH: $WH_ENTRY_URL"
+    ok "Done up to $SUBMIT on $WH: $WH_ENTRY_URL"
   else
     printf '\n'
-    warn "Registered on $WH, but the entry differs from what this walkthrough expected: $WH_ENTRY_URL"
+    warn "Published on $WH, but the entry differs from what this walkthrough expected: $WH_ENTRY_URL"
   fi
   note "DOIs mint only on https://workflowhub.eu, so the walkthrough ends here."
   # finish clears the screen, so the read-back stays up until Enter.

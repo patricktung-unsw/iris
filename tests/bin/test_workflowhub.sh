@@ -165,7 +165,7 @@ exits dev 0
 opened dev https://dev.workflowhub.eu/projects/9
 opened dev https://dev.workflowhub.eu/workflows/new
 opened dev https://dev.workflowhub.eu/workflows/12
-has dev "1. Register, which makes the entry public and freezes its version." "Stage 5/5 · Check the published entry" \
+has dev "1. Register, which makes the version public and freezes it." "Stage 5/5 · Check the published entry" \
     "Import Git Repository" "right-click → Copy" "Done up to Register" "Press Enter to finish." \
     "main is at $main_sha" "UNSW HPC Katana - Seg Thing (U-Net)" "microCT, segmentation, imaging" \
     "1. Jane Doe, ORCID 0000-0002-1825-0097" "DOIs mint only on https://workflowhub.eu"
@@ -213,6 +213,18 @@ has prod-other-title "the entry's title is \"IRIS\"" "✓ licence: Apache-2.0" "
 lacks prod-other-title "a version's commit can't be edited"
 rm -f "$fake/entry.json"
 
+# A new version on the development instance: its entry from
+# IRIS_WORKFLOWHUB_ENTRY, published by Update, read back, and no DOI.
+printf '%s' '{"data":{"attributes":{"title":"UNSW HPC Katana - Seg Thing (U-Net)","license":"Apache-2.0","versions":[{"version":1,"commit":"2222222"},{"version":2,"commit":"'$main_sha'"}]}}}' > "$fake/entry.json"
+IRIS_WORKFLOWHUB=https://dev.workflowhub.eu IRIS_WORKFLOWHUB_TEAM=9 IRIS_WORKFLOWHUB_ENTRY=https://dev.workflowhub.eu/workflows/12 \
+    run '\ny\n\n\ny\n\ny\n\n' seg
+exits dev-new-version 0
+opened dev-new-version https://dev.workflowhub.eu/workflows/12
+has dev-new-version "Stage 2/5 · Add a new version from git" "Actions → New Version." \
+    "✓ commit: $main_sha" "Done up to Update on https://dev.workflowhub.eu"
+lacks dev-new-version "Paste the new entry's URL" "Generate a DOI"
+rm -f "$fake/entry.json"
+
 # A version Register didn't freeze: a warning on the development
 # instance, and no DOI on WorkflowHub.
 IRIS_WORKFLOWHUB=https://dev.workflowhub.eu IRIS_WORKFLOWHUB_TEAM=9 run '\ny\n\n\ny\nhttps://dev.workflowhub.eu/workflows/12\nn\n\n' seg
@@ -251,7 +263,8 @@ printf '%s' '{"data":{"attributes":{"title":"UNSW HPC Katana - Seg Thing (U-Net)
 run '\ny\n\n\ny\n\ny\n\ny\n\n' seg
 exits new-version 0
 opened new-version https://workflowhub.eu/workflows/12
-has new-version "Add a new version from git" "10.48546/workflowhub.workflow.12.2</a> · $(date +%F)"
-lacks new-version "expected https://workflowhub.eu/workflows/<number>"
+has new-version "Add a new version from git" "Actions → New Version." "Click Update, then OK on the sharing preview." \
+    "1. Update, which makes the version public and freezes it." "Tags and creators come filled in" "10.48546/workflowhub.workflow.12.2</a> · $(date +%F)"
+lacks new-version "expected https://workflowhub.eu/workflows/<number>" "Main workflow file"
 cite_page ""
 rm -f "$fake/entry.json"
