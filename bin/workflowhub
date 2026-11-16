@@ -400,17 +400,20 @@ expect_field() {
 
 # read_back [<when>]: checks the published entry's title, licence and
 # newest version's commit, from its API, against what was entered, and
-# warns to fix any that differ, adding <when> (such as "before the DOI"),
-# and fails if any did.
+# fails if any differ. On dev.workflowhub.eu a title edited after Freeze
+# showed on the frozen version too (#196, #203), so a different title or
+# licence is told to fix it, <when> (such as "before the DOI"). A commit
+# can't be edited, so a different one is told what to check.
 read_back() {
-  local matches=yes
+  local metadata=yes commit=yes
   say "What the published entry says:"
-  expect_field title "$TITLE" || matches=no
-  expect_field licence "$LICENCE" || matches=no
-  if [[ -n "${WH_IMPORT_COMMIT:-}" ]]; then expect_field commit "$WH_IMPORT_COMMIT" || matches=no; fi
-  [[ "$matches" == yes ]] && return
-  warn "fix it with Actions → Edit Workflow${1:+ $1}, or the value in $WF/manifest.yml"
-  return 1
+  expect_field title "$TITLE" || metadata=no
+  expect_field licence "$LICENCE" || metadata=no
+  [[ -z "${WH_IMPORT_COMMIT:-}" ]] || expect_field commit "$WH_IMPORT_COMMIT" || commit=no
+  [[ $metadata == yes ]] || warn "fix it with Actions → Edit Workflow${1:+ $1}, or the value in $WF/manifest.yml"
+  [[ $commit == yes ]] ||
+    warn "a version's commit can't be edited: check its git details show $REPO_URL, $BRANCH (which may have moved since it was read); a citable version lists the commit WorkflowHub shows"
+  [[ "$metadata$commit" == yesyes ]]
 }
 
 ORCID_RE='^[0-9]{4}-[0-9]{4}-[0-9]{4}-[0-9]{3}[0-9X]$'
@@ -429,7 +432,9 @@ open_url "$TEAM_URL"
 step "Sign in to WorkflowHub (top right) if you aren't already."
 step "On the $TEAM_NAME page, check you're listed under its people."
 note "Registering into a team needs membership of it. If you aren't listed, click Request"
-note "Membership (top right of the team page), and wait for approval."
+note "Membership (top right of the team page), type your organisation and pick it from"
+note "the list, or keep typing its full name to pick it from ROR (UNSW Sydney's ROR ID is"
+note "03r8z3t63), add your department, Submit, and wait for approval."
 printf '\n'
 say "This walkthrough does every other step with you. Your clicks, in order:"
 say "  1. Register, which makes the entry public and freezes its version."
@@ -497,8 +502,9 @@ pause "On the metadata step? Press Enter."
 # ──────────────────────────────────────────────────────────────────────────
 stage "Title and description"
 [[ -z "$ENTRY_URL" ]] || note "A new version keeps the entry's metadata; if this step isn't offered, check them under Actions → Edit Workflow."
-say "The title comes filled in from the repo's CITATION.cff, which describes all of"
-say "IRIS: replace it, and any description filled in, with the text below."
+say "The title field is on this page, with the description. It comes filled in from"
+say "the repo's CITATION.cff, which describes all of IRIS: replace it, and any"
+say "description filled in, with the text below."
 paste_block "Title (replace the one filled in)" "$TITLE"
 paste_block "Description (replace any filled in)" "$DESCRIPTION"
 pause "Both replaced? Press Enter."
@@ -567,7 +573,7 @@ else
     ok "Done up to Register on $WH: $WH_ENTRY_URL"
   else
     printf '\n'
-    warn "Registered on $WH, but the entry differs from what was entered: $WH_ENTRY_URL"
+    warn "Registered on $WH, but the entry differs from what this walkthrough expected: $WH_ENTRY_URL"
   fi
   note "DOIs mint only on https://workflowhub.eu, so the walkthrough ends here."
   # finish clears the screen, so the read-back stays up until Enter.

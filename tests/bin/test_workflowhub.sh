@@ -182,9 +182,9 @@ has dev-read-back "✓ title: UNSW HPC Katana - Seg Thing (U-Net)" "✓ licence:
 printf '%s' '{"data":{"attributes":{"title":"UNSW HPC Katana - Seg Thing (U-Net)","license":"Apache-2.0","versions":[{"version":1,"commit":"2222222"}]}}}' > "$fake/entry.json"
 IRIS_WORKFLOWHUB=https://dev.workflowhub.eu IRIS_WORKFLOWHUB_TEAM=9 run "$dev_answers" seg
 exits dev-other-commit 0
-has dev-other-commit "the entry's commit is \"2222222\", not \"$main_sha\"" "fix it with Actions → Edit Workflow" \
-    "but the entry differs from what was entered"
-lacks dev-other-commit "Done up to Register"
+has dev-other-commit "the entry's commit is \"2222222\", not \"$main_sha\"" "a version's commit can't be edited" \
+    "but the entry differs from what this walkthrough expected"
+lacks dev-other-commit "Done up to Register" "fix it with Actions → Edit Workflow"
 rm -f "$fake/entry.json"
 # An entry URL on the wrong host is asked for again.
 IRIS_WORKFLOWHUB=https://dev.workflowhub.eu IRIS_WORKFLOWHUB_TEAM=9 \
@@ -203,6 +203,15 @@ IRIS_WORKFLOWHUB=https://dev.workflowhub.eu IRIS_WORKFLOWHUB_TEAM=9 run '\nn\n' 
 exits not-in-team 0
 has not-in-team "Request Membership on https://dev.workflowhub.eu/projects/9, and re-run once you're listed."
 lacks not-in-team "Stage 2/5"
+
+# A different title on WorkflowHub is fixed by editing, even frozen; the
+# licence is still checked.
+printf '%s' '{"data":{"attributes":{"title":"IRIS","license":"Apache-2.0","versions":[{"version":1,"commit":"'$main_sha'","doi":"10.48546/workflowhub.workflow.12.1"}]}}}' > "$fake/entry.json"
+run '\ny\n\n\ny\nhttps://workflowhub.eu/workflows/12\ny\n\ny\n\n' seg
+exits prod-other-title 0
+has prod-other-title "the entry's title is \"IRIS\"" "✓ licence: Apache-2.0" "fix it with Actions → Edit Workflow before the DOI"
+lacks prod-other-title "a version's commit can't be edited"
+rm -f "$fake/entry.json"
 
 # A version Register didn't freeze: a warning on the development
 # instance, and no DOI on WorkflowHub.
@@ -232,7 +241,8 @@ printf '%s' '{"data":{"attributes":{"title":"UNSW HPC Katana - Seg Thing (U-Net)
 run '\ny\n\n\ny\nhttps://workflowhub.eu/workflows/12\ny\n\ny\n\n' seg
 exits prod-other-commit 0
 has prod-other-commit "the entry's commit is \"2222222\", not \"$main_sha\"" \
-    "fix it with Actions → Edit Workflow before the DOI" "Stage 7/7 · List the citable version"
+    "a version's commit can't be edited" "Stage 7/7 · List the citable version"
+lacks prod-other-commit "fix it with Actions → Edit Workflow"
 
 # A later citable version: the page names the entry, so it is not asked
 # for, and the walkthrough adds a new version to it.
