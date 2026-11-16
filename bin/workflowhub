@@ -205,19 +205,21 @@ finish() {
 # tags and owner, the entry script src/run.py, and the entry itself, from the
 # newest DOI the page's "Cite this workflow" lists; with none listed it
 # registers a new entry. It does every step WorkflowHub documents and leaves
-# the owner three clicks, in order and each behind a yes: Freeze, Publish and
-# Generate a DOI. It ends with the lines that list the new citable version on
+# the owner two clicks, in order and each behind a yes: Register, which
+# publishes the entry and freezes its version (dev.workflowhub.eu showed
+# both, #196), and Generate a DOI. It reads the published entry back
+# between them, and ends with the lines that list the new citable version on
 # the page and in CITATION.cff, for the owner's PR.
 #
 # IRIS_WORKFLOWHUB=https://dev.workflowhub.eu, with IRIS_WORKFLOWHUB_TEAM set
 # to a team there, runs it against WorkflowHub's development instance, which
-# mints no DOIs, so it stops after Publish, once it has read the entry back
-# as it would before a DOI. That instance's entries are its own:
+# mints no DOIs, so it stops after Register, once it has read the entry
+# back as it would before a DOI. That instance's entries are its own:
 # IRIS_WORKFLOWHUB_ENTRY=<entry URL> adds a new version to one.
 #
 # Answers are kept in $IRIS_WIZARD_ENV (default below, outside the repo), one
-# file per workflow and instance, so a re-run offers them back: press Enter
-# through the stages already done.
+# file per workflow and instance, so a re-run offers them back: Enter keeps
+# a kept answer, and its yes-or-no questions take y again.
 #
 # It sits in bin/ with the other desktop tools, so Pages serves it like
 # every file; that's harmless, since it holds no credentials and writes
@@ -412,7 +414,7 @@ read_back() {
 }
 
 ORCID_RE='^[0-9]{4}-[0-9]{4}-[0-9]{4}-[0-9]{3}[0-9X]$'
-if [[ $PRODUCTION == yes ]]; then TOTAL_STAGES=8; else TOTAL_STAGES=6; fi
+if [[ $PRODUCTION == yes ]]; then TOTAL_STAGES=7; else TOTAL_STAGES=5; fi
 if [[ -n "$ENTRY_URL" ]]; then banner "Add a citable version of $SLUG on WorkflowHub"
 else banner "Register $SLUG on WorkflowHub"; fi
 
@@ -420,15 +422,25 @@ else banner "Register $SLUG on WorkflowHub"; fi
 stage "Sign in, and check you are in $TEAM_NAME"
 say "If a browser opens on a different machine from the one you're reading this on,"
 say "click the printed URLs instead."
+say "To copy from here, select the text and right-click → Copy, or use your terminal's"
+say "copy key (often Ctrl+Shift+C). Ctrl+C with nothing selected stops the walkthrough;"
+say "if it does, re-run it: it offers back every answer you gave."
 open_url "$TEAM_URL"
 step "Sign in to WorkflowHub (top right) if you aren't already."
 step "On the $TEAM_NAME page, check you're listed under its people."
-note "Registering into a team needs membership of it."
+note "Registering into a team needs membership of it. If you aren't listed, click Request"
+note "Membership (top right of the team page), and wait for approval."
 printf '\n'
-say "This walkthrough does every other step with you. Your three clicks, in order: Freeze, Publish, Generate a DOI."
-say "Each is permanent, and it stops for a yes before each one."
-[[ $PRODUCTION == yes ]] || note "On $WH, which mints no DOIs, it stops after Publish."
-pause "Signed in and listed? Press Enter."
+say "This walkthrough does every other step with you. Your clicks, in order:"
+say "  1. Register, which makes the entry public and freezes its version."
+if [[ $PRODUCTION == yes ]]; then
+  say "  2. Generate a DOI, which is permanent."
+  say "It stops for a yes before each one."
+else
+  say "It stops for a yes before it. On $WH, which mints no DOIs, it ends after Register."
+fi
+confirm "Signed in and listed in $TEAM_NAME?" ||
+  stop_here "Request Membership on $TEAM_URL, and re-run once you're listed."
 printf '\n'
 # The workflow owner's name and ORCID iD go in the creators list. The
 # manifest always gives the name; the ORCID is asked for when it lacks one.
@@ -468,8 +480,8 @@ if [[ -n "$ENTRY_URL" ]]; then
   step "Click Register."
 else
   open_url "$WH/workflows/new"
-  step "If that isn't the new-workflow wizard: Create (top menu) → Workflow."
-  step "Choose the option to import a Git repository."
+  step "If that isn't the new-workflow page: Create (top menu) → Workflow."
+  step "In the menu on the left, choose Import Git Repository."
   paste_block "Git repository URL" "$REPO_URL"
   step "Click Register."
   paste_block "Branch (not a release tag)" "$BRANCH"
@@ -477,25 +489,27 @@ else
 fi
 paste_block "Main workflow file (pick it from the list)" "$MAIN_FILE"
 step "Leave Abstract CWL and Diagram empty."
-step "If it asks for the workflow type, pick: $WF_TYPE"
+step "Workflow type: $WF_TYPE"
+note "WorkflowHub then lists the entry as an Unrecognized workflow type; that's $WF_TYPE."
 step "Click Continue."
 pause "On the metadata step? Press Enter."
 
 # ──────────────────────────────────────────────────────────────────────────
 stage "Title and description"
 [[ -z "$ENTRY_URL" ]] || note "A new version keeps the entry's metadata; if this step isn't offered, check them under Actions → Edit Workflow."
-paste_block "Title" "$TITLE"
-paste_block "Description (replace whatever was imported)" "$DESCRIPTION"
-pause "Both pasted? Press Enter."
+say "The title comes filled in from the repo's CITATION.cff, which describes all of"
+say "IRIS: replace it, and any description filled in, with the text below."
+paste_block "Title (replace the one filled in)" "$TITLE"
+paste_block "Description (replace any filled in)" "$DESCRIPTION"
+pause "Both replaced? Press Enter."
 
 # ──────────────────────────────────────────────────────────────────────────
-stage "Team, licence, sharing, tags and creators"
+stage "Team, licence, sharing, tags and creators, then Register"
 step "Teams: $TEAM_NAME (team $TEAM_ID)."
 step "Licence: $LICENCE (Apache License 2.0)."
 warn "a team's default licence may be CC-BY-4.0: change it, since IRIS is $LICENCE"
-step "Workflow type, if it appears here rather than on the last step: $WF_TYPE"
 step "Sharing: give $TEAM_NAME manage rights, so the maintainer can fix any team entry."
-note "Leave public access as offered; the Publish stage makes it public."
+note "Leave public access as offered."
 paste_block "Tags" "$TAGS"
 step "Creators, in this order:"
 say "  1. $OWNER, ORCID $OWNER_ORCID: pick your WorkflowHub profile, and"
@@ -503,7 +517,16 @@ say "     check it shows that ORCID (add it to your profile if not)."
 say "  2. Your co-authors, with ORCIDs where they have them."
 say "  3. $ORG_CREATOR: if there's no organisation creator, put it in the"
 say "     free-text other-creators field."
-step "Click Register."
+printf '\n'
+printf '  %s%sYour click 1: Register, which publishes it.%s\n' "$BOLD" "$RED" "$RESET"
+say "Register previews the sharing: Public Visibility, all visitors can view it."
+say "It may add that the team's gatekeepers are emailed to approve publishing;"
+say "a team with none publishes it at once. OK makes the entry public, with its"
+say "version frozen: its files and metadata are what a DOI will point at."
+note "An entry public from an earlier citable version is public already."
+confirm "Check every field above once more. Register and publish it now?" ||
+  stop_here "Stopped before Register."
+step "Click Register, then OK on the sharing preview."
 printf '\n'
 if [[ -n "$ENTRY_URL" ]]; then
   WH_ENTRY_URL=$ENTRY_URL
@@ -522,54 +545,43 @@ write_env WH_ENTRY_URL "$WH_ENTRY_URL"
 ENTRY_ID=${WH_ENTRY_URL##*/}
 
 # ──────────────────────────────────────────────────────────────────────────
-stage "Check the entry, then freeze"
+stage "Check the published entry"
 open_url "$WH_ENTRY_URL"
-step "Check Title, Description, Creators (ORCID on yours), Licence $LICENCE and Team."
-step "Fix anything wrong with Actions → Edit Workflow / Manage workflow."
-step "Find the version's git details and note which commit it shows."
-[[ -n "${WH_IMPORT_COMMIT:-}" ]] && note "It should be ${WH_IMPORT_COMMIT:0:12}… ($BRANCH when you imported)."
+step "Check Description, Creators (ORCID on yours) and Team by eye."
+step "Version History should show the version as Frozen${WH_IMPORT_COMMIT:+, at $BRANCH ${WH_IMPORT_COMMIT:0:7}}."
+# dev.workflowhub.eu froze the version on Register (#196); a DOI needs it
+# frozen, so workflowhub.eu stops here if it didn't.
+if ! confirm "Does Version History show it Frozen?"; then
+  [[ $PRODUCTION == yes ]] &&
+    stop_here "Stopped before the DOI: a DOI points at a frozen version. Tell the IRIS maintainer what Version History shows."
+  warn "not frozen on Register: tell the IRIS maintainer what Version History shows"
+fi
 printf '\n'
-printf '  %s%sYour click 1 of 3: Freeze.%s\n' "$BOLD" "$RED" "$RESET"
-step "In the Citation panel on the right, click Freeze."
-note "Frozen, its files and metadata can't change: that's what the DOI will point at."
-confirm "Freeze this version now? It can't be unfrozen" || stop_here "Stopped before Freeze."
-pause "Frozen? Press Enter."
-
-# ──────────────────────────────────────────────────────────────────────────
-stage "Publish"
-printf '  %s%sYour click 2 of 3: Publish. One-way door.%s\n' "$BOLD" "$RED" "$RESET"
-say "Publish makes the entry public. A public entry with a DOI can't be"
-say "withdrawn, so check the metadata once more before going on."
-step "In the Citation panel, click Publish (sharing: Actions → Manage Workflow)."
-note "An entry public from an earlier citable version has nothing to publish: answer yes."
-printf '\n'
-confirm "Publish $SLUG publicly now? This can't be undone once it has a DOI" ||
-  stop_here "Stopped before Publish."
-pause "Published? Press Enter."
-
-if [[ $PRODUCTION != yes ]]; then
-  printf '\n'
+# Published, the entry is public, so the API shows what a DOI would carry.
+if [[ $PRODUCTION == yes ]]; then
+  read_back "before the DOI" || true
+  pause "Checked? Press Enter."
+else
   if read_back; then
     printf '\n'
-    ok "Done up to Publish on $WH: $WH_ENTRY_URL"
+    ok "Done up to Register on $WH: $WH_ENTRY_URL"
   else
     printf '\n'
-    warn "Published on $WH, but the entry differs from what was entered: $WH_ENTRY_URL"
+    warn "Registered on $WH, but the entry differs from what was entered: $WH_ENTRY_URL"
   fi
   note "DOIs mint only on https://workflowhub.eu, so the walkthrough ends here."
+  # finish clears the screen, so the read-back stays up until Enter.
+  pause "Press Enter to finish."
   finish
   exit 0
 fi
 
 # ──────────────────────────────────────────────────────────────────────────
 stage "Generate a DOI"
-printf '  %s%sYour click 3 of 3: Generate a DOI. One-way door.%s\n' "$BOLD" "$RED" "$RESET"
+printf '  %s%sYour click 2: Generate a DOI. One-way door.%s\n' "$BOLD" "$RED" "$RESET"
 say "A DOI is permanent: DataCite keeps it, and this snapshot's metadata, for good."
 step "On the frozen version, in the Citation panel, Generate a DOI."
 step "It reminds you to review the metadata, then asks you to confirm."
-printf '\n'
-# Published, the entry is public, so the API shows what the DOI will carry.
-read_back "before the DOI" || true
 printf '\n'
 confirm "Generate the DOI for this frozen snapshot now? It can't be undone" ||
   stop_here "Stopped before Generate a DOI."
