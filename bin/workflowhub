@@ -420,29 +420,21 @@ ORCID_RE='^[0-9]{4}-[0-9]{4}-[0-9]{4}-[0-9]{3}[0-9X]$'
 # The button that publishes: Register for a new entry, Update for a new
 # version of one (dev.workflowhub.eu, #196).
 SUBMIT=Register; [[ -z "$ENTRY_URL" ]] || SUBMIT=Update
-if [[ $PRODUCTION == yes ]]; then TOTAL_STAGES=7; else TOTAL_STAGES=5; fi
+if [[ $PRODUCTION == yes ]]; then TOTAL_STAGES=8; else TOTAL_STAGES=6; fi
 if [[ -n "$ENTRY_URL" ]]; then banner "Add a citable version of $SLUG on WorkflowHub"
 else banner "Register $SLUG on WorkflowHub"; fi
 
 # ──────────────────────────────────────────────────────────────────────────
-stage "Sign in, and check you are in $TEAM_NAME"
-say "If a browser opens on a different machine from the one you're reading this on,"
-say "click the printed URLs instead."
+stage "Before you start"
+say "If no browser opens on the machine you're reading this on, click the printed URLs."
 say "To copy text from here, select it, then any of:"
 step "right-click → Copy"
 step "Edit → Copy, in the menu bar"
 step "your terminal's copy key, often Ctrl+Shift+C"
 note "Ctrl+C with nothing selected stops the walkthrough. If it does, re-run it: it"
 note "offers back every answer you gave."
-open_url "$TEAM_URL"
-step "Sign in to WorkflowHub (top right) if you aren't already."
-step "On the $TEAM_NAME page, check you're listed under its people."
-note "Registering into a team needs membership of it. If you aren't listed, click Request"
-note "Membership (top right of the team page), type your organisation and pick it from"
-note "the list, or keep typing its full name to pick it from ROR (UNSW Sydney's ROR ID is"
-note "03r8z3t63), add your department, Submit, and wait for approval."
 printf '\n'
-say "This walkthrough does every other step with you. Your clicks, in order:"
+say "This walkthrough does every step with you. Your clicks, in order:"
 say "  1. $SUBMIT, which makes the version public and freezes it."
 if [[ $PRODUCTION == yes ]]; then
   say "  2. Generate a DOI, which is permanent."
@@ -450,6 +442,19 @@ if [[ $PRODUCTION == yes ]]; then
 else
   say "It stops for a yes before it. On $WH, which mints no DOIs, it ends after $SUBMIT."
 fi
+pause "Got it? Press Enter."
+
+# ──────────────────────────────────────────────────────────────────────────
+stage "Sign in to WorkflowHub, and check you are in $TEAM_NAME"
+printf "  %s%sDon't skip this: the stages after it need you signed in and in the team.%s\n" "$BOLD" "$YELLOW" "$RESET"
+open_url "$TEAM_URL"
+step "Sign in to WorkflowHub (top right) if you aren't already."
+step "On the $TEAM_NAME page, check you're listed under its people."
+note "Only the team's members can register into it. If you aren't listed, click Request"
+note "Membership (top right of the team page), type your organisation and pick it from"
+note "the list, or keep typing its full name to pick it from ROR (UNSW Sydney's ROR ID is"
+note "03r8z3t63), add your department, Submit, and wait for approval."
+printf '\n'
 confirm "Signed in and listed in $TEAM_NAME?" ||
   stop_here "Request Membership on $TEAM_URL, and re-run once you're listed."
 printf '\n'
@@ -484,7 +489,7 @@ fi
 if [[ -n "$ENTRY_URL" ]]; then
   open_url "$ENTRY_URL"
   step "Actions → New Version."
-  step "It shows the Git repository URL, filled in: check it's this one, then click Continue."
+  step "It asks for the Git repository URL: set it to this one, then click Continue."
   paste_block "Git repository URL" "$REPO_URL"
   paste_block "Branch (not a release tag)" "$BRANCH"
   step "Click Register."
@@ -508,22 +513,16 @@ fi
 
 # ──────────────────────────────────────────────────────────────────────────
 stage "Title and description"
-[[ -n "$ENTRY_URL" ]] || say "The title field is on this page, with the description."
-say "Both come filled in from the repo's CITATION.cff, which describes all of IRIS,"
-say "or empty: replace or fill each with the text below."
-paste_block "Title (replace the one filled in)" "$TITLE"
-paste_block "Description (replace any filled in)" "$DESCRIPTION"
-pause "Both replaced? Press Enter."
+say "Set each field on this page to the text below, replacing whatever it holds."
+paste_block "Title" "$TITLE"
+paste_block "Description" "$DESCRIPTION"
+pause "Both set? Press Enter."
 
 # ──────────────────────────────────────────────────────────────────────────
 stage "Team, licence, sharing, tags and creators, then $SUBMIT"
-if [[ -n "$ENTRY_URL" ]]; then
-  say "Tags and creators come filled in: check each against these. Teams, Licence and"
-  say "Sharing, wherever this page shows them, take the values below."
-fi
+say "Set each of these to the value below, replacing whatever it holds."
 step "Teams: $TEAM_NAME (team $TEAM_ID)."
 step "Licence: $LICENCE (Apache License 2.0)."
-warn "a team's default licence may be CC-BY-4.0: change it, since IRIS is $LICENCE"
 step "Sharing: give $TEAM_NAME manage rights, so the maintainer can fix any team entry."
 note "Leave public access as offered."
 paste_block "Tags" "$TAGS"

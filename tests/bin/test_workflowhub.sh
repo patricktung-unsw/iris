@@ -159,17 +159,18 @@ has bad-host "IRIS_WORKFLOWHUB"
 
 # A first registration on the development instance: every stage up to
 # Register, the clicks listed before the first, and no DOI.
-dev_answers='\ny\n\n\ny\nhttps://dev.workflowhub.eu/workflows/12\ny\n\n'
+dev_answers='\n\ny\n\n\ny\nhttps://dev.workflowhub.eu/workflows/12\ny\n\n'
 IRIS_WORKFLOWHUB=https://dev.workflowhub.eu IRIS_WORKFLOWHUB_TEAM=9 run "$dev_answers" seg
 exits dev 0
 opened dev https://dev.workflowhub.eu/projects/9
 opened dev https://dev.workflowhub.eu/workflows/new
 opened dev https://dev.workflowhub.eu/workflows/12
-has dev "1. Register, which makes the version public and freezes it." "Stage 5/5 · Check the published entry" \
+has dev "1. Register, which makes the version public and freezes it." "Stage 6/6 · Check the published entry" \
     "Import Git Repository" "right-click → Copy" "Done up to Register" "Press Enter to finish." \
     "main is at $main_sha" "UNSW HPC Katana - Seg Thing (U-Net)" "microCT, segmentation, imaging" \
     "1. Jane Doe, ORCID 0000-0002-1825-0097" "DOIs mint only on https://workflowhub.eu"
-lacks dev "Stage 6" "workflowhub.eu/projects/472" "Generate a DOI"
+lacks dev "Stage 7" "workflowhub.eu/projects/472" "Generate a DOI"
+has dev "Stage 1/6 · Before you start" "replacing whatever it holds"
 grep -qx "WH_ENTRY_URL='https://dev.workflowhub.eu/workflows/12'" "$fake/wizard.env" ||
     echo "dev: the entry URL was not kept"
 # Published, the entry is read back, there as before a DOI: with no API
@@ -188,26 +189,26 @@ lacks dev-other-commit "Done up to Register" "fix it with Actions → Edit Workf
 rm -f "$fake/entry.json"
 # An entry URL on the wrong host is asked for again.
 IRIS_WORKFLOWHUB=https://dev.workflowhub.eu IRIS_WORKFLOWHUB_TEAM=9 \
-    run '\ny\n\n\ny\nhttps://workflowhub.eu/workflows/12\nhttps://dev.workflowhub.eu/workflows/12\ny\n\n' seg
+    run '\n\ny\n\n\ny\nhttps://workflowhub.eu/workflows/12\nhttps://dev.workflowhub.eu/workflows/12\ny\n\n' seg
 exits dev-wrong-host 0
 has dev-wrong-host "expected https://dev.workflowhub.eu/workflows/<number>"
 
 # Declining a gate stops there, with nothing after it done: not yet in
 # the team, it says how to join; not ready to publish, it stops before
 # Register.
-IRIS_WORKFLOWHUB=https://dev.workflowhub.eu IRIS_WORKFLOWHUB_TEAM=9 run '\ny\n\n\nn\n' seg
+IRIS_WORKFLOWHUB=https://dev.workflowhub.eu IRIS_WORKFLOWHUB_TEAM=9 run '\n\ny\n\n\nn\n' seg
 exits decline-register 0
 has decline-register "Stopped before Register."
 lacks decline-register "Paste the new entry's URL" "DOIs mint only"
-IRIS_WORKFLOWHUB=https://dev.workflowhub.eu IRIS_WORKFLOWHUB_TEAM=9 run '\nn\n' seg
+IRIS_WORKFLOWHUB=https://dev.workflowhub.eu IRIS_WORKFLOWHUB_TEAM=9 run '\n\nn\n' seg
 exits not-in-team 0
 has not-in-team "Request Membership on https://dev.workflowhub.eu/projects/9, and re-run once you're listed."
-lacks not-in-team "Stage 2/5"
+lacks not-in-team "Stage 3/6"
 
 # A different title on WorkflowHub is fixed by editing, even frozen; the
 # licence is still checked.
 printf '%s' '{"data":{"attributes":{"title":"IRIS","license":"Apache-2.0","versions":[{"version":1,"commit":"'$main_sha'","doi":"10.48546/workflowhub.workflow.12.1"}]}}}' > "$fake/entry.json"
-run '\ny\n\n\ny\nhttps://workflowhub.eu/workflows/12\ny\n\ny\n\n' seg
+run '\n\ny\n\n\ny\nhttps://workflowhub.eu/workflows/12\ny\n\ny\n\n' seg
 exits prod-other-title 0
 has prod-other-title "the entry's title is \"IRIS\"" "✓ licence: Apache-2.0" "fix it with Actions → Edit Workflow before the DOI"
 lacks prod-other-title "a version's commit can't be edited"
@@ -217,32 +218,32 @@ rm -f "$fake/entry.json"
 # IRIS_WORKFLOWHUB_ENTRY, published by Update, read back, and no DOI.
 printf '%s' '{"data":{"attributes":{"title":"UNSW HPC Katana - Seg Thing (U-Net)","license":"Apache-2.0","versions":[{"version":1,"commit":"2222222"},{"version":2,"commit":"'$main_sha'"}]}}}' > "$fake/entry.json"
 IRIS_WORKFLOWHUB=https://dev.workflowhub.eu IRIS_WORKFLOWHUB_TEAM=9 IRIS_WORKFLOWHUB_ENTRY=https://dev.workflowhub.eu/workflows/12 \
-    run '\ny\n\n\ny\n\ny\n\n' seg
+    run '\n\ny\n\n\ny\n\ny\n\n' seg
 exits dev-new-version 0
 opened dev-new-version https://dev.workflowhub.eu/workflows/12
-has dev-new-version "Stage 2/5 · Add a new version from git" "Actions → New Version." \
+has dev-new-version "Stage 3/6 · Add a new version from git" "Actions → New Version." \
     "✓ commit: $main_sha" "Done up to Update on https://dev.workflowhub.eu"
 lacks dev-new-version "Paste the new entry's URL" "Generate a DOI"
 rm -f "$fake/entry.json"
 
 # A version Register didn't freeze: a warning on the development
 # instance, and no DOI on WorkflowHub.
-IRIS_WORKFLOWHUB=https://dev.workflowhub.eu IRIS_WORKFLOWHUB_TEAM=9 run '\ny\n\n\ny\nhttps://dev.workflowhub.eu/workflows/12\nn\n\n' seg
+IRIS_WORKFLOWHUB=https://dev.workflowhub.eu IRIS_WORKFLOWHUB_TEAM=9 run '\n\ny\n\n\ny\nhttps://dev.workflowhub.eu/workflows/12\nn\n\n' seg
 exits dev-not-frozen 0
 has dev-not-frozen "not frozen on Register" "DOIs mint only"
-run '\ny\n\n\ny\nhttps://workflowhub.eu/workflows/12\nn\n' seg
+run '\n\ny\n\n\ny\nhttps://workflowhub.eu/workflows/12\nn\n' seg
 exits prod-not-frozen 0
 has prod-not-frozen "Stopped before the DOI: a DOI points at a frozen version."
-lacks prod-not-frozen "Stage 6/7"
+lacks prod-not-frozen "Stage 7/8"
 
 # A first registration on WorkflowHub: the DOI read back, then the lines
 # that list the citable version on the page and in CITATION.cff.
 printf '%s' '{"data":{"attributes":{"title":"UNSW HPC Katana - Seg Thing (U-Net)","license":"Apache-2.0","versions":[{"version":1,"commit":"'$main_sha'","doi":"10.48546/workflowhub.workflow.12.1"}]}}}' > "$fake/entry.json"
-run '\ny\n\n\ny\nhttps://workflowhub.eu/workflows/12\ny\n\ny\n\n' seg
+run '\n\ny\n\n\ny\nhttps://workflowhub.eu/workflows/12\ny\n\ny\n\n' seg
 exits prod 0
 opened prod https://workflowhub.eu/projects/472
 opened prod https://doi.org/10.48546/workflowhub.workflow.12.1
-has prod "2. Generate a DOI, which is permanent." "Stage 7/7 · List the citable version" "✓ title: UNSW HPC Katana - Seg Thing (U-Net)" "✓ commit: $main_sha" \
+has prod "2. Generate a DOI, which is permanent." "Stage 8/8 · List the citable version" "✓ title: UNSW HPC Katana - Seg Thing (U-Net)" "✓ commit: $main_sha" \
     "<li><a href=\"https://doi.org/10.48546/workflowhub.workflow.12.1\" target=\"_blank\">10.48546/workflowhub.workflow.12.1</a> · $(date +%F) · commit <code>1111111</code></li>" \
     "    value: 10.48546/workflowhub.workflow.12.1" \
     "    description: \"seg's citable version of $(date +%F), commit 1111111\""
@@ -250,21 +251,21 @@ has prod "2. Generate a DOI, which is permanent." "Stage 7/7 · List the citable
 # A different commit on WorkflowHub is warned of before the DOI, which
 # still goes ahead on a yes.
 printf '%s' '{"data":{"attributes":{"title":"UNSW HPC Katana - Seg Thing (U-Net)","license":"Apache-2.0","versions":[{"version":1,"commit":"2222222","doi":"10.48546/workflowhub.workflow.12.1"}]}}}' > "$fake/entry.json"
-run '\ny\n\n\ny\nhttps://workflowhub.eu/workflows/12\ny\n\ny\n\n' seg
+run '\n\ny\n\n\ny\nhttps://workflowhub.eu/workflows/12\ny\n\ny\n\n' seg
 exits prod-other-commit 0
 has prod-other-commit "the entry's commit is \"2222222\", not \"$main_sha\"" \
-    "a version's commit can't be edited" "Stage 7/7 · List the citable version"
+    "a version's commit can't be edited" "Stage 8/8 · List the citable version"
 lacks prod-other-commit "fix it with Actions → Edit Workflow"
 
 # A later citable version: the page names the entry, so it is not asked
 # for, and the walkthrough adds a new version to it.
 cite_page '      <li><a href="https://doi.org/10.48546/workflowhub.workflow.12.1" target="_blank">10.48546/workflowhub.workflow.12.1</a> · 2026-10-26 · commit <code>23e9314</code></li>'
 printf '%s' '{"data":{"attributes":{"title":"UNSW HPC Katana - Seg Thing (U-Net)","license":"Apache-2.0","versions":[{"version":1,"commit":"23e9314","doi":"10.48546/workflowhub.workflow.12.1"},{"version":2,"commit":"'$main_sha'","doi":"10.48546/workflowhub.workflow.12.2"}]}}}' > "$fake/entry.json"
-run '\ny\n\n\ny\n\ny\n\ny\n\n' seg
+run '\n\ny\n\n\ny\n\ny\n\ny\n\n' seg
 exits new-version 0
 opened new-version https://workflowhub.eu/workflows/12
 has new-version "Add a new version from git" "Actions → New Version." "Click Update, then OK on the sharing preview." \
-    "1. Update, which makes the version public and freezes it." "Tags and creators come filled in" "10.48546/workflowhub.workflow.12.2</a> · $(date +%F)"
+    "1. Update, which makes the version public and freezes it." "replacing whatever it holds" "Don't skip this" "10.48546/workflowhub.workflow.12.2</a> · $(date +%F)"
 lacks new-version "expected https://workflowhub.eu/workflows/<number>" "Main workflow file"
 cite_page ""
 rm -f "$fake/entry.json"
