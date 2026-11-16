@@ -27,11 +27,14 @@ ENV_FILE="${ENV_FILE:-.env}"
 WRITTEN_ENV=()    # KEYs written to ENV_FILE this run
 WRITTEN_SECRET=() # secret NAMEs set this run
 SKIPPED=()        # things we couldn't do (e.g. gh missing)
+_WARN_UNREAD=0    # 1 once warn prints, until the human next answers a prompt
 
 # _clear wipes the terminal so only the current step is on screen. No-op when
-# output isn't a terminal, so piped logs stay readable.
+# output isn't a terminal, so piped logs stay readable. A warning printed since
+# the last prompt gets a pause first, so the clear never wipes it unread.
 _clear() {
   [[ -t 1 ]] || return 0
+  (( _WARN_UNREAD )) && pause "Read the warning above? Press Enter."
   if command -v tput >/dev/null 2>&1; then tput clear; else printf '\033[2J\033[3J\033[H'; fi
 }
 
@@ -60,7 +63,7 @@ say()  { printf '  %s\n' "$1"; }
 # step "..." is a numbered-feeling action the human takes in the browser.
 step() { printf '  %s•%s %s\n' "$BLUE" "$RESET" "$1"; }
 note() { printf '  %s%s%s\n' "$DIM" "$1" "$RESET"; }
-warn() { printf '  %s⚠ %s%s\n' "$YELLOW" "$1" "$RESET"; }
+warn() { printf '  %s⚠ %s%s\n' "$YELLOW" "$1" "$RESET"; _WARN_UNREAD=1; }
 
 # open_url URL opens it in the human's browser, cross-platform incl. WSL.
 open_url() {
@@ -76,12 +79,14 @@ open_url() {
 
 # pause "msg" waits for the human to confirm they've done the manual part.
 pause() {
+  _WARN_UNREAD=0
   printf '  %s%s%s ' "$DIM" "${1:-Press Enter to continue}" "$RESET"
   read -r _ || true
 }
 
 # confirm "question" is a y/N gate; returns success on yes.
 confirm() {
+  _WARN_UNREAD=0
   local reply=""
   printf '  %s? %s [y/N] ' "$YELLOW" "$1"
   read -r reply || true
@@ -101,6 +106,7 @@ _existing() {
 # a default on re-runs (Enter keeps it). Visible input (non-secret), edited
 # with Readline. Fails at EOF with no input.
 ask() {
+  _WARN_UNREAD=0
   local key="$1" prompt="$2" current input s=$'\001' e=$'\002' p rc=0
   current=$(_existing "$key" || true)
   # Readline needs the colour codes wrapped in \001..\002 to place the cursor.
@@ -114,6 +120,7 @@ ask() {
 
 # ask_secret KEY "Prompt" is like ask, but input is hidden.
 ask_secret() {
+  _WARN_UNREAD=0
   local key="$1" prompt="$2" current input rc=0
   current=$(_existing "$key" || true)
   if [[ -n "$current" ]]; then
@@ -332,6 +339,22 @@ LISTED_DOI=""
 ENTRY_URL="${IRIS_WORKFLOWHUB_ENTRY:-}"
 ENTRY_FROM="IRIS_WORKFLOWHUB_ENTRY"
 if [[ -n "$ENTRY_URL" ]]; then
+  # An entry on the other instance most often means IRIS_WORKFLOWHUB never
+  # reached this run: it sat on a line of its own, which sets it for nothing
+  # (#196's dev run, twice). So the refusal gives the one line to paste. A
+  # team number belongs to one site: workflowhub.eu's line takes the default,
+  # and the development instance's a set one, or N to replace.
+  if [[ "$ENTRY_URL" =~ ^(https://([a-z0-9-]+\.)?workflowhub\.eu)/workflows/[0-9]+/?$ &&
+        "${BASH_REMATCH[1]}" != "$WH" ]]; then
+    OTHER_WH="${BASH_REMATCH[1]}" OTHER_TEAM="" TEAM_HINT=""
+    if [[ "$OTHER_WH" != https://workflowhub.eu ]]; then
+      OTHER_TEAM="IRIS_WORKFLOWHUB_TEAM=${IRIS_WORKFLOWHUB_TEAM:-N} "
+      [[ -n "${IRIS_WORKFLOWHUB_TEAM:-}" ]] ||
+        TEAM_HINT=", N being your team's number there, from $OTHER_WH/projects/N"
+    fi
+    refuse "IRIS_WORKFLOWHUB_ENTRY is on $OTHER_WH, but this run is on $WH: IRIS_WORKFLOWHUB didn't reach the command, or names the other site. A NAME=value on a line of its own sets it for nothing, so paste this as one line$TEAM_HINT:
+  IRIS_WORKFLOWHUB=$OTHER_WH ${OTHER_TEAM}IRIS_WORKFLOWHUB_ENTRY=$ENTRY_URL bin/workflowhub $SLUG"
+  fi
   [[ "$ENTRY_URL" =~ ^$WH_RE/workflows/[0-9]+/?$ ]] ||
     refuse "IRIS_WORKFLOWHUB_ENTRY is $ENTRY_URL, not an entry on $WH ($WH/workflows/<number>)"
   ENTRY_URL="${ENTRY_URL%/}"

@@ -156,6 +156,50 @@ cp "$fake/manifest.yml" "$tree/workflows/seg/manifest.yml"
 IRIS_WORKFLOWHUB=http://example.com run "" --values seg
 exits bad-host 2
 has bad-host "IRIS_WORKFLOWHUB"
+# An entry on the other instance gets the one line that reaches it, and
+# that line, run as printed (with --values), gets past the refusal.
+# paste_line <case> [<N>]: the printed line's assignments, N replaced by <N>.
+paste_line() {
+    local line
+    line=$(grep -m1 -oE '^  IRIS_WORKFLOWHUB=.* bin/workflowhub seg$' <<< "$out") ||
+        { echo "$1: no line to paste"; echo "$out" | sed 's/^/  /'; return 1; }
+    line=${line#  }
+    line=${line% bin/workflowhub seg}
+    [ -n "${2:-}" ] && line=${line//=N /=$2 }
+    printf '%s' "$line"
+}
+IRIS_WORKFLOWHUB_ENTRY=https://dev.workflowhub.eu/workflows/12 run "" --values seg
+exits other-instance 2
+has other-instance "IRIS_WORKFLOWHUB_ENTRY is on https://dev.workflowhub.eu, but this run is on https://workflowhub.eu: IRIS_WORKFLOWHUB didn't reach the command" \
+    "N being your team's number there, from https://dev.workflowhub.eu/projects/N" \
+    "  IRIS_WORKFLOWHUB=https://dev.workflowhub.eu IRIS_WORKFLOWHUB_TEAM=N IRIS_WORKFLOWHUB_ENTRY=https://dev.workflowhub.eu/workflows/12 bin/workflowhub seg"
+if vars=$(paste_line other-instance) && vars9=$(paste_line other-instance 9); then
+    eval "$vars run '' --values seg"
+    exits other-instance-N 2
+    has other-instance-N "IRIS_WORKFLOWHUB_TEAM is N, not a team number"
+    eval "$vars9 run '' --values seg"
+    exits other-instance-pasted 0
+    has other-instance-pasted "Entry: https://dev.workflowhub.eu/workflows/12" "Team: https://dev.workflowhub.eu/projects/9"
+fi
+IRIS_WORKFLOWHUB_TEAM=9 IRIS_WORKFLOWHUB_ENTRY=https://dev.workflowhub.eu/workflows/12 run "" --values seg
+lacks other-instance-team "N being"
+if vars=$(paste_line other-instance-team); then
+    eval "$vars run '' --values seg"
+    exits other-instance-team-pasted 0
+    has other-instance-team-pasted "Team: https://dev.workflowhub.eu/projects/9"
+fi
+# ...and a production entry's line drops the other site's team.
+IRIS_WORKFLOWHUB=https://dev.workflowhub.eu IRIS_WORKFLOWHUB_TEAM=9 IRIS_WORKFLOWHUB_ENTRY=https://workflowhub.eu/workflows/77 run "" --values seg
+exits other-instance-prod 2
+has other-instance-prod "  IRIS_WORKFLOWHUB=https://workflowhub.eu IRIS_WORKFLOWHUB_ENTRY=https://workflowhub.eu/workflows/77 bin/workflowhub seg"
+if vars=$(paste_line other-instance-prod); then
+    eval "$vars run '' --values seg"
+    exits other-instance-prod-pasted 0
+    has other-instance-prod-pasted "Entry: https://workflowhub.eu/workflows/77" "Team: https://workflowhub.eu/projects/472"
+fi
+IRIS_WORKFLOWHUB_ENTRY=https://workflowhub.eu/workflows/x run "" --values seg
+exits bad-entry 2
+has bad-entry "not an entry on https://workflowhub.eu"
 
 # A first registration on the development instance: every stage up to
 # Register, the clicks listed before the first, and no DOI.
