@@ -142,8 +142,8 @@ if command -v ruby > /dev/null; then
     system_apps_dir=$(. lib/katana.sh && echo "$IRIS_SYSTEM_CLONE")/workflows
     script=$(cd "$c" && ruby lib/tests/form_helper.rb --apps-dir "$system_apps_dir" --no-check workflows/scaffold-test/form.yml.erb 2>&1) ||
         echo "fresh: its form doesn't render for the system clone's workflows/: $(tail -n3 <<< "$script")"
-    grep -qxF "$(grep -m1 . "$d/src/run.py")" <<< "$script" ||
-        echo "fresh: its form, rendered for the system clone, doesn't embed its src/run.py"
+    [[ "$script" == *"$(< "$d/src/run.py")"* ]] ||
+        echo "fresh: its form, rendered for the system clone, doesn't embed all of its src/run.py"
 else
     echo "fresh: no Ruby to render its form (once in WSL: sudo apt install ruby)"
 fi
