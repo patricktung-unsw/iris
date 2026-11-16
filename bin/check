@@ -980,7 +980,8 @@ check "shellcheck" shellcheck_all
 # check on GitHub's runner.
 check "actionlint" uvx --quiet --from actionlint-py==1.7.12.25 --with "$shellcheck_pin" actionlint -oneline
 
-# Every tests/bin/test_*.sh, each against fakes or throwaway trees: a
+# Every tests/bin/test_*.sh, each against fakes or throwaway trees, but
+# for the envrun time limit test, which runs real containers: a
 # test prints its failed cases and nothing on success. Each runs under the
 # name its "# bin/check name: <name>" line gives, or its path if it has
 # none, so a new test runs with no other edit.

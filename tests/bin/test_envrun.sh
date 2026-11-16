@@ -85,6 +85,10 @@ has "second apptainer run" "$(log apptainer)" "[$file][python][-V]"
 out="$(run IRIS_CONTAINER_RUNTIME=docker -- microct/1 python -V)"
 out="$(log docker)"
 has "docker run" "$out" "[run][--rm]"
+# docker's init is the container's PID 1, so the command gets the
+# SIGTERM of a time limit, and the container has a name of its own, so a
+# command that ignores it can be killed (#197).
+has "docker run" "$out" "[--init][--name][iris-envrun-"
 has "docker run" "$out" "[--user][$(id -u):$(id -g)]"
 # The uid has no passwd entry in the container, so the user's name goes by
 # environment, or torch's getpass.getuser() fails (CI run 42537470699).
@@ -168,11 +172,16 @@ rm -f "$fake/docker.log"
 out="$(run IRIS_CONTAINER_RUNTIME=docker FAKE_PULL_SLEEP=2 -- --time-limit 1 microct/1 python -V)" ||
     { echo "docker --time-limit 1 with a 2 s pull: exit non-zero"; echo "$out" | sed 's/^/  /'; }
 has "docker --time-limit, first run" "$(log docker)" "[pull][-q][$IRIS_ENV_REGISTRY@$a]"
+lacks "docker --time-limit, first run" "$(log docker)" "[kill]"
 rm -f "$fake/docker.log"
 out="$(run IRIS_CONTAINER_RUNTIME=docker FAKE_EXEC_SLEEP=5 -- --time-limit 1 microct/1 python -V)" &&
     echo "docker --time-limit 1 on a 5 s command: exit 0"
 has "docker past its time limit" "$out" "ran past its 1 s limit"
 lacks "docker --time-limit, second run" "$(log docker)" "[pull]"
+# A command past its limit has its container killed by name, since
+# killing the docker client leaves the container running (#197).
+name="$(sed -n 's/^\[run\].*\[--name\]\[\([^]]*\)\].*/\1/p' "$fake/docker.log")"
+has "docker past its time limit" "$(log docker)" "[kill][${name:-no name}]"
 
 # --container <local name> runs the command in a container built under
 # that name and not yet published, such as the one the containers workflow

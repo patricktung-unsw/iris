@@ -10,6 +10,16 @@
 # --no-network runs the command with no network: loopback only.
 # --time-limit stops the command once it has run that many seconds, says
 # so and exits 124. A first run's pull happens before the limit starts.
+# The command gets SIGTERM at the limit and SIGKILL 10 seconds later, if
+# it is still running then; either way nothing of it is left running.
+# Under Docker the container's PID 1 is docker's init (--init), which
+# passes SIGTERM on, since a PID 1 of the command's own, such as python,
+# would ignore it; one the command ignores ends with `docker kill`, since
+# killing the docker client leaves its container running (#197). Under
+# Apptainer the command runs in timeout's own process group with no PID
+# namespace, so SIGTERM ends it as it would on the host, and timeout's
+# SIGKILL to that group ends it if it ignores SIGTERM: nothing leaks, as
+# tests/bin/test_envrun_limit.sh shows under each runtime it finds.
 # --container runs the command in the container Docker holds under that
 # local name instead of the version's published one, under Docker whatever
 # the runtime, pulling nothing: the containers workflow runs the tests of
@@ -56,11 +66,20 @@ else
 fi
 
 # run <command>...: runs the container command, within the time limit if
-# there is one.
+# there is one. Under Docker, $name names its container.
+name=""
 run() {
     [ -n "$limit" ] || exec "$@"
-    local status=0
+    local status=0 start=$SECONDS
     timeout -k 10 "$limit" "$@" || status=$?
+    # A command that outlives SIGTERM dies of timeout's SIGKILL to its own
+    # process group, 10 seconds past the limit, which takes timeout with it:
+    # 137, not 124. A 137 sooner is the command's own, such as an OOM kill.
+    [ "$status" != 137 ] || [ $((SECONDS - start)) -lt $((limit + 9)) ] || status=124
+    if [ "$status" = 124 ] && [ -n "$name" ]; then
+        docker kill "$name" > /dev/null 2>&1 || true
+        docker wait "$name" > /dev/null 2>&1 || true
+    fi
     [ "$status" != 124 ] || echo "envrun: $version: the command ran past its $limit s limit and was stopped" >&2
     exit "$status"
 }
@@ -71,7 +90,8 @@ if [ "$runtime" = docker ]; then
     [ -z "$offline" ] || net=(--network none)
     # The uid has no passwd entry in the container, so USER carries the
     # name getpass.getuser() needs; torch calls it (CI run 42537470699).
-    run docker run --rm "${net[@]}" --user "$(id -u):$(id -g)" --env USER="$(id -un)" --env HOME=/tmp --env PYTHONUNBUFFERED=1 \
+    name="iris-envrun-$$-$RANDOM"
+    run docker run --rm --init --name "$name" "${net[@]}" --user "$(id -u):$(id -g)" --env USER="$(id -un)" --env HOME=/tmp --env PYTHONUNBUFFERED=1 \
         --volume "$repo:$repo" --workdir "$PWD" "$ref" "$@"
 fi
 
