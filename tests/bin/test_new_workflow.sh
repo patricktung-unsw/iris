@@ -134,6 +134,19 @@ grep -qx '  IRIS_ENV_VERSION=microct/1' "$d/form.yml.erb" || echo "fresh: the fo
 cmp -s "$c/lib/iris-job.sh" "$d/lib/iris-job.sh" && [ -s "$d/lib/copied-from" ] ||
     echo "fresh: workflows/scaffold-test/lib/ isn't bin/libcopy's copy of the library's job side"
 [ ! -e "$d/run-proof.json" ] || echo "fresh: it copied the reference's run proof"
+# Its form, rendered as the system clone serves it, embeds its own entry
+# script, though the system clone has no copy of it until its review batch:
+# its form tests and bin/run-proof render it so, and #145's scaffolded run
+# was refused a proof when the render read src/run.py from there.
+if command -v ruby > /dev/null; then
+    system_apps_dir=$(. lib/katana.sh && echo "$IRIS_SYSTEM_CLONE")/workflows
+    script=$(cd "$c" && ruby lib/tests/form_helper.rb --apps-dir "$system_apps_dir" --no-check workflows/scaffold-test/form.yml.erb 2>&1) ||
+        echo "fresh: its form doesn't render for the system clone's workflows/: $(tail -n3 <<< "$script")"
+    grep -qxF "$(grep -m1 . "$d/src/run.py")" <<< "$script" ||
+        echo "fresh: its form, rendered for the system clone, doesn't embed its src/run.py"
+else
+    echo "fresh: no Ruby to render its form (once in WSL: sudo apt install ruby)"
+fi
 [ "$(cd "$c" && bin/manifest-owner workflows/scaffold-test/manifest.yml email)" = jdoe@example.org ] ||
     echo "fresh: the manifest's owner email isn't jdoe@example.org"
 [ "$(cd "$c" && bin/manifest-owner workflows/scaffold-test/manifest.yml name)" = "Jane Doe" ] ||
