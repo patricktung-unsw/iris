@@ -4,8 +4,10 @@
 # that sets it, since bin/check fails it otherwise only on a full run.
 # Turn it on once per clone: git config core.hooksPath .githooks
 
-root="$(git rev-parse --show-toplevel)"
-if ! missing="$("$root/bin/exec-bits")"; then
+# bin/exec-bits beside these hooks, so a repo whose core.hooksPath points
+# here checks its own index with it, as the conflict-list test's fixture does.
+exec_bits="$(dirname "$0")/../bin/exec-bits"
+if ! missing="$("$exec_bits")"; then
     echo "pre-commit: bin/exec-bits failed, so the executable bits weren't checked; fix it, or commit with --no-verify once" >&2
     exit 1
 fi
