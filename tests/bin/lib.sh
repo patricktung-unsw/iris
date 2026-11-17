@@ -11,19 +11,23 @@
 # with --tools, the tools version line isn't there, or the file doesn't
 # end up holding exactly what was asked, it prints why, naming <file>, and
 # returns 1, so no fixture keeps the real map's versions by mistake.
+# The digest map's opening line in lib/katana.sh, which the helpers below
+# match whole. Its characters are literal in a sed basic regex.
+_DIGEST_MAP_OPEN='declare -gA IRIS_ENV_DIGESTS=('
+
 digest_map() {
     local file="$1" tools="" e lines=""
     shift
     if [ "${1-}" = --tools ]; then tools="$2"; shift 2; fi
     for e in "$@"; do lines+="    [${e%%=*}]=${e#*=}"$'\n'; done
-    _digest_map_open "$file" || return 1
+    _digest_map_open digest_map "$file" || return 1
     if [ -n "$tools" ] && ! grep -q '^IRIS_TOOLS_ENV_VERSION=' "$file"; then
         echo "digest_map: $file has no IRIS_TOOLS_ENV_VERSION= line to set"
         return 1
     fi
-    LINES_="$lines" TOOLS_="$tools" awk '
+    OPEN_="$_DIGEST_MAP_OPEN" LINES_="$lines" TOOLS_="$tools" awk '
         in_map { if ($0 == ")") { in_map = 0; printf "%s", ENVIRON["LINES_"]; print }; next }
-        $0 == "declare -gA IRIS_ENV_DIGESTS=(" { print; in_map = 1; next }
+        $0 == ENVIRON["OPEN_"] { print; in_map = 1; next }
         ENVIRON["TOOLS_"] != "" && /^IRIS_TOOLS_ENV_VERSION=/ { print "IRIS_TOOLS_ENV_VERSION=" ENVIRON["TOOLS_"]; next }
         { print }' "$file" > "$file.digest-map" && mv "$file.digest-map" "$file" || return 1
     if [ "$(_digest_map_lines "$file")" != "${lines%$'\n'}" ]; then
@@ -42,8 +46,8 @@ digest_map() {
 # didn't go in.
 digest_map_add() {
     local file="$1" line="    [${2%%=*}]=${2#*=}"
-    _digest_map_open "$file" || return 1
-    LINE_="$line" awk '{ print } $0 == "declare -gA IRIS_ENV_DIGESTS=(" { print ENVIRON["LINE_"] }' \
+    _digest_map_open digest_map_add "$file" || return 1
+    OPEN_="$_DIGEST_MAP_OPEN" LINE_="$line" awk '{ print } $0 == ENVIRON["OPEN_"] { print ENVIRON["LINE_"] }' \
         "$file" > "$file.digest-map" && mv "$file.digest-map" "$file" || return 1
     if ! _digest_map_lines "$file" | grep -qxF -- "$line"; then
         echo "digest_map_add: $file's digest map didn't take $2"
@@ -51,22 +55,22 @@ digest_map_add() {
     fi
 }
 
-# _digest_map_open <file>: fails, naming <file>, unless it has the map's
-# opening line and a ")" line after it.
+# _digest_map_open <caller> <file>: fails, naming <caller> and <file>,
+# unless <file> has the map's opening line and a ")" line after it.
 _digest_map_open() {
-    if ! grep -qx 'declare -gA IRIS_ENV_DIGESTS=(' "$1"; then
-        echo "digest_map: $1 has no 'declare -gA IRIS_ENV_DIGESTS=(' line to replace"
+    if ! grep -qxF "$_DIGEST_MAP_OPEN" "$2"; then
+        echo "$1: $2 has no '$_DIGEST_MAP_OPEN' line to replace"
         return 1
     fi
-    if ! sed -n '/^declare -gA IRIS_ENV_DIGESTS=($/,$p' "$1" | grep -qx ')'; then
-        echo "digest_map: $1's digest map has no closing ) line"
+    if ! sed -n "/^$_DIGEST_MAP_OPEN\$/,\$p" "$2" | grep -qx ')'; then
+        echo "$1: $2's digest map has no closing ) line"
         return 1
     fi
 }
 
 # _digest_map_lines <file>: the lines inside <file>'s digest map.
 _digest_map_lines() {
-    sed -n '/^declare -gA IRIS_ENV_DIGESTS=($/,/^)$/p' "$1" | sed '1d;$d'
+    sed -n "/^$_DIGEST_MAP_OPEN\$/,/^)\$/p" "$1" | sed '1d;$d'
 }
 
 # expect <pass|fail> <tree> <check name>: runs <tree>/bin/check on the

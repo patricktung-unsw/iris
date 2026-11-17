@@ -18,7 +18,9 @@ trap 'rm -rf "$scratch"' EXIT
 a=sha256:$(printf 'a%.0s' {1..64})
 f="$scratch/katana.sh"
 fail() { echo "digest map helper: $*"; }
-# map_of <file>: the lines between the map's opening line and its ")".
+# map_of <file>: the lines between the map's opening line and its ")",
+# read here on its own rather than through lib.sh's, so the check doesn't
+# share the code it checks.
 map_of() { sed -n '/^declare -gA IRIS_ENV_DIGESTS=($/,/^)$/p' "$1" | sed '1d;$d'; }
 
 # Replacing: exactly the entries given, in order; the tools line and
