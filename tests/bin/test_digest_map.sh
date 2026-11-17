@@ -1,0 +1,62 @@
+#!/bin/bash
+# tests/bin/lib.sh's digest_map and digest_map_add on scratch copies of
+# lib/katana.sh: the map ends up holding exactly the entries given, the
+# tools version is set when asked, and each helper fails, naming the file,
+# when the map or the tools version line isn't there, so a fixture can't
+# keep the real map by mistake (#200). Prints each failed case and nothing
+# on success, so bin/check can run it.
+#
+#   tests/bin/test_digest_map.sh
+#
+# bin/check name: digest map helper test
+
+cd "$(dirname "$(readlink -f "$0")")/../.." || exit 1
+scratch="$(mktemp -d)"
+trap 'rm -rf "$scratch"' EXIT
+. tests/bin/lib.sh
+
+a=sha256:$(printf 'a%.0s' {1..64})
+f="$scratch/katana.sh"
+fail() { echo "digest map helper: $*"; }
+# map_of <file>: the lines between the map's opening line and its ")".
+map_of() { sed -n '/^declare -gA IRIS_ENV_DIGESTS=($/,/^)$/p' "$1" | sed '1d;$d'; }
+
+# Replacing: exactly the entries given, in order; the tools line and
+# everything else untouched without --tools.
+cp lib/katana.sh "$f"
+out="$(digest_map "$f" "ct/1=$a" ct/2=unpublished 2>&1)" || fail "refused a real lib/katana.sh: $out"
+[ -z "$out" ] || fail "printed on success: $out"
+[ "$(map_of "$f")" = "$(printf '    [ct/1]=%s\n    [ct/2]=unpublished' "$a")" ] ||
+    { fail "map isn't the entries given:"; map_of "$f" | sed 's/^/  /'; }
+[ "$(grep '^IRIS_TOOLS_ENV_VERSION=' "$f")" = "$(grep '^IRIS_TOOLS_ENV_VERSION=' lib/katana.sh)" ] ||
+    fail "changed the tools version without --tools"
+grep -q '^declare -gA IRIS_LAB_ENVS=($' "$f" || fail "lost the lab table"
+
+# --tools sets the tools version; no entries empties the map.
+cp lib/katana.sh "$f"
+digest_map "$f" --tools ct/1 > /dev/null || fail "refused --tools with no entries"
+grep -qx 'IRIS_TOOLS_ENV_VERSION=ct/1' "$f" || fail "--tools didn't set the tools version"
+[ -z "$(map_of "$f")" ] || fail "no entries left a map of: $(map_of "$f")"
+
+# No map: fails, naming the file.
+grep -v '^declare -gA IRIS_ENV_DIGESTS=(' lib/katana.sh > "$f"
+out="$(digest_map "$f" ct/1=unpublished 2>&1)" && fail "passed on a file with no map"
+grep -qF -- "$f" <<< "$out" || fail "no-map failure doesn't name the file: $out"
+out="$(digest_map_add "$f" ct/1=unpublished 2>&1)" && fail "digest_map_add passed on a file with no map"
+grep -qF -- "$f" <<< "$out" || fail "digest_map_add's no-map failure doesn't name the file: $out"
+
+# No closing ")": fails, naming the file.
+grep -vx ')' lib/katana.sh > "$f"
+out="$(digest_map "$f" ct/1=unpublished 2>&1)" && fail "passed on a map with no closing )"
+grep -qF -- "$f" <<< "$out" || fail "unclosed-map failure doesn't name the file: $out"
+
+# No tools version line, with --tools: fails, naming the file.
+grep -v '^IRIS_TOOLS_ENV_VERSION=' lib/katana.sh > "$f"
+out="$(digest_map "$f" --tools ct/1 ct/1=unpublished 2>&1)" && fail "passed on a file with no tools version line"
+grep -qF -- "$f" <<< "$out" || fail "no-tools-line failure doesn't name the file: $out"
+
+# Adding: one line at the top of the map, the rest kept.
+cp lib/katana.sh "$f"
+out="$(digest_map_add "$f" ct/9=unpublished 2>&1)" || fail "digest_map_add refused a real lib/katana.sh: $out"
+[ "$(map_of "$f")" = "$(printf '    [ct/9]=unpublished\n'; map_of lib/katana.sh)" ] ||
+    { fail "digest_map_add's map isn't the line plus the real map:"; map_of "$f" | sed 's/^/  /'; }

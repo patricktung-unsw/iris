@@ -12,6 +12,7 @@
 cd "$(dirname "$(readlink -f "$0")")/../.." || exit 1
 scratch="$(mktemp -d)"
 trap 'rm -rf "$scratch"' EXIT
+. tests/bin/lib.sh
 . lib/katana.sh
 
 a=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
@@ -19,8 +20,7 @@ fake="$scratch/fake" repo="$scratch/repo" cache="$scratch/cache"
 mkdir -p "$fake" "$repo/bin" "$repo/lib" "$repo/workflows/seg"
 cp bin/envrun "$repo/bin/"
 cp lib/katana.sh "$repo/lib/katana.sh"
-sed -i -e "/^declare -gA IRIS_ENV_DIGESTS=(/,/^)/c\\declare -gA IRIS_ENV_DIGESTS=(\n    [microct/1]=$a\n    [microct/2]=unpublished\n)" \
-    "$repo/lib/katana.sh"
+digest_map "$repo/lib/katana.sh" "microct/1=$a" microct/2=unpublished || exit 1
 
 # apptainer adds its arguments to $fake/apptainer.log, one call a line, and
 # the registry login it was given to $fake/auth; its pull writes the

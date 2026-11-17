@@ -10,6 +10,7 @@
 cd "$(dirname "$(readlink -f "$0")")/../.." || exit 1
 fake="$(mktemp -d)"
 trap 'rm -rf "$fake"' EXIT
+. tests/bin/lib.sh
 
 repo="$fake/repo"
 mkdir -p "$repo/bin" "$repo/.githooks"
@@ -109,7 +110,8 @@ mkdir -p "$repo/lib"
 a64=$(printf 'a%.0s' {1..64})
 # map_line <value>: lib/katana.sh with a ct/2 line of <value> in its digest map, committed.
 map_line() {
-    sed "s|^declare -gA IRIS_ENV_DIGESTS=($|&\n    [ct/2]=$1|" lib/katana.sh > "$repo/lib/katana.sh"
+    cp lib/katana.sh "$repo/lib/katana.sh"
+    digest_map_add "$repo/lib/katana.sh" "ct/2=$1" || exit 1
     git -C "$repo" add lib/katana.sh; commit -m "ct/2 is $1"
     record
 }

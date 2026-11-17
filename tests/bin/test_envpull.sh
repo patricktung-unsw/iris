@@ -13,6 +13,7 @@
 cd "$(dirname "$(readlink -f "$0")")/../.." || exit 1
 scratch="$(mktemp -d)"
 trap 'rm -rf "$scratch"' EXIT
+. tests/bin/lib.sh
 . lib/katana.sh
 
 a=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
@@ -60,14 +61,11 @@ echo "container $2" > "$1"
 EOF
 chmod +x "$fake/ssh" "$fake/apptainer"
 
-# map <entry>...: the scratch tree's digest map holds these lines alone,
+# map <env>/<n>=<value>...: the scratch tree's digest map holds these alone,
 # and its researcher tools use microct/1.
 map() {
-    local entries="" e
-    for e in "$@"; do entries+="\n    $e"; done
     cp lib/katana.sh "$repo/lib/katana.sh"
-    sed -i -e "/^declare -gA IRIS_ENV_DIGESTS=(/,/^)/c\\declare -gA IRIS_ENV_DIGESTS=($entries\n)" \
-        -e 's|^IRIS_TOOLS_ENV_VERSION=.*|IRIS_TOOLS_ENV_VERSION=microct/1|' "$repo/lib/katana.sh"
+    digest_map "$repo/lib/katana.sh" --tools microct/1 "$@" || exit 1
 }
 # pin <tree> <slug> <version>: <tree>'s form <slug> pins <version>.
 pin() {
@@ -100,14 +98,14 @@ no_pull() { [ ! -e "$fake/pulls" ] || { echo "envpull $1: pulled"; sed 's/^/  /'
 holds() { [ "$(cat "$2" 2>/dev/null)" = "$3" ] || echo "envpull $1: $2 holds '$(cat "$2" 2>/dev/null)', expected '$3'"; }
 
 # An unpublished version is skipped, not an error, and nothing is pulled.
-reset; map '[microct/1]=unpublished'; pin "$repo" seg microct/1
+reset; map 'microct/1=unpublished'; pin "$repo" seg microct/1
 expect 0 "microct/1: unpublished"
 no_pull unpublished
 grep -qxF katana-dm "$fake/args" 2>/dev/null || echo "envpull unpublished: didn't run on the data mover"
 
 # A pinned, published version missing from Katana is pulled by digest alone,
 # into <folder>/<env>/<n>.sif with its digest beside it.
-reset; map "[microct/1]=$a"; pin "$repo" seg microct/1
+reset; map "microct/1=$a"; pin "$repo" seg microct/1
 expect 0 "pulled"
 holds pull "$envs/microct/1.sif" "container docker://$IRIS_ENV_REGISTRY@$a"
 holds pull "$envs/microct/1.digest" "$a"
@@ -131,7 +129,7 @@ no_pull no-digest
 
 # A container file nothing pins is listed with the go-ahead it needs, and
 # kept; --remove takes it and its digest file, and says how to get it back.
-reset; map "[microct/1]=$a" "[microct/2]=$b"; pin "$repo" seg microct/1
+reset; map "microct/1=$a" "microct/2=$b"; pin "$repo" seg microct/1
 mkdir -p "$envs/microct"
 echo old > "$envs/microct/2.sif"; echo "$b" > "$envs/microct/2.digest"
 expect 0 "bin/envpull --remove microct/2"
@@ -150,7 +148,7 @@ expect 1 "pinned by seg in this checkout" --remove microct/1
 expect 1 "there is no" --remove microct/3
 # A version that couldn't be pulled back, unpublished or not in the map, is
 # never removed: removing is only safe because --pull undoes it.
-reset; map "[microct/1]=$a" "[microct/2]=unpublished"; pin "$repo" seg microct/1
+reset; map "microct/1=$a" "microct/2=unpublished"; pin "$repo" seg microct/1
 mkdir -p "$envs/microct"
 for n in 2 3; do echo old > "$envs/microct/$n.sif"; echo "$b" > "$envs/microct/$n.digest"; done
 expect 1 "microct/2 is unpublished, so bin/envpull --pull couldn't bring it back; nothing removed" --remove microct/2
@@ -173,7 +171,7 @@ exec /bin/mv "$@"
 EOF
 chmod +x "$fake/mv"
 for n in 1 2; do
-    reset; map "[microct/1]=$a"; pin "$repo" seg microct/1
+    reset; map "microct/1=$a"; pin "$repo" seg microct/1
     echo "$n" > "$fake/mv-dies-at"; rm -f "$fake/mv-calls"
     expect 1 "" --pull microct/1
     echo 0 > "$fake/mv-dies-at"
@@ -187,7 +185,7 @@ rm -f "$fake/mv" "$fake/mv-calls" "$fake/mv-dies-at"
 
 # The researcher tools' version and the system clone's forms pin versions
 # too: they are pulled, and never listed for removal or removed.
-reset; map "[microct/1]=$a" "[bril/1]=$b"; pin "$FAKE_CLONE" mri bril/1
+reset; map "microct/1=$a" "bril/1=$b"; pin "$FAKE_CLONE" mri bril/1
 expect 0 "bril/1: pulled"
 holds tools "$envs/microct/1.digest" "$a"
 holds clone "$envs/bril/1.digest" "$b"
@@ -197,14 +195,14 @@ expect 1 "pinned by mri in the system clone" --remove bril/1
 [ -e "$envs/bril/1.sif" ] || echo "envpull --remove: removed a file the system clone pins"
 
 # --pull of a version that can't be pulled fails, pulling nothing.
-reset; map '[microct/1]=unpublished'
+reset; map 'microct/1=unpublished'
 expect 1 "unpublished" --pull microct/1
 expect 1 "not in lib/katana.sh's digest map" --pull microct/7
 no_pull pull-unpublished
 
 # The token file on Katana logs the pull in, by environment, never in a
 # command line; one others can read is refused.
-reset; map "[microct/1]=$a"
+reset; map "microct/1=$a"
 mkdir -p "$FAKE_HOME/.config/iris"
 echo "PatrickTung:ghp_secret" > "$FAKE_HOME/.config/iris/ghcr-token"
 chmod 600 "$FAKE_HOME/.config/iris/ghcr-token"
@@ -216,13 +214,13 @@ chmod 640 "$FAKE_HOME/.config/iris/ghcr-token"
 expect 1 "chmod 600"
 no_pull token-readable
 # Without one, the pull goes without a login.
-reset; map "[microct/1]=$a"
+reset; map "microct/1=$a"
 expect 0 "pulled"
 holds no-token "$fake/auth" "user= password="
 
 # --check-login says whether the token file would log a pull in, pulling
 # nothing and printing no line of the file, whatever it holds.
-reset; map "[microct/1]=$a"
+reset; map "microct/1=$a"
 expect 1 "no $FAKE_HOME/.config/iris/ghcr-token" --check-login
 mkdir -p "$FAKE_HOME/.config/iris"
 for line in "PatrickTungghp_secret" "PatrickTung:ghp_secret"; do
@@ -240,7 +238,7 @@ no_pull check-login
 expect 2 "usage:" --check-login microct/1
 
 # A failed pull leaves nothing behind, and points at the token.
-reset; map "[microct/1]=$a"; touch "$fake/pull-fails"
+reset; map "microct/1=$a"; touch "$fake/pull-fails"
 expect 1 ".config/iris/ghcr-token"
 [ -z "$(ls -A "$envs/microct" 2>/dev/null)" ] || { echo "envpull pull-fails: left files"; ls -A "$envs/microct" | sed 's/^/  /'; }
 
@@ -248,7 +246,7 @@ expect 1 ".config/iris/ghcr-token"
 # no container for the environments folder until the review batch copies
 # it into the org's package: it is skipped there, and --pull refuses it.
 author="ghcr.io/an-author/iris-env@$b"
-reset; map "[microct/1]=$a" "[microct/2]=$author"; pin "$repo" seg microct/2
+reset; map "microct/1=$a" "microct/2=$author"; pin "$repo" seg microct/2
 expect 0 "microct/2: published under an author's own account"
 [ ! -e "$envs/microct/2.sif" ] || echo "envpull: put an author's container in the environments folder"
 expect 1 "published under an author's own account" --pull microct/2
@@ -271,12 +269,12 @@ no_pull own-present
 # A rebuilt version, with a new digest in the map, replaces the author's
 # own file: it is theirs, and only the new one proves the workflow.
 rebuilt="ghcr.io/an-author/iris-env@$a"
-map "[microct/1]=$a" "[microct/2]=$rebuilt"
+map "microct/1=$a" "microct/2=$rebuilt"
 expect 0 "microct/2: pulled" --own microct/2
 holds own-rebuilt "$own/microct/2.sif" "container docker://$rebuilt"
 holds own-rebuilt "$own/microct/2.digest" "$a"
 expect 1 "not in lib/katana.sh's digest map" --own microct/3
-map "[microct/1]=$a" "[microct/2]=unpublished"
+map "microct/1=$a" "microct/2=unpublished"
 expect 1 "unpublished" --own microct/2
 expect 2 "usage:" --own
 

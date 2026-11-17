@@ -22,6 +22,7 @@
 cd "$(dirname "$(readlink -f "$0")")/../.." || exit 1
 fake="$(mktemp -d)"
 trap 'rm -rf "$fake"' EXIT
+. tests/bin/lib.sh
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@example.org GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@example.org
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
 
@@ -86,8 +87,8 @@ printf '#!/bin/bash\n[ -z "${RB_CHECK_FAIL-}" ] || { echo "check: FAILED"; exit 
 printf '#!/bin/bash\n[ "$1" = --tested ]\n' > "$src/bin/katana-test"
 chmod +x "$src/bin/check" "$src/bin/katana-test"
 cp lib/katana.sh "$src/lib/"
-sed -i -e '/^declare -gA IRIS_LAB_ENVS=(/,/^)/c\declare -gA IRIS_LAB_ENVS=(\n    [ct-lab]=ct/1\n)' \
-    -e '/^declare -gA IRIS_ENV_DIGESTS=(/,/^)/c\declare -gA IRIS_ENV_DIGESTS=(\n    [ct/1]=sha256:'"$b64"'\n)' "$src/lib/katana.sh"
+sed -i '/^declare -gA IRIS_LAB_ENVS=(/,/^)/c\declare -gA IRIS_LAB_ENVS=(\n    [ct-lab]=ct/1\n)' "$src/lib/katana.sh"
+digest_map "$src/lib/katana.sh" "ct/1=sha256:$b64" || exit 1
 printf '%s\n' '<div class="lab" id="ct-lab">' '    <a href="workflows/seg/" class="workflow-card">' \
     '      <div class="card-name">seg</div>' '    </a>' '</div>' > "$src/index.html"
 echo "print(1)" > "$src/workflows/seg/src/run.py"

@@ -29,9 +29,8 @@ make_tree() {
     mkdir -p "$tree/lib" "$tree/envs/microct/1"
     cp lib/katana.sh "$tree/lib/katana.sh"
     cp envs/build-kind.sh "$tree/envs/build-kind.sh"
-    sed -i -e '/^declare -gA IRIS_ENV_DIGESTS=(/,/^)/c\declare -gA IRIS_ENV_DIGESTS=(\n    [microct/1]=unpublished\n)' \
-        -e '/^declare -gA IRIS_LAB_ENVS=(/,/^)/c\declare -gA IRIS_LAB_ENVS=(\n    [microct-lab]=microct/1\n)' \
-        -e 's|^IRIS_TOOLS_ENV_VERSION=.*|IRIS_TOOLS_ENV_VERSION=microct/1|' \
+    digest_map "$tree/lib/katana.sh" --tools microct/1 microct/1=unpublished || exit 1
+    sed -i '/^declare -gA IRIS_LAB_ENVS=(/,/^)/c\declare -gA IRIS_LAB_ENVS=(\n    [microct-lab]=microct/1\n)' \
         "$tree/lib/katana.sh"
     printf '%s\n' 'numpy==2.3.0' 'xarray==2025.6.1' > "$tree/envs/microct/1/requirements.lock"
     git -C "$tree" add -A
@@ -42,7 +41,7 @@ make_tree() {
 add_version() {
     local tree="$scratch/$1" version="$2" value="$3"
     shift 3
-    sed -i "/^declare -gA IRIS_ENV_DIGESTS=(/a\\    [$version]=$value" "$tree/lib/katana.sh"
+    digest_map_add "$tree/lib/katana.sh" "$version=$value" || exit 1
     mkdir -p "$tree/envs/$version"
     printf '%s\n' "$@" > "$tree/envs/$version/requirements.lock"
     git -C "$tree" add -A

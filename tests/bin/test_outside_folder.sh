@@ -12,6 +12,7 @@
 cd "$(dirname "$(readlink -f "$0")")/../.." || exit 1
 scratch="$(mktemp -d)"
 trap 'rm -rf "$scratch"' EXIT
+. tests/bin/lib.sh
 
 commit() {
     git -C "$scratch/$1" add -A
@@ -35,9 +36,9 @@ make_repo() {
     mkdir -p "$r/bin" "$r/lib" "$r/workflows/seg/src" "$r/workflows/mri" "$r/envs/ct/1" "$r/envs/mr/2"
     cp bin/outside-folder "$r/bin/"
     cp lib/katana.sh "$r/lib/katana.sh"
-    sed -i -e '/^declare -gA IRIS_LAB_ENVS=(/,/^)/c\declare -gA IRIS_LAB_ENVS=(\n    [ct-lab]=ct/1\n    [mri-lab]=mr/2\n)' \
-        -e "/^declare -gA IRIS_ENV_DIGESTS=(/,/^)/c\\declare -gA IRIS_ENV_DIGESTS=(\\n    [ct/1]=sha256:$(printf 'a%.0s' {1..64})\\n    [mr/2]=sha256:$(printf 'b%.0s' {1..64})\\n)" \
+    sed -i '/^declare -gA IRIS_LAB_ENVS=(/,/^)/c\declare -gA IRIS_LAB_ENVS=(\n    [ct-lab]=ct/1\n    [mri-lab]=mr/2\n)' \
         "$r/lib/katana.sh"
+    digest_map "$r/lib/katana.sh" "ct/1=sha256:$(printf 'a%.0s' {1..64})" "mr/2=sha256:$(printf 'b%.0s' {1..64})" || exit 1
     {
         echo '# For workflow authors'
         echo

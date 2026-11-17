@@ -11,20 +11,18 @@ cd "$(dirname "$(readlink -f "$0")")/../.." || exit 1
 here="$PWD"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
+. tests/bin/lib.sh
 clone="$tmp/clone" envs="$tmp/envs"
 a=sha256:$(printf 'a%.0s' {1..64}) b=sha256:$(printf 'b%.0s' {1..64})
 
 git init -q "$clone"
 # The clone's digest map is microct/1 and microct/2 alone, with the
 # researcher tools on microct/1: the whole map is replaced, so no version in
-# the real map leaks into the cases, a real microct/2 included.
+# the real map leaks into the cases, a real microct/2 included, and
+# digest_map fails if it couldn't be.
 mkdir -p "$clone/lib" "$clone/workflows/seg" "$envs/microct"
-sed -e "s|^IRIS_ENVS_FOLDER=.*|IRIS_ENVS_FOLDER=$envs|" \
-    -e "/^declare -gA IRIS_ENV_DIGESTS=(/,/^)/c\\declare -gA IRIS_ENV_DIGESTS=(\n    [microct/1]=$a\n    [microct/2]=$b\n)" \
-    -e 's|^IRIS_TOOLS_ENV_VERSION=.*|IRIS_TOOLS_ENV_VERSION=microct/1|' lib/katana.sh > "$clone/lib/katana.sh"
-# A sed that matched nothing would leave the real map in: say so.
-grep -q "^    \[microct/2\]=$b$" "$clone/lib/katana.sh" && grep -q '^IRIS_TOOLS_ENV_VERSION=microct/1$' "$clone/lib/katana.sh" ||
-    echo "syspull-pins: the scratch clone's lib/katana.sh still holds the real digest map or tools version; fix the fixture's sed"
+sed "s|^IRIS_ENVS_FOLDER=.*|IRIS_ENVS_FOLDER=$envs|" lib/katana.sh > "$clone/lib/katana.sh"
+digest_map "$clone/lib/katana.sh" --tools microct/1 "microct/1=$a" "microct/2=$b" || exit 1
 printf 'script: |\n  IRIS_ENV_VERSION=microct/2\n' > "$clone/workflows/seg/form.yml.erb"
 git -C "$clone" add -A
 git -C "$clone" -c user.name=t -c user.email=t@t commit -qm pins

@@ -1,6 +1,73 @@
-# Sourced by the fixture tests of bin/check's site checks, from the repo
-# root. Each test builds scratch trees that hold a copy of bin/check, which
-# checks the tree it sits in.
+# Sourced from the repo root by the fixture tests of bin/check's site
+# checks, which build scratch trees each holding a copy of bin/check, which
+# checks the tree it sits in, and by every test that gives a scratch copy of
+# lib/katana.sh a digest map of its own.
+
+# digest_map <file> [--tools <env>/<n>] [<env>/<n>=<value>]...: replaces the
+# whole digest map (IRIS_ENV_DIGESTS) in <file>, a scratch copy of
+# lib/katana.sh, with one "    [<env>/<n>]=<value>" line per entry, in the
+# order given, and with --tools sets IRIS_TOOLS_ENV_VERSION to <env>/<n>.
+# It leaves the rest of the file alone. If the map, its closing ")" or,
+# with --tools, the tools version line isn't there, or the file doesn't
+# end up holding exactly what was asked, it prints why, naming <file>, and
+# returns 1, so no fixture keeps the real map's versions by mistake.
+digest_map() {
+    local file="$1" tools="" e lines=""
+    shift
+    if [ "${1-}" = --tools ]; then tools="$2"; shift 2; fi
+    for e in "$@"; do lines+="    [${e%%=*}]=${e#*=}"$'\n'; done
+    _digest_map_open "$file" || return 1
+    if [ -n "$tools" ] && ! grep -q '^IRIS_TOOLS_ENV_VERSION=' "$file"; then
+        echo "digest_map: $file has no IRIS_TOOLS_ENV_VERSION= line to set"
+        return 1
+    fi
+    LINES_="$lines" TOOLS_="$tools" awk '
+        in_map { if ($0 == ")") { in_map = 0; printf "%s", ENVIRON["LINES_"]; print }; next }
+        $0 == "declare -gA IRIS_ENV_DIGESTS=(" { print; in_map = 1; next }
+        ENVIRON["TOOLS_"] != "" && /^IRIS_TOOLS_ENV_VERSION=/ { print "IRIS_TOOLS_ENV_VERSION=" ENVIRON["TOOLS_"]; next }
+        { print }' "$file" > "$file.digest-map" && mv "$file.digest-map" "$file" || return 1
+    if [ "$(_digest_map_lines "$file")" != "${lines%$'\n'}" ]; then
+        echo "digest_map: $file's digest map isn't the entries given: $*"
+        return 1
+    fi
+    if [ -n "$tools" ] && ! grep -qxF "IRIS_TOOLS_ENV_VERSION=$tools" "$file"; then
+        echo "digest_map: $file's tools version isn't $tools"
+        return 1
+    fi
+}
+
+# digest_map_add <file> <env>/<n>=<value>: adds "    [<env>/<n>]=<value>"
+# as the first line of <file>'s digest map, keeping the rest, and fails as
+# digest_map does, naming <file>, if the map isn't there or the line
+# didn't go in.
+digest_map_add() {
+    local file="$1" line="    [${2%%=*}]=${2#*=}"
+    _digest_map_open "$file" || return 1
+    LINE_="$line" awk '{ print } $0 == "declare -gA IRIS_ENV_DIGESTS=(" { print ENVIRON["LINE_"] }' \
+        "$file" > "$file.digest-map" && mv "$file.digest-map" "$file" || return 1
+    if ! _digest_map_lines "$file" | grep -qxF -- "$line"; then
+        echo "digest_map_add: $file's digest map didn't take $2"
+        return 1
+    fi
+}
+
+# _digest_map_open <file>: fails, naming <file>, unless it has the map's
+# opening line and a ")" line after it.
+_digest_map_open() {
+    if ! grep -qx 'declare -gA IRIS_ENV_DIGESTS=(' "$1"; then
+        echo "digest_map: $1 has no 'declare -gA IRIS_ENV_DIGESTS=(' line to replace"
+        return 1
+    fi
+    if ! sed -n '/^declare -gA IRIS_ENV_DIGESTS=($/,$p' "$1" | grep -qx ')'; then
+        echo "digest_map: $1's digest map has no closing ) line"
+        return 1
+    fi
+}
+
+# _digest_map_lines <file>: the lines inside <file>'s digest map.
+_digest_map_lines() {
+    sed -n '/^declare -gA IRIS_ENV_DIGESTS=($/,/^)$/p' "$1" | sed '1d;$d'
+}
 
 # expect <pass|fail> <tree> <check name>: runs <tree>/bin/check on the
 # checks whose name holds <check name>, and prints the tree's name and the
