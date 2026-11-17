@@ -171,8 +171,9 @@ kept checked-out spec-branch
 # --repo <path> works on another repo's main clone, as the fork's beside
 # this one (#179's retro): that clone's own origin/main, its checked-out
 # branch skipped even when it isn't main, and an --apply line that names
-# the clone. Nothing in the clone it runs from is touched.
-fork="$fake/OpenComposer"
+# the clone, quoted so a path with a space stays one argument, and which
+# runs as printed. Nothing in the clone it runs from is touched.
+fork="$fake/fork clone/OpenComposer"
 git init -q -b main "$fake/fork-src"
 echo f > "$fake/fork-src/f"
 git -C "$fake/fork-src" add -A && git -C "$fake/fork-src" commit -qm "F"
@@ -199,12 +200,13 @@ has repo-main '^  main: main itself$'
 lacks repo-unmerged 'fork-unmerged'
 lacks repo-other-clone 'spec-branch'
 last=$(tail -n1 <<< "$out")
-[ "$last" = "To remove them: bin/prune-merged --repo $fork --apply $fork_tip" ] || echo "prune-merged --repo: last line is '$last'"
+[ "$last" = "To remove them: bin/prune-merged --repo $(printf %q "$fork") --apply $fork_tip" ] || echo "prune-merged --repo: last line is '$last'"
 # The other clone's origin/main doesn't pass for this one's.
 out=$(run --repo "$fork" --apply "$tip")
 [ $? = 1 ] || echo "prune-merged --repo --apply, iris's sha: expected exit 1"
+grep -qF "Run bin/prune-merged --repo $(printf %q "$fork") again" <<< "$out" || { echo "prune-merged --repo --apply, iris's sha: no quoted line to list again"; echo "$out" | sed 's/^/  /'; }
 fork_remote=$(git -C "$fake/fork-origin.git" for-each-ref --format='%(refname) %(objectname)')
-out=$(run --repo "$fork" --apply "$fork_tip")
+out=$(cd "$clone" && eval "${last#To remove them: }" 2>&1)
 rc=$?
 [ "$rc" = 0 ] || { echo "prune-merged --repo --apply: exit $rc, expected 0"; echo "$out" | sed 's/^/  /'; }
 git -C "$fork" rev-parse -q --verify refs/heads/fork-merged > /dev/null && echo "prune-merged --repo --apply: fork-merged is still there"

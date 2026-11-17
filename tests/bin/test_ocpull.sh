@@ -25,7 +25,7 @@ scratch="${IRIS_INSTANCE_CHECKOUT%/*}"
 # katana_ai's scratch moved to $fake/scratch. The readability check
 # (python3) passes, lists a path and fails if a file named unreadable
 # exists, or fails as ssh does (255) if one named check-down does. A
-# command line on the dev install (git -C ~/...) runs here as Katana's
+# command line on the dev install (cd ~/...) runs here as Katana's
 # shell would run it. A file named ssh-down makes every call fail that way.
 cat > "$fake/ssh" <<EOF
 #!/bin/bash
@@ -43,7 +43,7 @@ if [ "\$1" = python3 ]; then
     [ -e "\$dir/unreadable" ] && { echo "needs r--: /x/hidden"; exit 1; }
     exit 0
 fi
-case "\$1" in "git -C ~/"*) exec bash -c "\$1" ;; esac
+case "\$1" in "cd ~/"*) exec bash -c "\$1" ;; esac
 echo "fake ssh: unexpected \$*" >&2; exit 3
 EOF
 chmod +x "$fake/ssh"
@@ -115,13 +115,21 @@ lacks() {
 dev_at() {
     [ "$(git -C "$dev" rev-parse --short HEAD)" = "$2" ] || echo "ocpull $1: the dev install is at $(git -C "$dev" log -1 --oneline), not $2"
 }
-# move_dev <sha>: runs the line --apply printed to move the dev install to <sha>.
+# move_dev <sha>: runs the line --apply printed to move the dev install to
+# <sha>, its output in $moved.
 move_dev() {
-    PATH="$fake:$PATH" bash -c "$(devline "$1")"
+    moved=$(PATH="$fake:$PATH" bash -c "$(devline "$1")" 2>&1)
 }
+# devline <sha>: the line --apply prints to move the dev install to <sha>.
 devline() {
-    printf "ssh katana 'git -C ~/%s diff --quiet HEAD && git -C ~/%s fetch -q origin && git -C ~/%s checkout -q --detach %s'" \
-        "$IRIS_DEV_INSTALL" "$IRIS_DEV_INSTALL" "$IRIS_DEV_INSTALL" "$1"
+    # shellcheck disable=SC2088  # the ~ is for Katana's shell, in the printed line
+    local d="~/$IRIS_DEV_INSTALL"
+    printf "ssh katana 'cd %s && { git diff --quiet HEAD && ! git ls-files -v | grep -q \"^S\" || { echo \"ocpull: %s has uncommitted changes or keeps its own copy of a file (skip-worktree), so nothing moved it; move it by hand.\" >&2; exit 1; }; } && git fetch -q origin && git checkout -q --detach %s'" \
+        "$d" "$d" "$1"
+}
+# refused <case>: the dev install line refused, saying why.
+refused() {
+    grep -qF "ocpull: ~/$IRIS_DEV_INSTALL has uncommitted changes" <<< "$moved" || printf 'ocpull %s: the line refused without its message\n%s\n' "$1" "$(sed 's/^/  /' <<< "$moved")"
 }
 # at <case> <commit>: both checkouts are at <commit>, each keeping its own manifest.yml.
 at() {
@@ -169,8 +177,16 @@ out="$(PATH="$fake:$PATH" "$tools/bin/ocpull" --apply "$C" 2>&1)"
 [ "$(tail -n1 <<< "$out")" = "$(devline "$C")" ] || printf 'ocpull --apply %s: last line is not the dev install line\n%s\n' "$C" "$(sed 's/^/  /' <<< "$out")"
 echo edited > "$dev/README.md"
 move_dev "$C" && echo "ocpull dev-dirty: the line moved a dev install with uncommitted changes"
+refused dev-dirty
 dev_at dev-dirty "$A"
 git -C "$dev" checkout -q -- README.md
+# It refuses an install that keeps its own copy of a file, which a move
+# could overwrite, as --apply refuses such a checkout.
+git -C "$dev" update-index --skip-worktree manifest.yml
+move_dev "$C" && echo "ocpull dev-own-copy: the line moved a dev install keeping its own copy of a file"
+refused dev-own-copy
+dev_at dev-own-copy "$A"
+git -C "$dev" update-index --no-skip-worktree manifest.yml
 move_dev "$C" || echo "ocpull dev-move: the line failed"
 dev_at dev-move "$C"
 # On the tip, the listing says so, and --apply prints no line.
@@ -248,6 +264,15 @@ git -C "$src" push -q origin side
 S=$(git -C "$src" rev-parse --short HEAD)
 expect 1 "is not on the fork's main" --apply "$S"
 at off-main "$E"
+# A dev install off the fork's main: the listing and --apply name its
+# commit and send it to the IRIS maintainer, with no line to move it,
+# since a move goes only forward along the fork's main.
+git -C "$dev" fetch -q origin && git -C "$dev" checkout -q --detach "$S"
+expect 0 "Dev install ~/$IRIS_DEV_INSTALL: at $S S: off main, ahead of $E or off the fork's main; ask the IRIS maintainer where it goes."
+expect 0 "The dev install ~/$IRIS_DEV_INSTALL is at $S S: off main, ahead of $E or off the fork's main, so nothing here moves it; ask the IRIS maintainer where it goes." --apply "$E"
+lacks "ssh katana" --apply "$E"
+dev_at dev-other "$S"
+git -C "$dev" checkout -q --detach "$E"
 expect 1 "doesn't follow" --apply "$A"
 at backwards "$E"
 expect 1 "is not a commit" --apply 0123abc

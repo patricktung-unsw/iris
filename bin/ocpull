@@ -30,9 +30,14 @@
 # ocpull never moves it (#159, #162). The listing names its path and the
 # commit it is on, and says when that is behind the --apply line's, or
 # that it isn't there. --apply then ends, once it has deployed, with the
-# line that moves it to <sha> when it is on another commit, for the
-# session to run as its own command: it fetches the fork and moves the
-# install, and refuses one with uncommitted changes (#179's retro).
+# line that moves it to <sha> when it is behind <sha>, for the session to
+# run as its own command: it fetches the fork and moves the install, and
+# refuses, saying why, one with uncommitted changes or a file it keeps its
+# own copy of (skip-worktree), which the move could overwrite, as --apply
+# refuses such a checkout. An install ahead of <sha> or off the fork's
+# main gets no line, since a move there would go backwards or off the
+# fork's main: both name its commit and send it to the IRIS maintainer
+# (#179's retro).
 # Over `ssh katana`.
 
 # shellcheck source=lib/katana.sh
@@ -42,9 +47,9 @@ checkouts=("$IRIS_INSTANCE_CHECKOUT" "$IRIS_TEST_INSTANCE_CHECKOUT")
 # one the checkouts run; nothing else in the repo records that commit.
 helper="$(dirname "$(readlink -f "$0")")/../lib/tests/form_helper.rb"
 usage() { echo "usage: bin/ocpull [--apply <sha>]" >&2; exit 2; }
-# helper_on <sha>: the helper's header names <sha>, in either's length;
-# sets helper_commit to the commit it names.
-helper_on() {
+# read_helper_commit <sha>: sets helper_commit to the commit the helper's
+# header names, and passes if that is <sha>, in either's length.
+read_helper_commit() {
     helper_commit=$(sed -nE 's/^# ([0-9a-f]{7,40}), the commit bin\/ocpull keeps .*/\1/p' "$helper")
     [ -n "$helper_commit" ] && [[ "$1" == "$helper_commit"* || "$helper_commit" == "$1"* ]]
 }
@@ -82,11 +87,11 @@ if [ $# -eq 0 ]; then
         missing) echo "Dev install $dev_path: not there, so nothing moves it." ;;
         on\ *) echo "Dev install $dev_path: at ${dev#* }, already on $tip." ;;
         behind\ *) echo "Dev install $dev_path: at ${dev#* }, behind $tip; --apply ends with the line that moves it there too." ;;
-        other\ *) echo "Dev install $dev_path: at ${dev#* }, not on the fork's main before $tip; --apply ends with the line that moves it to $tip." ;;
-        *) echo "Couldn't tell which commit the dev install $dev_path is on." ;;
+        other\ *) echo "Dev install $dev_path: at ${dev#* }, ahead of $tip or off the fork's main; ask the IRIS maintainer where it goes." ;;
+        *) echo "ocpull: couldn't tell which commit the dev install $dev_path is on." >&2 ;;
     esac
     echo
-    helper_on "$tip" ||
+    read_helper_commit "$tip" ||
         echo "ocpull: lib/tests/form_helper.rb renders as ${helper_commit:-no commit its header names}; bring it, and its header's commit, to $tip, and commit that before pushing, since --apply exits 1 after the deploy until it does."
     printf '%s\n' "${listing##*$'\n'}"
     out=$(readable)
@@ -98,7 +103,7 @@ if [ $# -eq 0 ]; then
 elif [ $# -eq 2 ] && [ "$1" = --apply ] && [[ "$2" =~ ^[0-9a-f]{7,40}$ ]]; then
     remote apply "$2" || exit
     rc=0
-    if ! helper_on "$2"; then
+    if ! read_helper_commit "$2"; then
         echo "ocpull: deployed, but lib/tests/form_helper.rb still renders as ${helper_commit:-no commit its header names}; bring it, and its header's commit, to $2." >&2
         rc=1
     fi
@@ -112,9 +117,10 @@ elif [ $# -eq 2 ] && [ "$1" = --apply ] && [[ "$2" =~ ^[0-9a-f]{7,40}$ ]]; then
     dev=$(dev_install HEAD)
     case $dev in
         missing | on\ *) ;;
-        behind\ * | other\ *)
-            echo "The dev install $dev_path is at ${dev#* }. To move it to $2 too, refusing if it has uncommitted changes, run:"
-            echo "ssh katana 'git -C $dev_path diff --quiet HEAD && git -C $dev_path fetch -q origin && git -C $dev_path checkout -q --detach $2'" ;;
+        behind\ *)
+            echo "The dev install $dev_path is at ${dev#* }. To move it to $2 too, refusing if it has uncommitted changes or keeps its own copy of a file, run:"
+            echo "ssh katana 'cd $dev_path && { git diff --quiet HEAD && ! git ls-files -v | grep -q \"^S\" || { echo \"ocpull: $dev_path has uncommitted changes or keeps its own copy of a file (skip-worktree), so nothing moved it; move it by hand.\" >&2; exit 1; }; } && git fetch -q origin && git checkout -q --detach $2'" ;;
+        other\ *) echo "The dev install $dev_path is at ${dev#* }, ahead of $2 or off the fork's main, so nothing here moves it; ask the IRIS maintainer where it goes." ;;
         *) echo "ocpull: couldn't tell which commit the dev install $dev_path is on; move it to $2 by hand if it isn't there." >&2 ;;
     esac
     exit $rc

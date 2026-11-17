@@ -54,10 +54,13 @@ done
 main_clone=$(git -C "$repo" worktree list --porcelain | sed -n '1s/^worktree //p')
 [ -n "$main_clone" ] || { echo "prune-merged: $repo isn't in a git repo." >&2; exit 2; }
 cd "$main_clone" || exit 2
+# --repo's argument in a printed line, quoted so a path with spaces stays one.
+repo_flag=
+[ -z "$repo_arg" ] || repo_flag=" --repo $(printf %q "$main_clone")"
 git fetch -q origin || { echo "prune-merged: couldn't fetch origin; nothing listed or removed." >&2; exit 2; }
 tip=$(git rev-parse --verify -q origin/main) || { echo "prune-merged: no origin/main." >&2; exit 2; }
 if [ -n "${apply:-}" ] && [[ "$tip" != "$apply"* ]]; then
-    echo "prune-merged: origin/main is at $(git rev-parse --short "$tip"), not $apply: nothing removed. Run bin/prune-merged${repo_arg:+ --repo $main_clone} again to list what it would remove now." >&2
+    echo "prune-merged: origin/main is at $(git rev-parse --short "$tip"), not $apply: nothing removed. Run bin/prune-merged$repo_flag again to list what it would remove now." >&2
     exit 1
 fi
 
@@ -134,7 +137,7 @@ if [ -z "${apply:-}" ]; then
     echo "In origin/main, to remove:"
     for b in "${remove[@]}"; do echo "  $(label "$b")"; done
     echo
-    echo "To remove them: bin/prune-merged ${repo_arg:+--repo $main_clone }--apply $(git rev-parse --short "$tip")"
+    echo "To remove them: bin/prune-merged$repo_flag --apply $(git rev-parse --short "$tip")"
     exit 0
 fi
 
