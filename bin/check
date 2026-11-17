@@ -445,6 +445,33 @@ exec_bits() {
 }
 check "scripts run by path are 100755 (git update-index --chmod=+x)" exec_bits
 
+# gh takes the current directory's repo unless told, so from the fork's
+# clone it reaches unsw-restech/OpenComposer (#179's retro, #207). Every
+# repo-scoped gh call in bin/, lib/ and .githooks/, shell or Python, names
+# a repo with -R or --repo on the call's first line, where IRIS's comes
+# from bin/github-repo.sh; any -R on that line counts. gh api takes no -R,
+# so its path names the repo rather than gh's {owner}, {repo} or {branch}
+# placeholders. Comment lines, notes (*.md) and this file, which names the
+# calls, aside. tests/bin/test_gh_repo.sh runs it on fixture trees.
+gh_repo() {
+    local sub='(pr|issue|run|workflow|secret|variable|release|label|cache|ruleset|api)'
+    local sh='(^|[^[:alnum:]_./-])gh +' py="[\"']gh[\"'], *[\"']"
+    git grep -nIE -e "$sh$sub( |\$)" -e "$py${sub}[\"']" \
+        -- bin lib .githooks ':(exclude)*.md' ':(exclude)bin/check' |
+        tr -d '\r' |
+        awk -v sh="$sh" -v py="$py" '{
+            i = index($0, ":"); at = substr($0, 1, i - 1); rest = substr($0, i + 1)
+            i = index(rest, ":"); n = substr(rest, 1, i - 1); line = substr(rest, i + 1)
+            if (line ~ /^[ \t]*#/) next
+            if (line ~ (sh "api( |$)") || line ~ (py "api")) {
+                if (line ~ /\{(owner|repo|branch)\}/)
+                    print at ":" n ": gh api path uses a {placeholder}, filled from the current directory'"'"'s repo; name the repo"
+            } else if (line !~ /(^|[ "\047])(-R|--repo)([ "\047=]|$)/)
+                print at ":" n ": gh call without -R or --repo (IRIS'"'"'s repo is in bin/github-repo.sh)"
+        }'
+}
+check "gh calls name their repo" gh_repo
+
 # `module load iris` puts module/bin on the PATH (ADR-0003), so it holds
 # exactly iris-view and iris-compare, each a relative link to its script
 # in bin/, which also holds maintainer tools. Read from git's index, since
