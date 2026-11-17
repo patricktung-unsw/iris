@@ -13,11 +13,20 @@ trap 'rm -rf "$fake"' EXIT
 
 # The fake lists one run, 7, of workflow $fake/workflow for HEAD's commit;
 # watch exits with $fake/conclusion (0 without one); view --log holds a
-# publish line among others.
+# publish line among others. Each call must name unsw-restech/iris, not the
+# current directory's repo, or the fake rejects it (#207); it then drops
+# the flag, so the cases below read the arguments ciwait gave otherwise.
 mkdir "$fake/bin"
 cat > "$fake/bin/gh" <<'FAKE'
 #!/bin/bash
 dir="$(cd "$(dirname "$0")/.." && pwd)"
+args=() named=""
+while [ $# -gt 0 ]; do
+    if [ "$1" = -R ] && [ "${2-}" = unsw-restech/iris ]; then named=1; shift 2
+    else args+=("$1"); shift; fi
+done
+[ -n "$named" ] || { echo "fake gh: no -R unsw-restech/iris: ${args[*]}" >&2; exit 1; }
+set -- "${args[@]}"
 case "$1 $2" in
     "run list")
         [ "$4" = "$(cat "$dir/workflow").yml" ] && cat "$dir/sha" ;;
@@ -42,7 +51,7 @@ echo 7 > "$fake/sha"
 
 repo="$fake/repo"
 mkdir -p "$repo/bin" "$repo/.github/workflows"
-cp bin/ciwait "$repo/bin/"
+cp bin/ciwait bin/github-repo.sh "$repo/bin/"
 touch "$repo/.github/workflows/check.yml" "$repo/.github/workflows/containers.yml"
 git init -q --bare "$fake/origin.git"
 git -C "$repo" init -q
@@ -67,7 +76,7 @@ grep -qx 'Published ghcr.io/o/iris-env:microct-1 as ghcr.io/o/iris-env@sha256:ab
 [ "$(tail -1 <<< "$out")" = "ciwait: containers $sha passed" ] || fail "containers passing: last line isn't the verdict"
 
 # A branch's run publishes nothing, and says so.
-printf '#!/bin/bash\n[ "$4" = --log ] && exit 0\nexec "%s" "$@"\n' "$fake/bin/gh" > "$fake/gh-nolog"
+printf '#!/bin/bash\nfor a; do [ "$a" = --log ] && exit 0; done\nexec "%s" "$@"\n' "$fake/bin/gh" > "$fake/gh-nolog"
 mkdir "$fake/nolog"; mv "$fake/gh-nolog" "$fake/nolog/gh"; chmod +x "$fake/nolog/gh"
 out="$(cd "$repo" && PATH="$fake/nolog:$fake/bin:$PATH" bin/ciwait --workflow containers 2>&1)" || fail "containers passing on a branch: exit $?, expected 0"
 grep -qx "No Published line: this run published nothing." <<< "$out" || fail "containers passing on a branch: didn't say nothing was published"

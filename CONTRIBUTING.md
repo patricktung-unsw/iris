@@ -64,6 +64,7 @@ iris/
 │   ├── outside-folder                # List what a PR changes beyond its workflow's folder, its card and its lab's recipe (the ready workflow runs it)
 │   ├── pageswait                     # Wait for the live site to serve a change (desktop)
 │   ├── issue-tick                    # Tick checkboxes in an issue's body or Agent Brief (desktop)
+│   ├── github-repo.sh                # IRIS's GitHub repo, unsw-restech/iris, which every repo-scoped gh call in bin/ names, not the current directory's
 │   ├── iris-import                   # Import new runs into your MLflow tracking store
 │   ├── iris-python                   # Runs an iris.* module in the researcher tools' container (`IRIS_TOOLS_ENV_VERSION`); the iris-* tools are shims over it
 │   ├── iris-compare                  # Import, then compare runs in MLflow (in a Virtual Desktop)

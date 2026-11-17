@@ -13,14 +13,19 @@
 #
 # Exits with the run's result (0 passed, 1 failed), or 2 if the commit isn't
 # on origin or no run for it appears within two minutes. The run is matched
-# by headSha: the desktop's gh 2.4.0 has no `gh run list --commit`.
+# by headSha: the desktop's gh 2.4.0 has no `gh run list --commit`. Every
+# gh call names unsw-restech/iris (bin/github-repo.sh), not the current
+# directory's repo, so a run from the fork's clone waits on iris's CI (#207).
 
 cd "$(dirname "$(readlink -f "$0")")/.." || exit 1
+# shellcheck source=bin/github-repo.sh
+. bin/github-repo.sh || exit 2
+repo="$IRIS_GITHUB_REPO"
 
 # One of the run's logs (--log or --log-failed), as plain lines: no job and
 # step columns, byte-order mark or timestamp.
 clean_log() {
-    gh run view "$id" "$1" | cut -f3- | sed 's/^\xEF\xBB\xBF//; s/^[0-9T:.-]*Z //'
+    gh run view "$id" -R "$repo" "$1" | cut -f3- | sed 's/^\xEF\xBB\xBF//; s/^[0-9T:.-]*Z //'
 }
 
 usage() { echo "usage: bin/ciwait [--workflow <name in .github/workflows/>] [<commit>]" >&2; exit 2; }
@@ -44,7 +49,7 @@ fi
 
 id=""
 for _ in $(seq 24); do
-    id="$(gh run list --workflow "$workflow.yml" --limit 20 --json databaseId,headSha \
+    id="$(gh run list -R "$repo" --workflow "$workflow.yml" --limit 20 --json databaseId,headSha \
         --jq ".[] | select(.headSha == \"$sha\") | .databaseId" | head -1)" || exit 2
     [ -n "$id" ] && break
     sleep 5
@@ -52,9 +57,9 @@ done
 [ -n "$id" ] || { echo "ciwait: no $workflow run for ${sha:0:7} after 2 min" >&2; exit 2; }
 
 echo "== $workflow run $id for ${sha:0:7}"
-gh run watch "$id" --exit-status --interval 15 > /dev/null 2>&1
+gh run watch "$id" -R "$repo" --exit-status --interval 15 > /dev/null 2>&1
 status=$?
-gh run view "$id"
+gh run view "$id" -R "$repo"
 if [ $status -ne 0 ]; then
     clean_log --log-failed | tail -40
     status=1

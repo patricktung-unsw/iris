@@ -31,12 +31,21 @@ export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
 # $fake/registry/<tag>, its digest, and `create --tag` writes the source's
 # digest there, or is denied as ghcr.io denies it when $fake/docker-denied
 # exists. gh, docker and ssh each record their arguments, one call a line,
-# in $fake/calls.
+# in $fake/calls. gh refuses a call that doesn't name unsw-restech/iris,
+# as the current directory's repo may be another (#207), and records it
+# without the flag.
 mkdir "$fake/bin"
 cat > "$fake/bin/gh" <<'EOF'
 #!/bin/bash
 dir="$(dirname "$0")/.."
+args=() named=""
+while [ $# -gt 0 ]; do
+    if [ "$1" = -R ] && [ "${2-}" = unsw-restech/iris ]; then named=1; shift 2
+    else args+=("$1"); shift; fi
+done
+set -- "${args[@]}"
 echo "gh $*" >> "$dir/calls"
+[ -n "$named" ] || { echo "fake gh: no -R unsw-restech/iris: $*" >&2; exit 1; }
 [ -e "$dir/gh-down" ] && { echo "error connecting to api.github.com" >&2; exit 1; }
 [ "$1 $2" = "pr list" ] && { cat "$dir/prs.json"; exit 0; }
 [ "$1 $2" = "pr view" ] && [ -f "$dir/view-$3.json" ] && { cat "$dir/view-$3.json"; exit 0; }
@@ -72,7 +81,7 @@ commit() { git -C "$src" add -A && git -C "$src" commit -qm "$1"; }
 # bin/check that fails when RB_CHECK_FAIL is set and a bin/katana-test
 # whose --tested says the batch needs no run.
 mkdir -p "$src/bin" "$src/lib" "$src/workflows/seg/src" "$src/envs/ct/1"
-cp bin/review-batch bin/outside-folder "$src/bin/"
+cp bin/review-batch bin/outside-folder bin/github-repo.sh "$src/bin/"
 printf '#!/bin/bash\n[ -z "${RB_CHECK_FAIL-}" ] || { echo "check: FAILED"; exit 1; }\necho "All checks passed."\n' > "$src/bin/check"
 printf '#!/bin/bash\n[ "$1" = --tested ]\n' > "$src/bin/katana-test"
 chmod +x "$src/bin/check" "$src/bin/katana-test"

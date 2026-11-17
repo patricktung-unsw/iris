@@ -14,7 +14,7 @@ fake="$(mktemp -d)"
 trap 'rm -rf "$fake"' EXIT
 tree="$fake/tree"
 mkdir -p "$fake/bin" "$fake/home" "$tree/bin"
-cp bin/workflowhub bin/manifest-owner "$tree/bin/"
+cp bin/workflowhub bin/manifest-owner bin/github-repo.sh "$tree/bin/"
 
 # seg: a catalogue workflow with a form, an entry script, an owner and
 # tags. later: a Planned workflow, a page and nothing else. hello-world:
@@ -313,3 +313,35 @@ has new-version "Add a new version from git" "Actions → New Version." "Click U
 lacks new-version "expected https://workflowhub.eu/workflows/<number>" "Main workflow file"
 cite_page ""
 rm -f "$fake/entry.json"
+
+# set_secret and set_var write to unsw-restech/iris, named with -R, not to
+# the current directory's repo, so a run from the fork's clone can't put
+# iris's secret on the fork (#207). Nothing calls them yet, so they run here
+# on their own, taken from the script, against a gh that records each call.
+mkdir "$fake/ghbin"
+printf '#!/bin/bash
+[ "$1" = auth ] && exit 0
+echo "$*" >> "%s"
+' "$fake/gh-calls" > "$fake/ghbin/gh"
+chmod +x "$fake/ghbin/gh"
+out=$(cd "$fake/home" && PATH="$fake/ghbin:$PATH" bash -c '
+    WRITTEN_SECRET=() SKIPPED=()
+    warn() { echo "warn: $*"; }
+    . "$1"
+    eval "$(sed -n "/^set_secret() {/,/^}/p; /^set_var() {/,/^}/p" "$2")"
+    set_secret WH_TOKEN s3cret
+    set_var WH_TEAM 472' _ "$tree/bin/github-repo.sh" "$tree/bin/workflowhub" 2>&1)
+grep -qxF "secret set WH_TOKEN -R unsw-restech/iris" "$fake/gh-calls" 2>/dev/null &&
+    grep -qxF "variable set WH_TEAM -R unsw-restech/iris --body 472" "$fake/gh-calls" ||
+    { echo "gh repo: set_secret or set_var didn't name unsw-restech/iris:"; cat "$fake/gh-calls" 2>/dev/null; echo "$out"; } | sed '2,$s/^/  /'
+# With gh not ready, the line it leaves to run by hand names the repo too.
+printf '#!/bin/bash\nexit 1\n' > "$fake/ghbin/gh"
+out=$(PATH="$fake/ghbin:$PATH" bash -c '
+    WRITTEN_SECRET=() SKIPPED=()
+    warn() { :; }
+    . "$1"
+    eval "$(sed -n "/^set_secret() {/,/^}/p" "$2")"
+    set_secret WH_TOKEN s3cret
+    printf "%s\n" "${SKIPPED[@]}"' _ "$tree/bin/github-repo.sh" "$tree/bin/workflowhub" 2>&1)
+grep -qF "(set it manually: gh secret set WH_TOKEN -R unsw-restech/iris)" <<< "$out" ||
+    { echo "gh repo: the hand-run line doesn't name unsw-restech/iris:"; echo "$out" | sed 's/^/  /'; }

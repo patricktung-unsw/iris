@@ -13,12 +13,15 @@
 # and lists what it ticked, 1 if no one place has every prefix's box once, 2
 # on usage or a gh failure.
 #
-# Every gh call names the tracker, unsw-restech/iris, rather than the repo of
-# the current directory, since a run from a fork worktree otherwise reached
-# unsw-restech/OpenComposer, whose issues are off (#179's retro).
+# Every gh call names the tracker, unsw-restech/iris (bin/github-repo.sh),
+# rather than the repo of the current directory, since a run from a fork
+# worktree otherwise reached unsw-restech/OpenComposer, whose issues are off
+# (#179's retro).
 
 [ $# -ge 2 ] || { echo "usage: bin/issue-tick <number> <box-prefix>..." >&2; exit 2; }
-repo=unsw-restech/iris
+# shellcheck source=bin/github-repo.sh
+. "$(dirname "$(readlink -f "$0")")/github-repo.sh" || exit 2
+repo="$IRIS_GITHUB_REPO"
 n="$1"
 shift
 body="$(gh issue view "$n" -R "$repo" --json body --jq .body)" || exit 2

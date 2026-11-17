@@ -75,12 +75,24 @@ def die(msg, code=1):
     sys.exit(code)
 
 
-def registry():
-    with open(os.path.join(ROOT, "lib", "katana.sh")) as f:
-        m = re.search(r"^IRIS_ENV_REGISTRY=(\S+)$", f.read(), re.M)
+def sh_constant(path, name):
+    """The value of the line <name>=<value> in the bash file <path>, relative
+    to the repo's root, as the scripts that source it read it."""
+    with open(os.path.join(ROOT, path)) as f:
+        m = re.search(r"^%s=(\S+)$" % name, f.read(), re.M)
     if not m:
-        die("lib/katana.sh names no IRIS_ENV_REGISTRY", 2)
+        die("%s names no %s" % (path, name), 2)
     return m.group(1)
+
+
+def github_repo():
+    """IRIS's GitHub repo, which every gh call names rather than the current
+    directory's repo, which may be the fork's (#207)."""
+    return sh_constant("bin/github-repo.sh", "IRIS_GITHUB_REPO")
+
+
+def registry():
+    return sh_constant("lib/katana.sh", "IRIS_ENV_REGISTRY")
 
 
 def author_digest(value):
@@ -119,7 +131,7 @@ def label_names(pr):
 
 
 def ready_prs():
-    p = run(["gh", "pr", "list", "--label", "ready", "--state", "open", "--base", "main",
+    p = run(["gh", "pr", "list", "-R", github_repo(), "--label", "ready", "--state", "open", "--base", "main",
              "--limit", "100", "--json", PR_FIELDS], check=False)
     if p.returncode != 0:
         sys.stderr.write(p.stderr)
@@ -229,7 +241,7 @@ def apply(pairs):
     base = fetch_main()
     batch = []
     for n, sha in pairs:
-        p = run(["gh", "pr", "view", str(n), "--json", "number,title,state,labels,headRefOid,baseRefName"],
+        p = run(["gh", "pr", "view", str(n), "-R", github_repo(), "--json", "number,title,state,labels,headRefOid,baseRefName"],
                 check=False)
         if p.returncode != 0:
             sys.stderr.write(p.stderr)
