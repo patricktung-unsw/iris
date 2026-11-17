@@ -3,6 +3,7 @@
 #
 #   bash -s -- list <checkout>...
 #   bash -s -- apply <sha> <checkout>...
+#   bash -s -- dev <install> <rev> <checkout>
 #
 # Fetches each checkout of the IRIS fork of OpenComposer. list prints, for
 # each, the commits and files a move to the fork's main would deploy, all
@@ -12,7 +13,11 @@
 # checkout's commit, the checkout has no uncommitted changes, and the move
 # changes no file it keeps its own copy of, naming every problem in every
 # checkout. A move that fails anyway puts the checkouts already moved back
-# where they were. Exits 1 on a refusal.
+# where they were. Exits 1 on a refusal. dev reads and changes nothing:
+# it prints where the dev install, <install> under the home folder, is
+# against <rev> in <checkout>, as one line, "missing", or "<state> <short
+# hash> <subject>", <state> being on (at <rev>), behind (an ancestor of
+# it) or other.
 
 # skipped: the files this checkout keeps its own copy of (git's
 # skip-worktree), such as manifest.yml, into the array skip.
@@ -106,8 +111,21 @@ apply() {
     for c in "$@"; do echo "$c: at $(git -C "$c" log -1 --format='%h %s')"; done
 }
 
+dev() {
+    local install="$HOME/$1" head want state=other
+    head=$(git -C "$install" rev-parse -q --verify HEAD 2>/dev/null) || { echo missing; return; }
+    want=$(git -C "$3" rev-parse -q --verify "$2^{commit}") || return
+    if [ "$head" = "$want" ]; then
+        state=on
+    elif git -C "$3" merge-base --is-ancestor "$head" "$want" 2>/dev/null; then
+        state=behind
+    fi
+    echo "$state $(git -C "$install" log -1 --format='%h %s')"
+}
+
 case "$1" in
     list) shift; list "$@" ;;
+    dev) shift; dev "$@" ;;
     apply) shift; apply "$@" ;;
-    *) echo "ocpull-checkouts.sh: usage: bash -s -- list|apply <sha> <checkout>..." >&2; exit 2 ;;
+    *) echo "ocpull-checkouts.sh: usage: bash -s -- list <checkout>... | apply <sha> <checkout>... | dev <install> <rev> <checkout>" >&2; exit 2 ;;
 esac

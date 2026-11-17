@@ -18,6 +18,11 @@ IRIS_SYSTEM_CLONE=/srv/scratch/katana_ai/iris/code
 # in (ADR-0012), kept on one fork commit by bin/ocpull.
 IRIS_INSTANCE_CHECKOUT=/srv/scratch/katana_ai/iris/OpenComposer-iris
 IRIS_TEST_INSTANCE_CHECKOUT=/srv/scratch/katana_ai/iris/OpenComposer-iris-test
+# The IRIS maintainer's dev install, a third checkout of the fork, in their
+# home folder and named from it (AGENTS.md, #170). bin/ocpull reports its
+# commit and prints the line that moves it, but never moves it itself
+# (#159, #162, #179's retro).
+IRIS_DEV_INSTALL=ondemand/dev/OpenComposer
 # Katana's Python module (../available-modules.md), for the job library's
 # Katana test (lib/tests/katana/job_lib.pbs), which needs only the
 # standard library. Workflows and the researcher tools run in containers.

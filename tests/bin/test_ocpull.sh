@@ -1,8 +1,9 @@
 #!/bin/bash
 # bin/ocpull against a fake `ssh` on PATH that runs bin/ocpull-checkouts.sh
 # here, on two throwaway checkouts of a throwaway fork, with katana_ai's
-# scratch mapped to a folder of the test's own. Prints each failed case and
-# nothing on success, so bin/check can run it.
+# scratch mapped to a folder of the test's own and a throwaway home folder
+# holding the dev install. Prints each failed case and nothing on success,
+# so bin/check can run it.
 #
 #   tests/bin/test_ocpull.sh
 #
@@ -13,6 +14,9 @@ fake="$(mktemp -d)"
 trap 'rm -rf "$fake"' EXIT
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@example.com GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@example.com
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
+# Katana's home folder and the desktop's are one here, the test's own.
+export HOME="$fake/home"
+mkdir "$HOME"
 
 . lib/katana.sh
 scratch="${IRIS_INSTANCE_CHECKOUT%/*}"
@@ -20,8 +24,9 @@ scratch="${IRIS_INSTANCE_CHECKOUT%/*}"
 # Adds its arguments to $fake/args. `bash -s` runs here, with every path in
 # katana_ai's scratch moved to $fake/scratch. The readability check
 # (python3) passes, lists a path and fails if a file named unreadable
-# exists, or fails as ssh does (255) if one named check-down does. A file
-# named ssh-down makes every call fail that way.
+# exists, or fails as ssh does (255) if one named check-down does. A
+# command line on the dev install (git -C ~/...) runs here as Katana's
+# shell would run it. A file named ssh-down makes every call fail that way.
 cat > "$fake/ssh" <<EOF
 #!/bin/bash
 dir="\$(dirname "\$0")"
@@ -38,13 +43,16 @@ if [ "\$1" = python3 ]; then
     [ -e "\$dir/unreadable" ] && { echo "needs r--: /x/hidden"; exit 1; }
     exit 0
 fi
+case "\$1" in "git -C ~/"*) exec bash -c "\$1" ;; esac
 echo "fake ssh: unexpected \$*" >&2; exit 3
 EOF
 chmod +x "$fake/ssh"
 
 # The fork: main at A, both checkouts detached there, each with its own
 # manifest.yml kept out of git's sight (skip-worktree), as on Katana.
-# Then main gains B and C, which the checkouts haven't fetched.
+# The dev install, in the home folder, is a clone of the fork there too.
+# Then main gains B and C, which none of them has fetched.
+dev="$HOME/$IRIS_DEV_INSTALL"
 iris="$fake/scratch/${IRIS_INSTANCE_CHECKOUT##*/}"
 test="$fake/scratch/${IRIS_TEST_INSTANCE_CHECKOUT##*/}"
 src="$fake/src"
@@ -60,6 +68,8 @@ for c in "$iris" "$test"; do
     git -C "$c" update-index --skip-worktree manifest.yml
     printf 'name: %s\n' "${c##*/}" > "$c/manifest.yml"
 done
+git clone -q "$fake/fork.git" "$dev"
+git -C "$dev" checkout -q --detach main
 echo b > "$src/README.md"
 git -C "$src" commit -qam "B: the readme says b"
 echo c > "$src/c.rb"
@@ -95,6 +105,24 @@ expect() {
         echo "$out" | sed 's/^/  /'
     fi
 }
+# lacks <output substring> <arg>...: bin/ocpull's output doesn't hold it.
+lacks() {
+    local out
+    out="$(PATH="$fake:$PATH" "$tools/bin/ocpull" "${@:2}" 2>&1)"
+    ! grep -qF -- "$1" <<< "$out" || { echo "ocpull ${*:2}: output has '$1'"; echo "$out" | sed 's/^/  /'; }
+}
+# dev_at <case> <commit>: the dev install is at <commit>.
+dev_at() {
+    [ "$(git -C "$dev" rev-parse --short HEAD)" = "$2" ] || echo "ocpull $1: the dev install is at $(git -C "$dev" log -1 --oneline), not $2"
+}
+# move_dev <sha>: runs the line --apply printed to move the dev install to <sha>.
+move_dev() {
+    PATH="$fake:$PATH" bash -c "$(devline "$1")"
+}
+devline() {
+    printf "ssh katana 'git -C ~/%s diff --quiet HEAD && git -C ~/%s fetch -q origin && git -C ~/%s checkout -q --detach %s'" \
+        "$IRIS_DEV_INSTALL" "$IRIS_DEV_INSTALL" "$IRIS_DEV_INSTALL" "$1"
+}
 # at <case> <commit>: both checkouts are at <commit>, each keeping its own manifest.yml.
 at() {
     local c
@@ -113,6 +141,9 @@ expect 0 "B: the readme says b"
 expect 0 "C: c.rb"
 expect 0 "manifest.yml"                    # names the files each keeps its own copy of
 at listing "$A"
+# It says which commit the dev install is on, and that it is behind.
+expect 0 "Dev install ~/$IRIS_DEV_INSTALL: at $A A: the base, behind $C;"
+dev_at listing "$A"
 # listed_before_apply <case> <line>: the listing's line just before its
 # --apply line is <line>.
 listed_before_apply() {
@@ -130,6 +161,21 @@ helper_at "$C"
 expect 0 "$C" --apply "$C"
 at apply "$C"
 expect 0 "nothing to deploy"
+# --apply leaves the dev install where it was, and ends with the line that
+# moves it to the same commit, which refuses an install with uncommitted
+# changes.
+dev_at apply "$A"
+out="$(PATH="$fake:$PATH" "$tools/bin/ocpull" --apply "$C" 2>&1)"
+[ "$(tail -n1 <<< "$out")" = "$(devline "$C")" ] || printf 'ocpull --apply %s: last line is not the dev install line\n%s\n' "$C" "$(sed 's/^/  /' <<< "$out")"
+echo edited > "$dev/README.md"
+move_dev "$C" && echo "ocpull dev-dirty: the line moved a dev install with uncommitted changes"
+dev_at dev-dirty "$A"
+git -C "$dev" checkout -q -- README.md
+move_dev "$C" || echo "ocpull dev-move: the line failed"
+dev_at dev-move "$C"
+# On the tip, the listing says so, and --apply prints no line.
+expect 0 "Dev install ~/$IRIS_DEV_INSTALL: at $C C: c.rb, already on $C."
+lacks "ssh katana" --apply "$C"
 
 # commit <file> <content> <message>: a commit on the fork's main; prints its short hash.
 commit() {
@@ -156,6 +202,9 @@ rm "$test/d.rb"
 # fails, naming the helper to bring up to the new commit.
 expect 1 "lib/tests/form_helper.rb still renders as $C" --apply "$D"
 at apply-d "$D"
+# It still ends with the dev install's line.
+expect 1 "$(devline "$D")" --apply "$D"
+move_dev "$D" || echo "ocpull dev-move-d: the line failed"
 helper_at "$D"
 expect 0 "nothing to deploy"
 # With the helper on the tip already, the listing doesn't warn.
@@ -168,8 +217,6 @@ expect 0 "--apply refuses"
 expect 1 "git update-index --no-skip-worktree 'manifest.yml'" --apply "$E"
 at own-copy "$D"
 # It names every checkout's steps at once, each saving its copy apart.
-export HOME="$fake/home"
-mkdir "$HOME"
 for c in "$iris" "$test"; do
     expect 1 "cp 'manifest.yml' '$HOME/manifest.yml.${c##*/}'" --apply "$E"
 done
@@ -185,6 +232,14 @@ for c in "$iris" "$test"; do
     git -C "$c" update-index --skip-worktree manifest.yml
 done
 at own-copy-taken "$E"
+
+# A dev install that isn't there: the listing says so, and --apply passes
+# without a line.
+mv "$dev" "$fake/dev-away"
+expect 0 "Dev install ~/$IRIS_DEV_INSTALL: not there, so nothing moves it."
+expect 0 "$E" --apply "$E"
+lacks "ssh katana" --apply "$E"
+mv "$fake/dev-away" "$dev"
 
 # A commit off the fork's main, or one behind the checkouts, moves neither.
 git -C "$src" checkout -q -b side

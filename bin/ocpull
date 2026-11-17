@@ -24,6 +24,15 @@
 # its --apply line, when the header names a commit other than that line's,
 # so the helper's bump goes in before bin/check and bin/katana-test run
 # rather than after the deploy (#179's retro).
+#
+# The IRIS maintainer's dev install, a third checkout of the fork in their
+# home folder (lib/katana.sh), stays on the instances' commit too, but
+# ocpull never moves it (#159, #162). The listing names its path and the
+# commit it is on, and says when that is behind the --apply line's, or
+# that it isn't there. --apply then ends, once it has deployed, with the
+# line that moves it to <sha> when it is on another commit, for the
+# session to run as its own command: it fetches the fork and moves the
+# install, and refuses one with uncommitted changes (#179's retro).
 # Over `ssh katana`.
 
 # shellcheck source=lib/katana.sh
@@ -43,6 +52,15 @@ helper_on() {
 remote() {
     ssh katana bash -s -- "$@" "${checkouts[@]}" < "$(dirname "$0")/ocpull-checkouts.sh"
 }
+# The dev install as Katana's shell names it, in the IRIS maintainer's home.
+# shellcheck disable=SC2088  # the ~ is for Katana's shell, in the printed line
+dev_path="~/$IRIS_DEV_INSTALL"
+# dev_install <rev>: where the dev install is against <rev> in the IRIS
+# instance's checkout, as "missing" or "<state> <hash> <subject>"
+# (bin/ocpull-checkouts.sh's dev).
+dev_install() {
+    ssh katana bash -s -- dev "$IRIS_DEV_INSTALL" "$1" "$IRIS_INSTANCE_CHECKOUT" < "$(dirname "$0")/ocpull-checkouts.sh"
+}
 # readable: lists what a pilot tester can't read in either checkout; fails
 # 1 if anything, 2 if it can't tell (bin/pilot-readable.py).
 readable() {
@@ -59,6 +77,15 @@ if [ $# -eq 0 ]; then
     listing=$(remote list) || { rc=$?; [ -z "$listing" ] || printf '%s\n' "$listing"; exit $rc; }
     printf '%s\n' "${listing%$'\n'*}"
     tip=${listing##* }
+    dev=$(dev_install origin/main)
+    case $dev in
+        missing) echo "Dev install $dev_path: not there, so nothing moves it." ;;
+        on\ *) echo "Dev install $dev_path: at ${dev#* }, already on $tip." ;;
+        behind\ *) echo "Dev install $dev_path: at ${dev#* }, behind $tip; --apply ends with the line that moves it there too." ;;
+        other\ *) echo "Dev install $dev_path: at ${dev#* }, not on the fork's main before $tip; --apply ends with the line that moves it to $tip." ;;
+        *) echo "Couldn't tell which commit the dev install $dev_path is on." ;;
+    esac
+    echo
     helper_on "$tip" ||
         echo "ocpull: lib/tests/form_helper.rb renders as ${helper_commit:-no commit its header names}; bring it, and its header's commit, to $tip, and commit that before pushing, since --apply exits 1 after the deploy until it does."
     printf '%s\n' "${listing##*$'\n'}"
@@ -70,17 +97,27 @@ if [ $# -eq 0 ]; then
     esac
 elif [ $# -eq 2 ] && [ "$1" = --apply ] && [[ "$2" =~ ^[0-9a-f]{7,40}$ ]]; then
     remote apply "$2" || exit
-    stale=
+    rc=0
     if ! helper_on "$2"; then
         echo "ocpull: deployed, but lib/tests/form_helper.rb still renders as ${helper_commit:-no commit its header names}; bring it, and its header's commit, to $2." >&2
-        stale=1
+        rc=1
     fi
     readable
     case $? in
-        0) [ -z "$stale" ] || exit 1 ;;
-        1) echo "ocpull: deployed, but pilot testers can't read the paths above; fix their ACLs." >&2; exit 1 ;;
-        *) echo "ocpull: deployed, but couldn't check what pilot testers can read in the checkouts." >&2; exit 1 ;;
+        0) ;;
+        1) echo "ocpull: deployed, but pilot testers can't read the paths above; fix their ACLs." >&2; rc=1 ;;
+        *) echo "ocpull: deployed, but couldn't check what pilot testers can read in the checkouts." >&2; rc=1 ;;
     esac
+    # Last, so the session finds it on the final line.
+    dev=$(dev_install HEAD)
+    case $dev in
+        missing | on\ *) ;;
+        behind\ * | other\ *)
+            echo "The dev install $dev_path is at ${dev#* }. To move it to $2 too, refusing if it has uncommitted changes, run:"
+            echo "ssh katana 'git -C $dev_path diff --quiet HEAD && git -C $dev_path fetch -q origin && git -C $dev_path checkout -q --detach $2'" ;;
+        *) echo "ocpull: couldn't tell which commit the dev install $dev_path is on; move it to $2 by hand if it isn't there." >&2 ;;
+    esac
+    exit $rc
 else
     usage
 fi

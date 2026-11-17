@@ -247,7 +247,7 @@ check "run directory file names come from iris.rundir" run_dir_names
 # in git's index, notes (*.md, *.in) aside, keeps a constant of its own.
 # tests/bin/test_katana_constants.sh runs it on fixture trees.
 katana_constants() {
-    local IRIS_SYSTEM_CLONE IRIS_PYTHON_MODULE IRIS_ENVS_FOLDER IRIS_INSTANCE_CHECKOUT IRIS_AUTHOR_ENV f vals
+    local IRIS_SYSTEM_CLONE IRIS_PYTHON_MODULE IRIS_ENVS_FOLDER IRIS_INSTANCE_CHECKOUT IRIS_DEV_INSTALL IRIS_AUTHOR_ENV f vals
     # shellcheck source=lib/katana.sh
     . lib/katana.sh || return
     # keep <file> <what> <want> <value>...: each <value> is <want>, and there is one.
@@ -283,7 +283,7 @@ katana_constants() {
         keep bin/review-batch "the author's container pattern" "$IRIS_AUTHOR_ENV" "${vals[@]}"
     fi
     # The IRIS instance's checkout's path starts the test instance's too.
-    git grep -nF -e "$IRIS_SYSTEM_CLONE" -e "$IRIS_PYTHON_MODULE" -e "$IRIS_ENVS_FOLDER" -e "$IRIS_INSTANCE_CHECKOUT" -- bin lib module envs ':(exclude)*.md' ':(exclude)*.in' \
+    git grep -nF -e "$IRIS_SYSTEM_CLONE" -e "$IRIS_PYTHON_MODULE" -e "$IRIS_ENVS_FOLDER" -e "$IRIS_INSTANCE_CHECKOUT" -e "$IRIS_DEV_INSTALL" -- bin lib module envs ':(exclude)*.md' ':(exclude)*.in' \
         ':(exclude)lib/katana.sh' ':(exclude)module/modulefiles/iris' |
         sed 's/$/  (take it from lib\/katana.sh)/'
 }
