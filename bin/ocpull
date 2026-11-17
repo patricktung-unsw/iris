@@ -20,7 +20,10 @@
 # anything is listed, since the deploy has happened. --apply exits 1 too,
 # after the deploy, if lib/tests/form_helper.rb's header names a commit
 # other than <sha>, since the helper then renders as a commit the
-# checkouts no longer run.
+# checkouts no longer run. The listing warns of that first, just before
+# its --apply line, when the header names a commit other than that line's,
+# so the helper's bump goes in before bin/check and bin/katana-test run
+# rather than after the deploy (#179's retro).
 # Over `ssh katana`.
 
 # shellcheck source=lib/katana.sh
@@ -30,6 +33,12 @@ checkouts=("$IRIS_INSTANCE_CHECKOUT" "$IRIS_TEST_INSTANCE_CHECKOUT")
 # one the checkouts run; nothing else in the repo records that commit.
 helper="$(dirname "$(readlink -f "$0")")/../lib/tests/form_helper.rb"
 usage() { echo "usage: bin/ocpull [--apply <sha>]" >&2; exit 2; }
+# helper_on <sha>: the helper's header names <sha>, in either's length;
+# sets helper_commit to the commit it names.
+helper_on() {
+    helper_commit=$(sed -nE 's/^# ([0-9a-f]{7,40}), the commit bin\/ocpull keeps .*/\1/p' "$helper")
+    [ -n "$helper_commit" ] && [[ "$1" == "$helper_commit"* || "$helper_commit" == "$1"* ]]
+}
 # remote <mode> [<arg>]: bin/ocpull-checkouts.sh on Katana, over both checkouts.
 remote() {
     ssh katana bash -s -- "$@" "${checkouts[@]}" < "$(dirname "$0")/ocpull-checkouts.sh"
@@ -46,7 +55,13 @@ readable() {
 }
 
 if [ $# -eq 0 ]; then
-    remote list || exit
+    # Held back so the helper's warning goes just before the --apply line.
+    listing=$(remote list) || { rc=$?; [ -z "$listing" ] || printf '%s\n' "$listing"; exit $rc; }
+    printf '%s\n' "${listing%$'\n'*}"
+    tip=${listing##* }
+    helper_on "$tip" ||
+        echo "ocpull: lib/tests/form_helper.rb renders as ${helper_commit:-no commit its header names}; bring it, and its header's commit, to $tip, and commit that before pushing, since --apply exits 1 after the deploy until it does."
+    printf '%s\n' "${listing##*$'\n'}"
     out=$(readable)
     case $? in
         0) ;;
@@ -55,9 +70,8 @@ if [ $# -eq 0 ]; then
     esac
 elif [ $# -eq 2 ] && [ "$1" = --apply ] && [[ "$2" =~ ^[0-9a-f]{7,40}$ ]]; then
     remote apply "$2" || exit
-    helper_commit=$(sed -nE 's/^# ([0-9a-f]{7,40}), the commit bin\/ocpull keeps .*/\1/p' "$helper")
     stale=
-    if [ -z "$helper_commit" ] || [[ "$2" != "$helper_commit"* && "$helper_commit" != "$2"* ]]; then
+    if ! helper_on "$2"; then
         echo "ocpull: deployed, but lib/tests/form_helper.rb still renders as ${helper_commit:-no commit its header names}; bring it, and its header's commit, to $2." >&2
         stale=1
     fi

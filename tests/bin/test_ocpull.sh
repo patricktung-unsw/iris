@@ -113,6 +113,16 @@ expect 0 "B: the readme says b"
 expect 0 "C: c.rb"
 expect 0 "manifest.yml"                    # names the files each keeps its own copy of
 at listing "$A"
+# listed_before_apply <case> <line>: the listing's line just before its
+# --apply line is <line>.
+listed_before_apply() {
+    local before
+    before=$(PATH="$fake:$PATH" "$tools/bin/ocpull" 2>&1 | grep -B1 -F "bin/ocpull --apply" | head -1)
+    [ "$before" = "$2" ] || printf 'ocpull listing %s: before the --apply line, %s\n  not %s\n' "$1" "$before" "$2"
+}
+# The form test helper renders as A, not the tip C: the listing says so up
+# front, just before the --apply line, rather than --apply after the deploy.
+listed_before_apply helper-behind "ocpull: lib/tests/form_helper.rb renders as $A; bring it, and its header's commit, to $C, and commit that before pushing, since --apply exits 1 after the deploy until it does."
 
 # --apply moves both to the commit listed, each keeping its own manifest.yml,
 # and passes when the form test helper already renders as that commit.
@@ -148,6 +158,8 @@ expect 1 "lib/tests/form_helper.rb still renders as $C" --apply "$D"
 at apply-d "$D"
 helper_at "$D"
 expect 0 "nothing to deploy"
+# With the helper on the tip already, the listing doesn't warn.
+listed_before_apply helper-on-tip ""
 
 # A move that changes a file the checkouts keep their own copy of: neither
 # moves, and it says how to take the change.
