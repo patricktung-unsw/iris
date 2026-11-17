@@ -14,15 +14,16 @@ trap 'rm -rf "$fake"' EXIT
 # prints $fake/brief as the latest Agent Brief comment, id 42, if it exists.
 # `gh issue edit` saves stdin to $fake/edited and `gh api -X PATCH` on
 # comment 42 to $fake/brief-edited, so a case that must not edit leaves no
-# such file.
+# such file. Each call must name unsw-restech/iris, not the current
+# directory's repo, or the fake rejects it (#179's retro).
 cat > "$fake/gh" <<'FAKE'
 #!/bin/bash
 dir="$(dirname "$0")"
 case "$*" in
-    "issue view "*"--json body "*) cat "$dir/body" ;;
-    "issue view "*"--json comments "*) if [ -e "$dir/brief" ]; then echo 42; cat "$dir/brief"; fi ;;
-    "issue edit "*) cat > "$dir/edited" ;;
-    "api -X PATCH repos/{owner}/{repo}/issues/comments/42 -F body=@-") cat > "$dir/brief-edited" ;;
+    "issue view "*" -R unsw-restech/iris --json body "*) cat "$dir/body" ;;
+    "issue view "*" -R unsw-restech/iris --json comments "*) if [ -e "$dir/brief" ]; then echo 42; cat "$dir/brief"; fi ;;
+    "issue edit "*" -R unsw-restech/iris "*) cat > "$dir/edited" ;;
+    "api -X PATCH repos/unsw-restech/iris/issues/comments/42 -F body=@-") cat > "$dir/brief-edited" ;;
     *) echo "fake gh: unexpected call: $*" >&2; exit 1 ;;
 esac
 FAKE

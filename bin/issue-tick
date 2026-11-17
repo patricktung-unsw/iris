@@ -12,11 +12,16 @@
 # as is, and lines in ``` fences aren't boxes. Writes no temp file. Exits 0
 # and lists what it ticked, 1 if no one place has every prefix's box once, 2
 # on usage or a gh failure.
+#
+# Every gh call names the tracker, unsw-restech/iris, rather than the repo of
+# the current directory, since a run from a fork worktree otherwise reached
+# unsw-restech/OpenComposer, whose issues are off (#179's retro).
 
 [ $# -ge 2 ] || { echo "usage: bin/issue-tick <number> <box-prefix>..." >&2; exit 2; }
+repo=unsw-restech/iris
 n="$1"
 shift
-body="$(gh issue view "$n" --json body --jq .body)" || exit 2
+body="$(gh issue view "$n" -R "$repo" --json body --jq .body)" || exit 2
 
 # tick <place> <text> <box-prefix>...: prints the count of boxes it ticked,
 # their prefixes one per line, then the new text, or fails with a line per
@@ -62,7 +67,7 @@ where="#$n"
 comment=
 if ! out="$(tick "the body" "$body" "$@" 2>&1)"; then
     body_errors="$out"
-    brief="$(gh issue view "$n" --json comments --jq '[.comments[] | select(.body | test("(^|\\n)## Agent Brief"))] | last | select(.) | (.url | sub(".*issuecomment-"; "")) + "\n" + .body')" || exit 2
+    brief="$(gh issue view "$n" -R "$repo" --json comments --jq '[.comments[] | select(.body | test("(^|\\n)## Agent Brief"))] | last | select(.) | (.url | sub(".*issuecomment-"; "")) + "\n" + .body')" || exit 2
     [ -n "$brief" ] || { echo "$body_errors" >&2; exit 1; }
     comment="$(head -1 <<< "$brief")"
     if ! out="$(tick "the Agent Brief" "$(tail -n +2 <<< "$brief")" "$@" 2>&1)"; then
@@ -79,8 +84,8 @@ if [ "$k" = 0 ]; then
 fi
 new="$(tail -n +$((k + 2)) <<< "$out")"
 if [ -z "$comment" ]; then
-    printf '%s\n' "$new" | gh issue edit "$n" --body-file - > /dev/null || exit 2
+    printf '%s\n' "$new" | gh issue edit "$n" -R "$repo" --body-file - > /dev/null || exit 2
 else
-    printf '%s\n' "$new" | gh api -X PATCH "repos/{owner}/{repo}/issues/comments/$comment" -F body=@- > /dev/null || exit 2
+    printf '%s\n' "$new" | gh api -X PATCH "repos/$repo/issues/comments/$comment" -F body=@- > /dev/null || exit 2
 fi
 sed -n "2,$((k + 1))p" <<< "$out" | sed "s/^/ticked on $where: /"
