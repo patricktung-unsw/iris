@@ -5,8 +5,10 @@
 # Turn it on once per clone: git config core.hooksPath .githooks
 
 root="$(git rev-parse --show-toplevel)"
-[ -x "$root/bin/exec-bits" ] || exit 0
-missing="$("$root/bin/exec-bits")" || exit 0
+if ! missing="$("$root/bin/exec-bits")"; then
+    echo "pre-commit: bin/exec-bits failed, so the executable bits weren't checked; fix it, or commit with --no-verify once" >&2
+    exit 1
+fi
 [ -z "$missing" ] && exit 0
 echo "pre-commit: scripts run by path without the executable bit in git's index:" >&2
 while IFS= read -r f; do

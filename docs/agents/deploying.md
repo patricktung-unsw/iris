@@ -38,4 +38,4 @@ It never moves the IRIS maintainer's dev install, `~/ondemand/dev/OpenComposer` 
 2. Their yes to that line is the go-ahead for `--apply` and for each step it then prints, the copies, push and dev pull included. Run each as its own command.
 3. The system clone gets its own go-ahead, from the `bin/syspull` it prints last.
 
-CONTRIBUTING's Review batch has the steps from the workflow author's side.
+CONTRIBUTING's Review batch has the steps.

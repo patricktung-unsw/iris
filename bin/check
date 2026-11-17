@@ -438,9 +438,9 @@ manifest_icons() {
 }
 check "manifests use a built-in bi- icon" manifest_icons
 
-# Scripts run by path need the executable bit in git; core.fileMode is off
-# on the Windows mount, so chmod alone does not record it. bin/exec-bits
-# holds the list, and .githooks/pre-commit refuses a commit it prints for.
+# Scripts run by path need the executable bit in git: bin/exec-bits says
+# why and holds the list, and .githooks/pre-commit refuses a commit it
+# prints for.
 # tests/bin/test_exec_bits.sh runs both on a fixture repo.
 check "scripts run by path are 100755 (git update-index --chmod=+x)" bin/exec-bits
 

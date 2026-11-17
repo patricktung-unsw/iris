@@ -34,9 +34,11 @@ printf '#!/bin/bash\n' > "$repo/tests/bin/test_new.sh"
 chmod +x "$repo/tests/bin/test_new.sh"
 git -C "$repo" add tests/bin/test_new.sh
 git -C "$repo" ls-files -s tests/bin/test_new.sh | grep -q '^100644' ||
-    echo "exec bits: setup: the scratch index didn't hold test_new.sh as 100644; core.fileMode isn't off"
+    fail "setup: the scratch index didn't hold test_new.sh as 100644; core.fileMode isn't off"
 out="$(cd "$repo" && bin/exec-bits)"
 [ "$out" = tests/bin/test_new.sh ] || fail "bin/exec-bits listed '$out', expected tests/bin/test_new.sh"
+out="$(cd "$repo/tests/bin" && ../../bin/exec-bits)"
+[ "$out" = tests/bin/test_new.sh ] || fail "bin/exec-bits from tests/bin listed '$out', expected tests/bin/test_new.sh"
 out="$(git -C "$repo" commit -qm new 2>&1)" && fail "pre-commit let a 100644 test through"
 grep -qF 'tests/bin/test_new.sh' <<< "$out" || fail "pre-commit's refusal doesn't name the file: $out"
 grep -qF 'git update-index --chmod=+x tests/bin/test_new.sh' <<< "$out" ||
