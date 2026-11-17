@@ -50,6 +50,7 @@ iris/
 ├── .github/workflows/owner-mention.yml  # CI: mentions each touched workflow's owner, from its manifest, on a PR
 ├── .github/ISSUE_TEMPLATE/proposal.yml  # Issue form for a workflow author's proposal
 ├── .github/pull_request_template.md  # The checklist a workflow PR is ready for review on
+├── .githooks/pre-commit              # Refuses a commit while git's index holds a script run by path without its executable bit (bin/exec-bits), printing the command that sets it
 ├── .githooks/commit-msg              # Refuses AI attribution, git's conflict list or a glossary Avoid word in a commit message; AGENTS.md turns the hooks on
 ├── .githooks/avoid-names(.pl)        # The glossary Avoid words bin/check fails in tracked files and commit-msg refuses in a message, and the script matching them
 ├── .githooks/pre-push                # Refuses a push to main of a tree no full bin/check passed on, or whose forms, module, job library, library copies or the tests bin/katana-test runs no passing bin/katana-test tested, or whose digest map names an author's container
@@ -58,6 +59,7 @@ iris/
 │   ├── check                         # Every check to pass before committing
 │   ├── check-passed                  # Record the tree a full bin/check passed on; say whether a commit's tree passed (pre-push runs it)
 │   ├── ciwait                        # Wait for a pushed commit's CI run, check or containers (desktop)
+│   ├── exec-bits                     # List the scripts run by path git's index doesn't hold as 100755 (bin/check and pre-commit run it)
 │   ├── envpull                       # Pull the containers live forms pin onto Katana; list those nothing pins; --own pulls an author's into their own scratch (desktop)
 │   ├── envpull-dm.sh                 # envpull's side on the data mover
 │   ├── envrun                        # Run a command in an environment version's container: bin/check's Python tests (desktop, CI)

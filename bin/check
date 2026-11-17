@@ -439,11 +439,10 @@ manifest_icons() {
 check "manifests use a built-in bi- icon" manifest_icons
 
 # Scripts run by path need the executable bit in git; core.fileMode is off
-# on the Windows mount, so chmod alone does not record it.
-exec_bits() {
-    git ls-files -s bin 'envs/*.sh' 'tests/bin/test_*.sh' .githooks/commit-msg | awk '$1 != "100755" { print $4 }'
-}
-check "scripts run by path are 100755 (git update-index --chmod=+x)" exec_bits
+# on the Windows mount, so chmod alone does not record it. bin/exec-bits
+# holds the list, and .githooks/pre-commit refuses a commit it prints for.
+# tests/bin/test_exec_bits.sh runs both on a fixture repo.
+check "scripts run by path are 100755 (git update-index --chmod=+x)" bin/exec-bits
 
 # gh takes the current directory's repo unless told, so from the fork's
 # clone it reaches unsw-restech/OpenComposer (#179's retro, #207). Every

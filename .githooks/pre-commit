@@ -1,0 +1,15 @@
+#!/bin/bash
+# Refuses a commit while git's index holds a script run by path without its
+# executable bit (bin/exec-bits lists them), naming each and the command
+# that sets it, since bin/check fails it otherwise only on a full run.
+# Turn it on once per clone: git config core.hooksPath .githooks
+
+root="$(git rev-parse --show-toplevel)"
+[ -x "$root/bin/exec-bits" ] || exit 0
+missing="$("$root/bin/exec-bits")" || exit 0
+[ -z "$missing" ] && exit 0
+echo "pre-commit: scripts run by path without the executable bit in git's index:" >&2
+while IFS= read -r f; do
+    echo "  git update-index --chmod=+x $f" >&2
+done <<< "$missing"
+exit 1

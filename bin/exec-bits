@@ -1,0 +1,15 @@
+#!/bin/bash
+# Lists every script run by path that git's index doesn't hold as 100755,
+# one path a line, and nothing when all are. core.fileMode is off on the
+# Windows mount, so chmod alone records nothing; set the bit with
+#   git update-index --chmod=+x <path>
+# The one list of such scripts: bin/check fails any it prints, and
+# .githooks/pre-commit refuses a commit while it prints any. Run from
+# anywhere in the clone.
+#
+#   bin/exec-bits
+
+cd "$(git rev-parse --show-toplevel)" || exit 2
+git ls-files -s bin 'envs/*.sh' 'tests/bin/test_*.sh' \
+    .githooks/commit-msg .githooks/pre-commit .githooks/pre-push |
+    awk '$1 != "100755" { print $4 }'
