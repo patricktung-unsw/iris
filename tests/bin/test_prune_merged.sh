@@ -167,3 +167,50 @@ rc=$?
 [ "$rc" = 0 ] || { echo "prune-merged --apply, spec branch checked out: exit $rc, expected 0"; echo "$out" | sed 's/^/  /'; }
 has nothing-left '^Nothing to remove\.$'
 kept checked-out spec-branch
+
+# --repo <path> works on another repo's main clone, as the fork's beside
+# this one (#179's retro): that clone's own origin/main, its checked-out
+# branch skipped even when it isn't main, and an --apply line that names
+# the clone. Nothing in the clone it runs from is touched.
+fork="$fake/OpenComposer"
+git init -q -b main "$fake/fork-src"
+echo f > "$fake/fork-src/f"
+git -C "$fake/fork-src" add -A && git -C "$fake/fork-src" commit -qm "F"
+git clone -q --bare "$fake/fork-src" "$fake/fork-origin.git"
+git clone -q "$fake/fork-origin.git" "$fork"
+git -C "$fork" switch -q -c iris-fork
+git -C "$fork" commit -q --allow-empty -m "iris-fork"
+git -C "$fork" push -q origin iris-fork:main
+git -C "$fork" worktree add -q -b fork-merged "$fake/OpenComposer-1" origin/main
+git -C "$fake/OpenComposer-1" commit -q --allow-empty -m "fork-merged"
+git -C "$fork" push -q origin fork-merged:main fork-merged
+git -C "$fork" worktree add -q -b fork-unmerged "$fake/OpenComposer-2" origin/main
+git -C "$fake/OpenComposer-2" commit -q --allow-empty -m "fork-unmerged"
+git -C "$fork" fetch -q origin
+fork_tip=$(git -C "$fork" rev-parse --short origin/main)
+iris_branches=$(git -C "$clone" for-each-ref refs/heads)
+out=$(run --repo "$fork")
+rc=$?
+[ "$rc" = 0 ] || echo "prune-merged --repo: bare run exited $rc"
+has repo-tip "^origin/main is at $fork_tip fork-merged$"
+has repo-worktree "^  fork-merged  \(worktree $fake/OpenComposer-1\)$"
+has repo-checked-out '^  iris-fork: checked out in the main clone$'
+has repo-main '^  main: main itself$'
+lacks repo-unmerged 'fork-unmerged'
+lacks repo-other-clone 'spec-branch'
+last=$(tail -n1 <<< "$out")
+[ "$last" = "To remove them: bin/prune-merged --repo $fork --apply $fork_tip" ] || echo "prune-merged --repo: last line is '$last'"
+# The other clone's origin/main doesn't pass for this one's.
+out=$(run --repo "$fork" --apply "$tip")
+[ $? = 1 ] || echo "prune-merged --repo --apply, iris's sha: expected exit 1"
+fork_remote=$(git -C "$fake/fork-origin.git" for-each-ref --format='%(refname) %(objectname)')
+out=$(run --repo "$fork" --apply "$fork_tip")
+rc=$?
+[ "$rc" = 0 ] || { echo "prune-merged --repo --apply: exit $rc, expected 0"; echo "$out" | sed 's/^/  /'; }
+git -C "$fork" rev-parse -q --verify refs/heads/fork-merged > /dev/null && echo "prune-merged --repo --apply: fork-merged is still there"
+[ ! -e "$fake/OpenComposer-1" ] || echo "prune-merged --repo --apply: worktree $fake/OpenComposer-1 is still there"
+for b in iris-fork main fork-unmerged; do
+    git -C "$fork" rev-parse -q --verify "refs/heads/$b" > /dev/null || echo "prune-merged --repo --apply: $b was deleted"
+done
+[ "$(git -C "$fake/fork-origin.git" for-each-ref --format='%(refname) %(objectname)')" = "$fork_remote" ] || echo "prune-merged --repo --apply: changed the fork origin's branches"
+[ "$(git -C "$clone" for-each-ref refs/heads)" = "$iris_branches" ] || echo "prune-merged --repo --apply: changed the clone it ran from"
