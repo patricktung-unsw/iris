@@ -23,5 +23,5 @@ The add-only rule did not keep cited runs reproducible: digest pinning does that
 ## Consequences
 
 - `envs/README.md`, `bin/check`'s rule that fails a later version's lock for removing or changing a line, its test and the `containers` workflow still say versions only add packages, and change in #148.
-- A fresh build shares only its base layer with the versions before it, so each costs about 4.7 GB of registry space. GHCR storage counts against the org's plan while the `iris-env` package is private (#132), so fresh builds cost the org until an org owner makes the package public. Katana's `katana_ai` quota is not a constraint: the sysadmins raise it on request (Patrick, 2026-11-10).
+- A fresh build shares only its base layer with the versions before it, so each costs about 4.7 GB of registry space. GHCR storage counted against the org's plan while the `iris-env` package was private; an org owner made it public on 2026-11-18 (#132), and a public package's storage is free. Katana's `katana_ai` quota is not a constraint: the sysadmins raise it on request (Patrick, 2026-11-10).
 - A workflow author whose package conflicts with their lab's pins proposes the lab's next version, and their pull request waits on the maintainer's review. The contribution docs (#134) and the author's fork build (#138) say so in their own tickets.

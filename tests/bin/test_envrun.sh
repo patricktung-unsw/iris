@@ -59,8 +59,8 @@ lacks() { grep -qF -- "$3" <<< "$2" && { echo "$1: $3 in"; echo "$2" | sed 's/^/
 log() { cat "$fake/$1.log" 2>/dev/null; }
 
 # With Apptainer, the first run pulls the version by digest alone into the
-# cache, logged in with gh's token by environment, never on a command line,
-# then runs the command in it under --cleanenv, the clone bound at its own
+# cache, with no login, since the package is public (#132): gh's token,
+# which the fake gh would give, is never used. It then runs the command in it under --cleanenv, the clone bound at its own
 # path and the working folder kept.
 file="$cache/${a#sha256:}.sif"
 run -- microct/1 python -m unittest "a b" > /dev/null
@@ -73,7 +73,7 @@ has "first apptainer run" "$out" "[$file][python][-m][unittest][a b]"
 lacks "first apptainer run" "$out" "gho_secret"
 lacks "first apptainer run" "$out" "--nv"
 [ "$(cat "$file" 2>/dev/null)" = "container docker://$IRIS_ENV_REGISTRY@$a" ] || echo "first apptainer run: no container file at $file"
-[ "$(cat "$fake/auth" 2>/dev/null)" = "user=PatrickTung password=gho_secret" ] || echo "first apptainer run: pulled with $(cat "$fake/auth")"
+[ "$(cat "$fake/auth" 2>/dev/null)" = "user= password=" ] || echo "first apptainer run: pulled with $(cat "$fake/auth")"
 # The second run pulls nothing.
 rm "$fake/apptainer.log"
 run -- microct/1 python -V > /dev/null

@@ -200,46 +200,20 @@ expect 1 "unpublished" --pull microct/1
 expect 1 "not in lib/katana.sh's digest map" --pull microct/7
 no_pull pull-unpublished
 
-# The token file on Katana logs the pull in, by environment, never in a
-# command line; one others can read is refused.
+# The pull goes without a login, since the package is public (#132), even
+# if an old token file is still there.
 reset; map "microct/1=$a"
 mkdir -p "$FAKE_HOME/.config/iris"
 echo "PatrickTung:ghp_secret" > "$FAKE_HOME/.config/iris/ghcr-token"
 chmod 600 "$FAKE_HOME/.config/iris/ghcr-token"
 expect 0 "pulled"
-holds token "$fake/auth" "user=PatrickTung password=ghp_secret"
-! grep -qF ghp_secret "$fake/args" "$fake/pulls" || echo "envpull token: the token is on a command line"
-rm -rf "$envs/microct" "$fake/pulls"
-chmod 640 "$FAKE_HOME/.config/iris/ghcr-token"
-expect 1 "chmod 600"
-no_pull token-readable
-# Without one, the pull goes without a login.
-reset; map "microct/1=$a"
-expect 0 "pulled"
 holds no-token "$fake/auth" "user= password="
+rm -f "$FAKE_HOME/.config/iris/ghcr-token"
+expect 2 "usage:" --check-login
 
-# --check-login says whether the token file would log a pull in, pulling
-# nothing and printing no line of the file, whatever it holds.
-reset; map "microct/1=$a"
-expect 1 "no $FAKE_HOME/.config/iris/ghcr-token" --check-login
-mkdir -p "$FAKE_HOME/.config/iris"
-for line in "PatrickTungghp_secret" "PatrickTung:ghp_secret"; do
-    echo "$line" > "$FAKE_HOME/.config/iris/ghcr-token"
-    chmod 600 "$FAKE_HOME/.config/iris/ghcr-token"
-    out="$(PATH="$fake:$PATH" "$repo/bin/envpull" --check-login 2>&1)"
-    ! grep -qF secret <<< "$out" || echo "envpull --check-login: printed the token: $out"
-done
-expect 0 "a pull logs in with it" --check-login
-echo "PatrickTungghp_secret" > "$FAKE_HOME/.config/iris/ghcr-token"
-expect 1 "should hold one line" --check-login
-chmod 640 "$FAKE_HOME/.config/iris/ghcr-token"
-expect 1 "chmod 600" --check-login
-no_pull check-login
-expect 2 "usage:" --check-login microct/1
-
-# A failed pull leaves nothing behind, and points at the token.
+# A failed pull leaves nothing behind.
 reset; map "microct/1=$a"; touch "$fake/pull-fails"
-expect 1 ".config/iris/ghcr-token"
+expect 1 "the pull failed; nothing written"
 [ -z "$(ls -A "$envs/microct" 2>/dev/null)" ] || { echo "envpull pull-fails: left files"; ls -A "$envs/microct" | sed 's/^/  /'; }
 
 # A version CI published under a workflow author's own account (#138) is

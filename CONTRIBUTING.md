@@ -216,8 +216,6 @@ Then build it and pin it, all on your fork:
 
 A change to the lock after that is a rebuild with a new digest: put the version back to `unpublished`, push, pin the new line, run `bin/envpull --own` again, which replaces your own file, and prove the workflow again. The review batch copies the container you proved, by that digest, into IRIS's package, `ghcr.io/unsw-restech/iris-env`, and writes its digest alone in the map ([Review batch](#8-review-batch)); it never rebuilds it.
 
-Until IRIS's package is public ([#132](https://github.com/unsw-restech/iris/issues/132)), a fork's CI can't pull from it, so a version built as a layer fails on your fork at its `Build` step, when it pulls the version before it. A version built fresh needs nothing from IRIS's package. Until then a layer version can't be proved before review: leave it `unpublished`, say so in your PR, and the maintainer publishes it from `main` once the review batch merges it, as `envs/README.md`'s [Publishing a version](envs/README.md#publishing-a-version) describes. Making the package public needs one of the org's owners, so nothing in this procedure can do it.
-
 Either way, the lab's other workflows keep the version they pin until their owners prove them in the new one: moving a workflow to a newer version is a change to its folder, which needs a new run proof ([Run proof](#6-run-proof)), and its owner's choice. To show them where they stand, the `containers` run that builds your version also runs the tests of every workflow pinning an earlier version of your environment, any lab's, in the new container, and its summary lists each with passed or failed and a failure's first lines. A failure there never stops your version or your PR: it tells that workflow's owner what moving would take.
 
 ### 5. Test instance
@@ -247,7 +245,7 @@ CI checks it on your PR: `bin/check` runs `bin/run-proof --check`, which fails a
 
 ### 7. CI and `ready`
 
-Turn on Actions on your fork (its **Actions** tab), so the `check` workflow runs `bin/check` on every push there, and see it pass on your branch before you open a PR. Until the environment containers are public ([#132](https://github.com/unsw-restech/iris/issues/132)), your fork's CI can't pull them, so the tests that run in a container fail there; run `bin/check` on your own machine for those.
+Turn on Actions on your fork (its **Actions** tab), so the `check` workflow runs `bin/check` on every push there, and see it pass on your branch before you open a PR. The environment containers are public, so your fork's CI pulls them with no login.
 
 Then open the PR. CI runs the `check` workflow on it, `bin/check` as on your fork: every rule, the page rules among them, your workflow's synthetic-dataset test on CPU in the container your form pins, with no network and two minutes for each workflow's tests, and the run proof check ([Run proof](#6-run-proof)). If your GitHub account is new and this is your first PR to the repo, that run waits for the maintainer to approve it, as GitHub's "Require approval for first-time contributors who are new to GitHub" setting has it; anyone else's runs at once. When it passes, the `ready` workflow labels the PR `ready`, which puts it in the queue for the next [review batch](#8-review-batch). A push to the PR takes `ready` off until `check` passes again, and a failing run leaves it off: read the run's log, fix what it names and push.
 

@@ -11,8 +11,6 @@
 #   bin/envpull --remove <env>/<n>   remove a version's container file and
 #                                    its digest file, if nothing pins it and
 #                                    --pull could bring it back
-#   bin/envpull --check-login        say whether the token file would log a
-#                                    pull in, printing no line of it
 #
 # A version is pinned by a form in this checkout's workflows/ or the system
 # clone's, with an "  IRIS_ENV_VERSION=<env>/<n>" line, and by the
@@ -23,9 +21,8 @@
 # with the digest in <env>/<n>.digest beside it, and never replaces a file
 # already there. --remove deletes: get Patrick's go-ahead naming the file
 # first, as the listing says; --pull brings a version back by digest.
-# Pulls log in with the read-only token in ~/.config/iris/ghcr-token on
-# Katana if it is there. Over `ssh katana-dm`; bin/envpull-dm.sh is the
-# side that runs there.
+# Pulls need no login, since the package is public (#132). Over
+# `ssh katana-dm`; bin/envpull-dm.sh is the side that runs there.
 #
 # A version CI published under a workflow author's own account, whose
 # digest map value names that container in full, is no container for the
@@ -41,7 +38,7 @@
 here="$(dirname "$(readlink -f "$0")")"
 # shellcheck source=lib/katana.sh
 . "$here/../lib/katana.sh" || exit 2
-usage() { echo "usage: bin/envpull [--pull <env>/<n> | --own <env>/<n> | --remove <env>/<n> | --check-login]" >&2; exit 2; }
+usage() { echo "usage: bin/envpull [--pull <env>/<n> | --own <env>/<n> | --remove <env>/<n>]" >&2; exit 2; }
 
 folder="$IRIS_ENVS_FOLDER"
 case "$#:${1-}" in
@@ -50,7 +47,6 @@ case "$#:${1-}" in
     # %u is the data mover's USER, which bin/envpull-dm.sh fills in.
     2:--own) mode=own target="$2" folder="$(iris_own_envs_folder %u)" ;;
     2:--remove) mode=remove target="$2" ;;
-    1:--check-login) mode=login target=- ;;
     *) usage ;;
 esac
 [ "$target" = - ] || iris_is_env_version "$target" || usage

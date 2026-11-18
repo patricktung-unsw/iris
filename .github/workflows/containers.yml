@@ -67,7 +67,7 @@ jobs:
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
           df -h /
-      # A version built as a layer pulls the one before it, which may be private.
+      # Publishing pushes to the package with this login.
       - name: Log in to GHCR
         env:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
