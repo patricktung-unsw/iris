@@ -716,7 +716,7 @@ unmaintained() {
 }
 check "unmaintained workflows have no Run button, card, live form or manifest" unmaintained
 
-# The guide owns staging and viewing (CONTRIBUTING.md, Page): its data mover host,
+# The guide owns transfer and viewing (CONTRIBUTING.md, Page): its data mover host,
 # scratch quota, WinSCP note, Globus link (app.globus.org) and Katana scratch
 # collection ID stay out of workflow pages, so a change of collection edits the
 # guide and the ID in this pattern, and no workflow page.
@@ -801,9 +801,12 @@ check "placeholders left in index.html or a manifest" placeholders
 # Page text keeps to GLOSSARY.md's terms (CODING_STANDARDS.md). Only the
 # Avoid words that have drifted onto pages are matched, since most Avoid
 # words (sync, results, app) are fine in other senses: "scan" for Volume,
-# "upload" for Staging, and "Files app" for Files (#90).
+# "upload" and "staging" for Transfer (#90, #215), and "Files app" for
+# Files. "stage" is not matched, since a diagram's "stages" is ordinary
+# English and the guide keeps its #stage id for old links.
+# tests/bin/test_avoid_words.sh runs it on fixture trees.
 check "page uses a glossary Avoid word (see GLOSSARY.md)" \
-    git grep -niE '\bscans?\b|\bupload|files app' -- '*.html' ':(exclude)_archive'
+    git grep -niE '\bscans?\b|\bupload|\bstaging\b|files app' -- '*.html' ':(exclude)_archive'
 
 # Code keeps to GLOSSARY.md's terms too. Only the Avoid words no code
 # needs in another sense are matched, the ones .githooks/avoid-names lists,
