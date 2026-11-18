@@ -19,8 +19,8 @@
 #                         check for, so a rename there can't drop one here.
 #                         bin/check --changed runs shellcheck itself, on the
 #                         changed files its own rule takes for scripts
-#   untested<TAB><path>   each changed file no test names, which only the
-#                         full bin/check's other checks may cover
+#   untested<TAB><path>   each changed file no test names, which only
+#                         bin/check's rules over the tree may cover
 # Exits 2 if <base> doesn't resolve, 1 if nothing changed.
 
 cd "$(dirname "$(readlink -f "$0")")/.." || exit 1

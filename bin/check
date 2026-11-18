@@ -12,7 +12,8 @@
 #                       (the name a failure prints after FAIL:, e.g.
 #                       "card status"), for a quick loop while editing;
 #                       commit on a full run
-#   bin/check --changed run only the checks that cover the files changed
+#   bin/check --changed run every rule over the tree, and of the slow
+#                       checks only those that cover the files changed
 #                       since the merge-base with origin/main, working tree
 #                       and untracked files included, as bin/check-changed
 #                       lists them: each tests/bin test naming one, the
@@ -39,10 +40,15 @@
 cd "$(dirname "$(readlink -f "$0")")/.." || exit 1
 [ $# -le 1 ] || { echo "usage: bin/check [<text> | --changed]; quote a name with spaces" >&2; exit 2; }
 only="${1-}"
-# With --changed, the checks to run and the changed files, from
-# bin/check-changed, which the test loop and shellcheck_all read.
+# With --changed, the slow checks to run and the changed files, from
+# bin/check-changed, which the test loop and shellcheck_all read. Every
+# other check is a rule over the tree, the rendered-form tests' Ruby
+# included, about 3 seconds together, so --changed runs them all: #217's comment on a workflow page passed
+# --changed and failed the full run's citable versions check, which no
+# tests/bin test naming the page would have run. A slow check is marked
+# slow[<name>]=1 where it is run.
 changed_mode=""
-declare -A wanted=() changed_files=() seen=()
+declare -A wanted=() changed_files=() seen=() slow=()
 if [ "$only" = --changed ]; then
     changed_mode=1
     wanted[shellcheck]=1
@@ -69,10 +75,10 @@ start_tree="$(bin/tracked-tree 2> /dev/null)"
 ran=0
 
 # Whether the check named $1 is selected by the <text> argument, or with
-# --changed is one bin/check-changed listed.
+# --changed is a rule over the tree or a slow check bin/check-changed listed.
 wants() {
     if [ -n "$changed_mode" ]; then
-        [ -n "${wanted[$1]-}" ]
+        [ -z "${slow[$1]-}" ] || [ -n "${wanted[$1]-}" ]
     else
         [[ "$1" == *"$only"* ]]
     fi
@@ -1153,6 +1159,7 @@ shellcheck_all() {
             sed "s|^-:|$f:|"
     done
 }
+slow[shellcheck]=1
 check "shellcheck" shellcheck_all
 
 # The CI workflows in .github/workflows/: their syntax, expressions and
@@ -1160,6 +1167,7 @@ check "shellcheck" shellcheck_all
 # version, at its default severity, so info findings fail here as they
 # don't in shellcheck_all. A workflow change otherwise meets its first
 # check on GitHub's runner.
+slow[actionlint]=1
 check "actionlint" uvx --quiet --from actionlint-py==1.7.12.25 --with "$shellcheck_pin" actionlint -oneline
 
 # Every tests/bin/test_*.sh, each against fakes or throwaway trees, but
@@ -1170,11 +1178,13 @@ check "actionlint" uvx --quiet --from actionlint-py==1.7.12.25 --with "$shellche
 for t in tests/bin/test_*.sh; do
     [ -f "$t" ] || continue
     n=$(tr -d '\r' < "$t" | sed -n 's/^# bin\/check name: //p' | head -n1)
+    slow["${n:-$t}"]=1
     [ -z "${wanted[$t]-}" ] || wanted["${n:-$t}"]=1
     check "${n:-$t}" bash "$t"
 done
 
 # Mechanical Python checks only; ruff.toml holds the rule set.
+slow[ruff]=1
 check "ruff" bash -c 'uvx --quiet ruff@0.17.1 check --quiet --output-format concise .'
 
 # The Python tests: lib/tests once, in the researcher tools' version
@@ -1207,6 +1217,7 @@ py_tests() {
         }
     fi
 }
+slow["synthetic-dataset test"]=1
 if selected "synthetic-dataset test"; then
     for dir in lib/tests workflows/*/tests; do
         ls "$dir"/test_*.py > /dev/null 2>&1 || continue
@@ -1227,11 +1238,7 @@ for c in "${named_checks[@]}"; do
 done
 
 if [ "$ran" = 0 ]; then
-    if [ -n "$changed_mode" ]; then
-        echo "No check covers the files changed since origin/main; run the full bin/check."
-    else
-        echo "No check name contains '$only'."
-    fi
+    echo "No check name contains '$only'."
     exit 2
 fi
 if [ "$failed" = 0 ]; then
@@ -1244,7 +1251,7 @@ if [ "$failed" = 0 ]; then
             bin/check-passed --record "$start_tree" || echo "bin/check: the pass isn't recorded for .githooks/pre-push" >&2
         fi
     elif [ -n "$changed_mode" ]; then
-        echo "Checks covering the changed files passed ($ran run); commit on a full run."
+        echo "The rules over the tree and the checks covering the changed files passed ($ran run); commit on a full run."
     else
         echo "Checks matching '$only' passed ($ran run)."
     fi

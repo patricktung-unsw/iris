@@ -2,7 +2,8 @@
 # bin/check-changed, which picks bin/check --changed's checks, in a
 # throwaway repo with its own origin/main, then bin/check --changed itself
 # in a scratch site tree: the tests it runs, shellcheck on changed scripts
-# only, a check name it lacks, and no pass recorded for .githooks/pre-push.
+# only, every rule over the tree, a check name it lacks, and no pass
+# recorded for .githooks/pre-push.
 # Prints each failed case and nothing on success, so bin/check can run it.
 #
 #   tests/bin/test_check_changed.sh
@@ -121,24 +122,32 @@ case="a base that doesn't resolve"
 code=$?
 [ "$code" = 2 ] || fail "$case: exit $code, not 2"
 
-# bin/check --changed in a site tree. test_notes.sh names notes.md and
-# fails unless it reads "pass"; test_boom.sh always fails and names
-# nothing changed. A fake uvx stands in for shellcheck, flagging each
-# script it is given, so the run shows which files it checked.
+# bin/check --changed in a clone of this one, its working tree's edits and
+# untracked files copied in, so it passes every rule over the tree as
+# --changed runs them all (the library copies' rule reads its history).
+# Its tests/bin tests are swapped for two: test_notes.sh names notes.md and
+# fails unless it reads "pass"; test_boom.sh always fails and names nothing
+# changed. A fake uvx stands in for shellcheck, flagging each script it is
+# given, so the run shows which files it checked.
 site="$scratch/site"
-site_tree "$site"
-cp bin/check-changed bin/check-passed bin/tracked-tree "$site/bin/"
-mkdir -p "$site/tests/bin" "$scratch/path"
+mkdir -p "$scratch/path"
+git clone -q --shared . "$site"
+{ git diff -z --name-only --diff-filter=d HEAD; git ls-files -z --others --exclude-standard; } |
+    tar --null -T - -cf - | tar -xf - -C "$site"
+git diff -z --name-only --diff-filter=D HEAD | (cd "$site" && xargs -0 -r rm -f --)
+rm "$site"/tests/bin/test_*.sh
 printf '#!/bin/bash\n# bin/check name: notes test\ngrep -q pass notes.md || echo "notes.md: no pass"\n' > "$site/tests/bin/test_notes.sh"
 printf '#!/bin/bash\n# bin/check name: boom test\necho boom\n' > "$site/tests/bin/test_boom.sh"
 printf '#!/bin/bash\necho old\n' > "$site/bin/old-tool"
 echo 'start' > "$site/notes.md"
 printf '#!/bin/bash\ncat > /dev/null\necho "-:1:1: checked"\n' > "$scratch/path/uvx"
-chmod +x "$scratch/path/uvx" "$site/bin/old-tool"
+chmod +x "$scratch/path/uvx" "$site/bin/old-tool" "$site"/tests/bin/test_*.sh
 git -C "$site" add -A
 git -C "$site" -c user.name=t -c user.email=t@t commit -q -m fixture
 git -C "$site" update-ref refs/remotes/origin/main HEAD
-changed() { out="$(cd "$site" && PATH="$scratch/path:$PATH" bin/check --changed 2>&1)"; code=$?; }
+# Unset GITHUB_EVENT_NAME, so in a pull request's CI run bin/run-proof
+# --check doesn't take the fixture for that pull request.
+changed() { out="$(cd "$site" && env -u GITHUB_EVENT_NAME PATH="$scratch/path:$PATH" bin/check --changed 2>&1)"; code=$?; }
 ran_fail() { grep -qxF "FAIL: $1" <<< "$out" || fail "--changed $case: no FAIL: $1"; }
 no_fail() { ! grep -qxF "FAIL: $1" <<< "$out" || fail "--changed $case: FAIL: $1"; }
 
@@ -164,6 +173,14 @@ git -C "$site" -c user.name=t -c user.email=t@t commit -q -am pass
 changed
 [ "$code" = 0 ] || fail "--changed $case: exit $code: $out"
 (cd "$site" && bin/check-passed HEAD) && fail "--changed $case: recorded a pass for pre-push"
+
+# A rule over the tree runs whatever changed, no test naming the page.
+case="a page no test names"
+echo '<a href="/root">root</a>' >> "$site/guide/index.html"
+changed
+[ "$code" = 1 ] || fail "--changed $case: exit $code, not 1"
+ran_fail "root-absolute links"
+git -C "$site" checkout -q -- guide/index.html
 
 case="a check name bin/check lacks"
 printf '#!/bin/bash\nprintf "file\\tnotes.md\\ncheck\\tno such check\\n"\n' > "$site/bin/check-changed"
