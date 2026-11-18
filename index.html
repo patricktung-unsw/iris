@@ -343,35 +343,125 @@
     }
     .status-dot.planned { background: var(--muted); box-shadow: none; }
 
-    /* ── HOW IT WORKS ── */
-    .steps {
+    /* ── LIFECYCLE ── */
+    .lifecycle {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
-      gap: 1px;
-      background: var(--border);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      overflow: hidden;
+      gap: 32px;
     }
-    .step {
+    .stage {
+      position: relative;
+      display: flex; flex-direction: column;
       background: var(--bg2);
-      padding: 32px 24px;
+      border: 1px solid var(--border);
+      border-top: 2px solid var(--gold);
+      border-radius: 10px;
+      padding: 24px;
     }
-    .step-num {
+    /* The arrow to the next stage, in the gap between them. */
+    .stage:not(:last-child)::after {
+      content: '→';
+      position: absolute; top: 34px; right: -25px;
       font-family: 'DM Mono', monospace;
-      font-size: 11px; color: var(--blue2);
+      font-size: 16px; color: var(--gold);
+    }
+    .stage-icon {
+      width: 32px; height: 32px;
+      color: var(--gold2);
       margin-bottom: 16px;
     }
-    .step-title {
+    .stage-title {
+      font-family: 'Syne', sans-serif;
+      font-weight: 700; font-size: 16px;
+      color: #fff; margin-bottom: 6px;
+    }
+    .stage-tools {
+      font-family: 'DM Mono', monospace;
+      font-size: 11px; color: var(--blue2);
+      line-height: 1.6; margin-bottom: 12px;
+    }
+    .stage-desc {
+      font-size: 13px; color: var(--muted);
+      line-height: 1.6; margin-bottom: 16px;
+    }
+    /* A stage's screenshot slot: one image from assets/, scaled to fit.
+       Empty, it takes no space, and the stage reads as text alone. */
+    .stage-thumb:empty { display: none; }
+    .stage-thumb { margin-bottom: 16px; }
+    .stage-thumb img {
+      display: block; width: 100%; aspect-ratio: 16 / 10;
+      object-fit: cover; object-position: top left;
+      border: 1px solid var(--border); border-radius: 6px;
+    }
+    .stage-link {
+      margin-top: auto;
+      font-family: 'DM Mono', monospace;
+      font-size: 12px; color: var(--blue2); text-decoration: none;
+    }
+    .stage-link:hover { color: var(--text); }
+
+    /* ── WHY IRIS, PARTNER WITH US ── */
+    .tile-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+    }
+    .tile {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 24px;
+    }
+    .tile-title {
       font-family: 'Syne', sans-serif;
       font-weight: 700; font-size: 15px;
       color: #fff; margin-bottom: 8px;
     }
-    .step-desc {
-      font-size: 13px; color: var(--muted);
-      line-height: 1.6;
+    .tile-desc { font-size: 13px; color: var(--muted); line-height: 1.6; }
+
+    .partner-intro {
+      font-size: 16px; font-weight: 300;
+      color: var(--text); line-height: 1.7;
+      max-width: 640px; margin-bottom: 32px;
     }
-    .step-desc a { color: var(--blue2); }
+    .partner-close {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 24px; flex-wrap: wrap;
+      margin-top: 32px;
+    }
+    .partner-close p {
+      font-family: 'DM Mono', monospace;
+      font-size: 12px; color: var(--muted); line-height: 1.7;
+    }
+
+    /* ── LAB TILES ── */
+    .lab-tiles {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 16px;
+      margin-bottom: 56px;
+    }
+    .lab-tile {
+      display: flex; flex-direction: column; gap: 6px;
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-left: 2px solid var(--gold);
+      border-radius: 10px;
+      padding: 20px 24px;
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+    .lab-tile:hover { border-color: var(--border2); border-left-color: var(--gold2); background: var(--bg3); }
+    .lab-tile-name {
+      font-family: 'Syne', sans-serif;
+      font-size: 16px; font-weight: 700; color: var(--gold2);
+    }
+    .lab-tile-desc { font-size: 13px; color: var(--muted); line-height: 1.5; }
+    .lab-tile-counts {
+      font-family: 'DM Mono', monospace;
+      font-size: 11px; color: var(--blue2);
+      margin-top: 6px;
+    }
 
     /* ── FOOTER ── */
     footer {
@@ -397,12 +487,24 @@
     .hero-sub     { animation: fadeUp 0.5s 0.2s ease both; }
     .hero-actions { animation: fadeUp 0.5s 0.3s ease both; }
 
+    @media (max-width: 1000px) {
+      .lifecycle { grid-template-columns: 1fr 1fr; }
+      .stage:nth-child(2)::after { display: none; }
+    }
+
     @media (max-width: 768px) {
       body > nav { padding: 0 20px; }
+      h1 { font-size: clamp(36px, 11vw, 48px); letter-spacing: -1px; }
       .nav-links { display: none; }
       .hero { padding: 120px 20px 60px; }
       section { padding: 0 20px 60px; }
-      .steps { grid-template-columns: 1fr 1fr; }
+      .lifecycle { grid-template-columns: 1fr; }
+      .stage:not(:last-child)::after {
+        content: '↓'; top: auto; right: auto;
+        bottom: -27px; left: 50%; transform: translateX(-50%);
+      }
+      .stage:nth-child(2)::after { display: block; }
+      .tile-grid { grid-template-columns: 1fr; }
       footer { flex-direction: column; gap: 16px; text-align: center; }
     }
   </style>
@@ -427,17 +529,89 @@
 
 <!-- HERO -->
 <div class="hero">
-  <div class="hero-eyebrow">UNSW ResTech · AI Imaging Gateway</div>
-  <h1>UNSW <span class="accent">I</span>ntelligent <span class="accent">R</span>esearch<br><span class="accent">I</span>maging <span class="accent">S</span>uite</h1>
+  <div class="hero-eyebrow">UNSW ResTech · AI Imaging Gateway on the Katana supercomputer</div>
+  <h1><span class="accent">I</span>ntelligent<br><span class="accent">R</span>esearch<br><span class="accent">I</span>maging<br><span class="accent">S</span>uite</h1>
   <p class="hero-sub">
-    Imaging workflows on Katana. Stage your dataset once, then launch a run in two clicks: no terminal, no environment to build.
-    Every run is tracked so you can compare experiments.
+    IRIS is UNSW's AI imaging gateway on the Katana supercomputer. Choose your lab's workflow, transfer your dataset once, and run AI analysis on Katana's GPUs from a web form: no terminal, no software to install.
+    Every run is recorded so you can compare experiments, and every workflow is minted with a DOI you can cite.
   </p>
   <div class="hero-actions">
     <a href="#workflows" class="btn btn-primary">Browse workflows</a>
     <a href="https://github.com/unsw-restech/iris" class="btn btn-outline" target="_blank">View on GitHub</a>
   </div>
 </div>
+
+<!-- LIFECYCLE: each stage's stage-thumb slot takes one screenshot from
+     assets/, as <img src="assets/..." alt="...">; empty, it shows nothing. -->
+<section id="lifecycle">
+  <div class="section-header">
+    <span class="section-title">From dataset to paper</span>
+    <span class="section-mono">Four stages, one path</span>
+  </div>
+  <div class="lifecycle">
+    <div class="stage">
+      <svg class="stage-icon" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M5 11h20l-5-5M27 21H7l5 5"/>
+      </svg>
+      <div class="stage-title">Transfer</div>
+      <div class="stage-tools">Globus · both ways</div>
+      <p class="stage-desc">Copy your dataset to Katana once, and bring run directories back when you need them.</p>
+      <div class="stage-thumb"></div>
+      <a class="stage-link" href="guide/#send">Send it to Katana →</a>
+    </div>
+    <div class="stage">
+      <svg class="stage-icon" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="5" y="5" width="22" height="22" rx="3"/><path d="M13 11v10l8-5z"/>
+      </svg>
+      <div class="stage-title">Run</div>
+      <div class="stage-tools">OpenComposer on Katana OnDemand · Katana GPUs · a fixed container</div>
+      <p class="stage-desc">Fill in the workflow's form in your browser and submit it. The job runs on Katana's GPUs in an environment built ahead of time.</p>
+      <div class="stage-thumb"></div>
+      <a class="stage-link" href="workflows/microct-2d-segmentation/#run">Run a workflow →</a>
+    </div>
+    <div class="stage">
+      <svg class="stage-icon" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M5 27V5M5 27h22"/><path d="M10 21l5-6 4 3 7-9"/>
+      </svg>
+      <div class="stage-title">View &amp; compare</div>
+      <div class="stage-tools">napari · MLflow</div>
+      <p class="stage-desc">Check a run's results in napari, and compare runs side by side in MLflow, from a Katana Virtual Desktop.</p>
+      <div class="stage-thumb"></div>
+      <a class="stage-link" href="guide/#compare">View and compare →</a>
+    </div>
+    <div class="stage">
+      <svg class="stage-icon" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M9 4h10l6 6v18H9z"/><path d="M19 4v6h6M13 16h8M13 21h8"/>
+      </svg>
+      <div class="stage-title">Cite &amp; share</div>
+      <div class="stage-tools">WorkflowHub · DOI · GitHub</div>
+      <p class="stage-desc">Each workflow is minted on WorkflowHub with its own DOI and is open on GitHub, so papers can cite exactly what ran and other labs can reuse it.</p>
+      <div class="stage-thumb"></div>
+      <a class="stage-link" href="workflows/microct-2d-segmentation/#cite">Cite a workflow →</a>
+    </div>
+  </div>
+</section>
+
+<!-- WHY IRIS -->
+<section id="why">
+  <div class="section-header">
+    <span class="section-title">Why IRIS</span>
+  </div>
+  <div class="tile-grid">
+    <div class="tile">
+      <div class="tile-title">No terminal, no installs</div>
+      <p class="tile-desc">Researchers run tested AI workflows from a browser form, in environments built and fixed ahead of time.</p>
+    </div>
+    <div class="tile">
+      <div class="tile-title">Reproducible by default</div>
+      <p class="tile-desc">Every run records the exact code, settings and dataset it used, and runs compare side by side in MLflow.</p>
+    </div>
+    <div class="tile">
+      <div class="tile-title">Citable and shareable</div>
+      <p class="tile-desc">Every workflow is minted on WorkflowHub with its own DOI and its code is open on GitHub, so papers can cite exactly what ran and other labs can reuse it.</p>
+    </div>
+  </div>
+</section>
 
 <!-- START HERE -->
 <section id="start-here">
@@ -462,6 +636,22 @@
 <section id="workflows">
   <div class="section-header">
     <span class="section-title">Workflow catalogue</span>
+    <span class="section-mono">Choose your lab, then a workflow</span>
+  </div>
+
+  <!-- One tile per lab section, in section order; bin/check holds each
+       tile's counts to its section's Active and Planned cards. -->
+  <div class="lab-tiles">
+    <a href="#microct-lab" class="lab-tile">
+      <span class="lab-tile-name">X-ray MicroCT Lab</span>
+      <span class="lab-tile-desc">3D X-ray imaging of materials and specimens</span>
+      <span class="lab-tile-counts">1 active · 3 planned</span>
+    </a>
+    <a href="#bril" class="lab-tile">
+      <span class="lab-tile-name">BRIL</span>
+      <span class="lab-tile-desc">Preclinical imaging</span>
+      <span class="lab-tile-counts">0 active · 1 planned</span>
+    </a>
   </div>
 
   <div class="lab" id="microct-lab">
@@ -560,33 +750,29 @@
   </div>
 </section>
 
-<!-- HOW IT WORKS -->
-<section id="howto">
+<!-- PARTNER WITH US -->
+<section id="partner">
   <div class="section-header">
-    <span class="section-title">How it works</span>
-    <span class="section-mono">Four steps to running a workflow</span>
+    <span class="section-title">Partner with us</span>
   </div>
-  <div class="steps">
-    <div class="step">
-      <div class="step-num">01 / STAGE</div>
-      <div class="step-title">Stage your dataset</div>
-      <div class="step-desc">Send your dataset folder to your Katana scratch once, with Globus from your browser. <a href="guide/#stage">How to stage a dataset</a></div>
+  <p class="partner-intro">IRIS is built for UNSW's imaging labs and facilities. If your research needs more than a ready-made workflow, let's talk.</p>
+  <div class="tile-grid">
+    <div class="tile">
+      <div class="tile-title">Research collaborations</div>
+      <p class="tile-desc">Work with ResTech on imaging and AI methods for your projects.</p>
     </div>
-    <div class="step">
-      <div class="step-num">02 / RUN</div>
-      <div class="step-title">Launch in two clicks</div>
-      <div class="step-desc">Click Run on Katana on the workflow page, then submit the form.</div>
+    <div class="tile">
+      <div class="tile-title">Grant applications</div>
+      <p class="tile-desc">Letters of support and in-kind contributions to applications, by discussion.</p>
     </div>
-    <div class="step">
-      <div class="step-num">03 / VIEW &amp; COMPARE</div>
-      <div class="step-title">Check and compare runs</div>
-      <div class="step-desc">In a Katana Virtual Desktop, view results in napari and compare runs in MLflow with <code>iris-compare</code>. <a href="guide/#view">How to view and compare</a></div>
+    <div class="tile">
+      <div class="tile-title">Bespoke workflows</div>
+      <p class="tile-desc">A workflow built for an analysis too complex for a self-serve form.</p>
     </div>
-    <div class="step">
-      <div class="step-num">04 / CITE</div>
-      <div class="step-title">Cite in your paper</div>
-      <div class="step-desc">Cite the workflow's citable version from its page, give the commit in your run's <code>commit.txt</code>, and acknowledge Katana. <a href="https://github.com/unsw-restech/iris#citing-iris" target="_blank">How to cite</a></div>
-    </div>
+  </div>
+  <div class="partner-close">
+    <p>Every partnership starts as a conversation; nothing here is a commitment.</p>
+    <a href="mailto:patrick.tung@unsw.edu.au" class="btn btn-primary">Get in touch</a>
   </div>
 </section>
 
