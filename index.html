@@ -152,6 +152,17 @@
 
     .hero-actions { display: flex; gap: 16px; flex-wrap: wrap; }
 
+    /* Wide screens put the title and its paragraph side by side; below the
+       lifecycle's 1000px breakpoint they stack. */
+    @media (min-width: 1001px) {
+      .hero-row {
+        display: grid; grid-template-columns: auto 1fr;
+        gap: 64px; align-items: center;
+        margin-bottom: 48px;
+      }
+      .hero-row h1, .hero-row .hero-sub { margin: 0; }
+    }
+
     .btn {
       display: inline-flex; align-items: center; gap: 8px;
       padding: 12px 24px;
@@ -507,11 +518,13 @@
 <!-- HERO -->
 <div class="hero">
   <div class="hero-eyebrow">UNSW ResTech · AI Imaging Gateway on the Katana supercomputer</div>
-  <h1><span class="accent">I</span>ntelligent<br><span class="accent">R</span>esearch<br><span class="accent">I</span>maging<br><span class="accent">S</span>uite</h1>
-  <p class="hero-sub">
-    IRIS is UNSW's AI imaging gateway on the Katana supercomputer. Choose your lab's workflow, transfer your dataset once, and run AI analysis on Katana's GPUs from a web form: no terminal, no software to install.
-    Every run is recorded so you can compare experiments, and every workflow is minted with a DOI you can cite.
-  </p>
+  <div class="hero-row">
+    <h1><span class="accent">I</span>ntelligent<br><span class="accent">R</span>esearch<br><span class="accent">I</span>maging<br><span class="accent">S</span>uite</h1>
+    <p class="hero-sub">
+      IRIS is UNSW's AI imaging gateway on the Katana supercomputer. Choose your lab's workflow, transfer your dataset once, and run AI analysis on Katana's GPUs from a web form: no terminal, no software to install.
+      Every run is recorded so you can compare experiments, and every workflow is minted with a DOI you can cite.
+    </p>
+  </div>
   <div class="hero-actions">
     <a href="#workflows" class="btn btn-primary">Browse workflows</a>
     <a href="https://github.com/unsw-restech/iris" class="btn btn-outline" target="_blank">View on GitHub</a>
@@ -575,7 +588,6 @@
 <section id="start-here">
   <div class="section-header">
     <span class="section-title">Start here</span>
-    <span class="section-mono">New to IRIS? Run a test job first</span>
   </div>
   <a href="workflows/hello-world/" class="start-card">
     <div>
@@ -594,7 +606,6 @@
 <section id="workflows">
   <div class="section-header">
     <span class="section-title">Workflow catalogue</span>
-    <span class="section-mono">Choose your lab, then a workflow</span>
   </div>
 
   <!-- One tile per lab section, in section order; bin/check holds each
