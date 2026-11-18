@@ -112,6 +112,6 @@ A workflow whose form pins an unpublished version fails its tests in `bin/check`
 
 Nothing in `microct/1` uses pretrained weights; the reference workflow trains from scratch. When a workflow does need them:
 
-- Stage them once, on the data mover, into `/srv/scratch/katana_ai/iris/models/<name>/<version>/`, and make that folder read-only.
+- Copy them once, on the data mover, into `/srv/scratch/katana_ai/iris/models/<name>/<version>/`, and make that folder read-only.
 - The job script points the library caches there (`TORCH_HOME`, `HF_HOME`, and any tool-specific variable such as `CELLPOSE_LOCAL_MODELS_PATH`) and sets `HF_HUB_OFFLINE=1`. That way an unexpected download fails loudly instead of fetching at run time.
 - The weights' version is part of the job script, like the environment version.

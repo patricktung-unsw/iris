@@ -384,7 +384,7 @@
       font-size: 13px; color: var(--muted);
       line-height: 1.6; margin-bottom: 16px;
     }
-    /* A stage's screenshot slot: one image from assets/, scaled to fit.
+    /* A stage's screenshot slot: one image from assets/screenshots/, scaled to fit.
        Empty, it takes no space, and the stage reads as text alone. */
     .stage-thumb:empty { display: none; }
     .stage-thumb { margin-bottom: 16px; }
@@ -401,23 +401,23 @@
     .stage-link:hover { color: var(--text); }
 
     /* ── WHY IRIS, PARTNER WITH US ── */
-    .tile-grid {
+    .feature-grid {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
       gap: 16px;
     }
-    .tile {
+    .feature {
       background: var(--bg2);
       border: 1px solid var(--border);
       border-radius: 10px;
       padding: 24px;
     }
-    .tile-title {
+    .feature-title {
       font-family: 'Syne', sans-serif;
       font-weight: 700; font-size: 15px;
       color: #fff; margin-bottom: 8px;
     }
-    .tile-desc { font-size: 13px; color: var(--muted); line-height: 1.6; }
+    .feature-desc { font-size: 13px; color: var(--muted); line-height: 1.6; }
 
     .partner-intro {
       font-size: 16px; font-weight: 300;
@@ -504,7 +504,7 @@
         bottom: -27px; left: 50%; transform: translateX(-50%);
       }
       .stage:nth-child(2)::after { display: block; }
-      .tile-grid { grid-template-columns: 1fr; }
+      .feature-grid { grid-template-columns: 1fr; }
       footer { flex-direction: column; gap: 16px; text-align: center; }
     }
   </style>
@@ -542,7 +542,7 @@
 </div>
 
 <!-- LIFECYCLE: each stage's stage-thumb slot takes one screenshot from
-     assets/, as <img src="assets/..." alt="...">; empty, it shows nothing. -->
+     assets/screenshots/, as <img src="assets/screenshots/..." alt="...">; empty, it shows nothing. -->
 <section id="lifecycle">
   <div class="section-header">
     <span class="section-title">From dataset to paper</span>
@@ -575,7 +575,7 @@
       </svg>
       <div class="stage-title">View &amp; compare</div>
       <div class="stage-tools">napari · MLflow</div>
-      <p class="stage-desc">Check a run's results in napari, and compare runs side by side in MLflow, from a Katana Virtual Desktop.</p>
+      <p class="stage-desc">Check what a run produced in napari, and compare runs side by side in MLflow, from a Katana Virtual Desktop.</p>
       <div class="stage-thumb"></div>
       <a class="stage-link" href="guide/#compare">View and compare →</a>
     </div>
@@ -597,18 +597,18 @@
   <div class="section-header">
     <span class="section-title">Why IRIS</span>
   </div>
-  <div class="tile-grid">
-    <div class="tile">
-      <div class="tile-title">No terminal, no installs</div>
-      <p class="tile-desc">Researchers run tested AI workflows from a browser form, in environments built and fixed ahead of time.</p>
+  <div class="feature-grid">
+    <div class="feature">
+      <div class="feature-title">No terminal, no installs</div>
+      <p class="feature-desc">Researchers run tested AI workflows from a browser form, in environments built and fixed ahead of time.</p>
     </div>
-    <div class="tile">
-      <div class="tile-title">Reproducible by default</div>
-      <p class="tile-desc">Every run records the exact code, settings and dataset it used, and runs compare side by side in MLflow.</p>
+    <div class="feature">
+      <div class="feature-title">Reproducible by default</div>
+      <p class="feature-desc">Every run records the exact code, settings and dataset it used, and runs compare side by side in MLflow.</p>
     </div>
-    <div class="tile">
-      <div class="tile-title">Citable and shareable</div>
-      <p class="tile-desc">Every workflow is minted on WorkflowHub with its own DOI and its code is open on GitHub, so papers can cite exactly what ran and other labs can reuse it.</p>
+    <div class="feature">
+      <div class="feature-title">Citable and shareable</div>
+      <p class="feature-desc">Every workflow is minted on WorkflowHub with its own DOI and its code is open on GitHub, so papers can cite exactly what ran and other labs can reuse it.</p>
     </div>
   </div>
 </section>
@@ -756,18 +756,18 @@
     <span class="section-title">Partner with us</span>
   </div>
   <p class="partner-intro">IRIS is built for UNSW's imaging labs and facilities. If your research needs more than a ready-made workflow, let's talk.</p>
-  <div class="tile-grid">
-    <div class="tile">
-      <div class="tile-title">Research collaborations</div>
-      <p class="tile-desc">Work with ResTech on imaging and AI methods for your projects.</p>
+  <div class="feature-grid">
+    <div class="feature">
+      <div class="feature-title">Research collaborations</div>
+      <p class="feature-desc">Work with ResTech on imaging and AI methods for your projects.</p>
     </div>
-    <div class="tile">
-      <div class="tile-title">Grant applications</div>
-      <p class="tile-desc">Letters of support and in-kind contributions to applications, by discussion.</p>
+    <div class="feature">
+      <div class="feature-title">Grant applications</div>
+      <p class="feature-desc">Letters of support and in-kind contributions to applications, by discussion.</p>
     </div>
-    <div class="tile">
-      <div class="tile-title">Bespoke workflows</div>
-      <p class="tile-desc">A workflow built for an analysis too complex for a self-serve form.</p>
+    <div class="feature">
+      <div class="feature-title">Bespoke workflows</div>
+      <p class="feature-desc">A workflow built for an analysis too complex for a self-serve form.</p>
     </div>
   </div>
   <div class="partner-close">

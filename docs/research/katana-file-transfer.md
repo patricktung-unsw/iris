@@ -93,7 +93,7 @@ AGENTS.md says that transfers over 10 GB go through the data mover, never a logi
 
 **How it works.** On `kdm`, run `module add unswdataarchive/<version>`, then `get-config-file`, add a token (from the IT Service Centre) or `user=<zID>`, then `download.sh /UNSW_RDS/Dxxxxxxx/... <dir>`. Needs an RDMP ([data archive page](https://docs.restech.unsw.edu.au/storage/data_archive/)). Versions on `kdm`: 2017-02-06 to 2025-10-29 (`module avail unswdataarchive`).
 
-**From a laptop to the Archive** (not to Katana): the web app for under 50 GB or 1000 files, SFTP to `rds.unsw.edu.au:8022` above that ([Data Archive SFTP guide](https://www.unsw.edu.au/research/data-archive/help-topics/sftp-client-guide)). Researchers could stage data there with a GUI client, but that's two hops instead of one.
+**From a laptop to the Archive** (not to Katana): the web app for under 50 GB or 1000 files, SFTP to `rds.unsw.edu.au:8022` above that ([Data Archive SFTP guide](https://www.unsw.edu.au/research/data-archive/help-topics/sftp-client-guide)). Researchers could transfer data there with a GUI client, but that's two hops instead of one.
 
 **Suitability.** Good when the data already lives in the Archive. It needs a terminal on `kdm`, so a non-technical researcher needs help.
 

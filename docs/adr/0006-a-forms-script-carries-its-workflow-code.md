@@ -12,7 +12,7 @@ Researchers want to change a workflow's code for one run, such as the model's ar
 
 - **Only a marked model section in the pane**: safer, but covers the architecture and nothing else; researchers also want to change the loss, augmentation or training loop.
 - **The entry script and `lib/iris` both in the pane**: rejected, since an edit could then break the run record and leave the run invisible to the importer.
-- **A copy of the workflow in the researcher's scratch, named by a form field**: rejected for now. It suits large changes but adds staging, and the code that ran is no longer visible on the form.
+- **A copy of the workflow in the researcher's scratch, named by a form field**: rejected for now. It suits large changes but adds a step of copying the code there, and the code that ran is no longer visible on the form.
 - **A second editable pane for the code**: not possible. OpenComposer 1.9.0 has one editable script pane and no multi-line text widget.
 
 ## Consequences

@@ -105,7 +105,7 @@ A frozen WorkflowHub snapshot of one workflow at one commit of `main`, with its 
 _Avoid_: Release, workflow version
 
 **Minting**:
-Publishing a citable version of a workflow on WorkflowHub, which gives it its own DOI and makes that snapshot the official one to cite. The workflow owner mints the first straight after the workflow joins IRIS, then again only when its results would change.
+Making a citable version of a workflow public on WorkflowHub, which gives it its own DOI and makes that snapshot the official one to cite. The workflow owner mints the first straight after the workflow joins IRIS, then again only when its results would change.
 _Avoid_: Releasing, tagging, publishing
 
 **Run**:
