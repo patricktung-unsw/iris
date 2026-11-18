@@ -34,4 +34,7 @@ Read at review, against a diff. These are the judgement calls; every mechanical 
 
 - **A record step warns, a run step fails.** Writing the run record or dataset record only warns on failure; anything the run's own result depends on stops the job.
 - **Killed halfway leaves a whole file or none.** Anything that writes a file a later run reads (a record, a pointer, a store) writes it under a temporary name and renames it into place, as `rundir.write_atomic` and `tracking.rebuild` do, or leaves a state the next run recovers from (the importer's `incomplete` tag). Walltime and `qdel` will interrupt it.
-- **Katana facts cite their source.** A limit, module name or path in code or docs names the job ID, file or the IRIS maintainer's confirmation (with date) behind it.
+
+## Facts
+
+- **Facts cite their source.** A fact in code or docs, about Katana (a limit, module name or path) or about GitHub, the registry or any other service, names the job ID, run, file, page or the IRIS maintainer's confirmation (with date) behind it. Docs state only what has been seen: an acceptance box not yet ticked stays in its ticket. Past miss: #132's first draft said each new tag of the environment package would be public, before any tag had been published since the change, that a public package's storage is free, and that the org, not the enterprise, set the package policy, each with no source.

@@ -1,0 +1,76 @@
+#!/bin/bash
+# Which of bin/check's checks a change reaches, for bin/check --changed:
+# the files changed since <base> (the merge-base of origin/main and HEAD
+# if not given), in the working tree, untracked ones included, and the
+# checks that cover them. Run from anywhere in the clone.
+#
+#   bin/check-changed [<base>]
+#
+# Prints tab-separated lines:
+#   file<TAB><path>       each changed file
+#   test<TAB><path>       each tests/bin/test_*.sh that is changed or holds
+#                         a changed file's whole path, as bin/envrun is in
+#                         test_envrun.sh (#132's change to bin/envrun met
+#                         its test only in review)
+#   check<TAB><name>      actionlint, ruff, the synthetic-dataset test (the
+#                         Python tests) and the environment versions check,
+#                         each by its name in bin/check, when a changed file
+#                         is one it reads; bin/check fails a name it has no
+#                         check for, so a rename there can't drop one here.
+#                         bin/check --changed runs shellcheck itself, on the
+#                         changed files its own rule takes for scripts
+#   untested<TAB><path>   each changed file no test names, which only the
+#                         full bin/check's other checks may cover
+# Exits 2 if <base> doesn't resolve, 1 if nothing changed.
+
+cd "$(dirname "$(readlink -f "$0")")/.." || exit 1
+[ $# -le 1 ] || { echo "usage: bin/check-changed [<base>]" >&2; exit 2; }
+if [ $# = 1 ]; then
+    base="$(git rev-parse --verify -q "$1^{commit}")" || { echo "bin/check-changed: no commit $1" >&2; exit 2; }
+else
+    base="$(git merge-base origin/main HEAD)" || { echo "bin/check-changed: no merge-base of origin/main and HEAD" >&2; exit 2; }
+fi
+
+mapfile -t changed < <({ git diff --name-only "$base"; git ls-files --others --exclude-standard; } | sort -u)
+[ ${#changed[@]} -gt 0 ] || exit 1
+
+declare -A tests=() checks=()
+for f in "${changed[@]}"; do
+    printf 'file\t%s\n' "$f"
+    named=0
+    case "$f" in
+        tests/bin/test_*.sh) tests[$f]=1; named=1 ;;
+    esac
+    # The path whole, not inside a longer one (bin/check in
+    # bin/check-passed; a / before it, as in "$repo/bin/envrun", is fine),
+    # and not on a test's "# bin/check name:" line.
+    re="(^|[^[:alnum:]_.-])$(printf '%s' "$f" | sed 's/[][\\.^$*+?(){}|]/\\&/g')(\$|[^[:alnum:]_.-])"
+    for t in tests/bin/test_*.sh; do
+        [ -f "$t" ] || continue
+        if tr -d '\r' < "$t" | grep -v '^# bin/check name:' | grep -qE -- "$re"; then
+            tests[$t]=1; named=1
+        fi
+    done
+    [ "$named" = 1 ] || printf 'untested\t%s\n' "$f"
+    case "$f" in
+        _archive/*) continue ;;
+    esac
+    case "$f" in
+        .github/workflows/*) checks[actionlint]=1 ;;
+    esac
+    case "$f" in
+        *.py) checks[ruff]=1 ;;
+    esac
+    case "$f" in
+        # What the Python tests run: their code and tests, the containers
+        # they run in (bin/envrun, envs/) and each form's pinned version.
+        lib/*.py|lib/tests/*|lib/katana.sh|workflows/*.py|workflows/*/tests/*|workflows/*/form.yml.erb|bin/envrun|envs/*)
+            checks["synthetic-dataset test"]=1 ;;
+    esac
+    case "$f" in
+        envs/*|lib/katana.sh) checks["environment versions match the digest map"]=1 ;;
+    esac
+done
+for t in "${!tests[@]}"; do printf 'test\t%s\n' "$t"; done | sort
+for c in "${!checks[@]}"; do printf 'check\t%s\n' "$c"; done | sort
+exit 0

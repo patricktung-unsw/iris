@@ -12,6 +12,14 @@
 #                       (the name a failure prints after FAIL:, e.g.
 #                       "card status"), for a quick loop while editing;
 #                       commit on a full run
+#   bin/check --changed run only the checks that cover the files changed
+#                       since the merge-base with origin/main, working tree
+#                       and untracked files included, as bin/check-changed
+#                       lists them: each tests/bin test naming one, the
+#                       scripts among them through shellcheck, and
+#                       actionlint, ruff and the Python tests where they
+#                       apply; it notes each changed file no test names
+# Neither records a pass: commit on a full run.
 #
 # A full run that passes records the tree it checked for .githooks/pre-push
 # (bin/check-passed says why).
@@ -29,18 +37,51 @@
 # and are not run here: see AGENTS.md.
 
 cd "$(dirname "$(readlink -f "$0")")/.." || exit 1
-[ $# -le 1 ] || { echo "usage: bin/check [<text>]; quote a name with spaces" >&2; exit 2; }
-only="$1"
+[ $# -le 1 ] || { echo "usage: bin/check [<text> | --changed]; quote a name with spaces" >&2; exit 2; }
+only="${1-}"
+# With --changed, the checks to run and the changed files, from
+# bin/check-changed, which the test loop and shellcheck_all read.
+changed_mode=""
+declare -A wanted=() changed_files=() seen=()
+if [ "$only" = --changed ]; then
+    changed_mode=1
+    wanted[shellcheck]=1
+    named_checks=()
+    out="$(bin/check-changed)"
+    case $? in
+        0) ;;
+        1) echo "No file changed since origin/main."; exit 2 ;;
+        *) exit 2 ;;
+    esac
+    while IFS=$'\t' read -r kind value; do
+        case "$kind" in
+            file) changed_files[$value]=1 ;;
+            test) wanted[$value]=1 ;;
+            check) wanted[$value]=1; named_checks+=("$value") ;;
+            untested) echo "NOTE: no tests/bin test names $value" ;;
+        esac
+    done <<< "$out"
+fi
 failed=0
 failures=()
 # The tree this run checks, taken before any check reads a file.
 start_tree="$(bin/tracked-tree 2> /dev/null)"
 ran=0
 
-# Whether the check named $1 is selected by the <text> argument; counts
-# it in $ran if so.
+# Whether the check named $1 is selected by the <text> argument, or with
+# --changed is one bin/check-changed listed.
+wants() {
+    if [ -n "$changed_mode" ]; then
+        [ -n "${wanted[$1]-}" ]
+    else
+        [[ "$1" == *"$only"* ]]
+    fi
+}
+
+# wants, counting the check in $ran if so.
 selected() {
-    [[ "$1" == *"$only"* ]] && ran=$((ran + 1))
+    seen[$1]=1
+    wants "$1" && ran=$((ran + 1))
 }
 
 # failed_check <name>: prints the FAIL: line and counts the failure.
@@ -383,7 +424,7 @@ env_version_notes() {
         [ -z "$note" ] || echo "NOTE: $note"
     done
 }
-[[ "$env_versions_check" != *"$only"* ]] || env_version_notes
+! wants "$env_versions_check" || env_version_notes
 
 # Print form lines that break a rule, by top-level section: no heredoc in
 # script: (every line there stays indented), no Ruby #{} in check: (it
@@ -1094,7 +1135,13 @@ check "IRIS contact is patrick.tung@unsw.edu.au" git grep -niE '(restech|imaging
 shellcheck_pin=shellcheck-py==0.11.0.1
 shellcheck_all() {
     local f files
-    mapfile -t files < <(git ls-files | grep -v '^_archive/' | while IFS= read -r f; do
+    # With --changed, the changed files, untracked ones included, that are
+    # still there.
+    mapfile -t files < <({ if [ -n "$changed_mode" ]; then
+            for f in "${!changed_files[@]}"; do [ -f "$f" ] && echo "$f"; done | sort
+        else
+            git ls-files
+        fi; } | grep -v '^_archive/' | while IFS= read -r f; do
         case "$f" in
             *.sh) echo "$f" ;;
             *) head -n1 "$f" | grep -qE '^#!.*\b(ba)?sh\b' && echo "$f" ;;
@@ -1123,6 +1170,7 @@ check "actionlint" uvx --quiet --from actionlint-py==1.7.12.25 --with "$shellche
 for t in tests/bin/test_*.sh; do
     [ -f "$t" ] || continue
     n=$(tr -d '\r' < "$t" | sed -n 's/^# bin\/check name: //p' | head -n1)
+    [ -z "${wanted[$t]-}" ] || wanted["${n:-$t}"]=1
     check "${n:-$t}" bash "$t"
 done
 
@@ -1173,8 +1221,17 @@ if selected "synthetic-dataset test"; then
     done
 fi
 
+# A check bin/check-changed names that no check here has: renamed here.
+for c in "${named_checks[@]}"; do
+    [ -n "${seen[$c]-}" ] || failed_check "bin/check-changed names '$c', which bin/check has no check for"
+done
+
 if [ "$ran" = 0 ]; then
-    echo "No check name contains '$only'."
+    if [ -n "$changed_mode" ]; then
+        echo "No check covers the files changed since origin/main; run the full bin/check."
+    else
+        echo "No check name contains '$only'."
+    fi
     exit 2
 fi
 if [ "$failed" = 0 ]; then
@@ -1186,6 +1243,8 @@ if [ "$failed" = 0 ]; then
         else
             bin/check-passed --record "$start_tree" || echo "bin/check: the pass isn't recorded for .githooks/pre-push" >&2
         fi
+    elif [ -n "$changed_mode" ]; then
+        echo "Checks covering the changed files passed ($ran run); commit on a full run."
     else
         echo "Checks matching '$only' passed ($ran run)."
     fi
