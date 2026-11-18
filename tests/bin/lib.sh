@@ -96,9 +96,10 @@ expect() {
 # site_tree <tree> [<slug>:<lab>:<tier>]...: a site in <tree> that passes
 # bin/check's site rules, as a git repo with every file added, holding a
 # copy of bin/check, the Avoid-word list it reads (.githooks/avoid-names) and
-#   - index.html: a lab section (id="<lab>") per lab, in the order given,
-#     holding a card per workflow whose status label follows its tier; an
-#     unmaintained workflow has no card
+#   - index.html: a lab tile per lab, linking #<lab> and counting its
+#     active and planned workflows, then a lab section (id="<lab>") per lab,
+#     in the order given, holding a card per workflow whose status label
+#     follows its tier; an unmaintained workflow has no card
 #   - workflows/<slug>/index.html per workflow, its breadcrumb linking its
 #     lab, with the unmaintained-banner if it is unmaintained
 #   - guide/ and contribute/ pages; every page has the same logo
@@ -109,7 +110,7 @@ expect() {
 # <tier> is active (Run and verified), planned or unmaintained. A test then breaks the part its rule
 # reads; a rule that reads git's index needs git -C <tree> add -A after.
 site_tree() {
-    local tree="$1" spec slug lab tier t list planned labs=()
+    local tree="$1" spec slug lab tier t list planned active labs=()
     shift
     local -A title=([active]="Run and verified" [planned]=Planned [unmaintained]=Unmaintained)
     local -A status=([active]=Active [planned]=Planned)
@@ -131,6 +132,21 @@ site_tree() {
     {
         echo '<nav><a href="./"><span class="nav-logo-text">UNSW IRIS</span></a></nav>'
         echo '<section id="workflows">'
+        echo '  <div class="lab-tiles">'
+        for t in "${labs[@]}"; do
+            active=0; planned=0
+            for spec in "$@"; do
+                IFS=: read -r slug lab tier <<< "$spec"
+                [ "$lab" = "$t" ] || continue
+                [ "$tier" != active ] || active=$((active + 1))
+                [ "$tier" != planned ] || planned=$((planned + 1))
+            done
+            echo "    <a href=\"#$t\" class=\"lab-tile\">"
+            echo "      <span class=\"lab-tile-name\">$t</span>"
+            echo "      <span class=\"lab-tile-counts\">$active active · $planned planned</span>"
+            echo '    </a>'
+        done
+        echo '  </div>'
         for t in "${labs[@]}"; do
             echo "  <div class=\"lab\" id=\"$t\">"
             for spec in "$@"; do
