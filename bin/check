@@ -610,14 +610,14 @@ resolve_each() {
     tr -d '\r' | sort -u | while IFS= read -r link; do resolve_link "$1" "$link" "$2"; done
 }
 
-# Every local link resolves, anchor included: relative hrefs in the site's
-# pages, the relative links and #anchors in every tracked Markdown file,
-# and docs.restech.unsw.edu.au/iris/ URLs in any tracked file outside the
+# Every local link resolves, anchor included: relative hrefs and srcs (a
+# screenshot's <img>) in the site's pages, the relative links and #anchors
+# in every tracked Markdown file, and docs.restech.unsw.edu.au/iris/ URLs in any tracked file outside the
 # desktop tools and their tests.
 local_links() {
     local f url
     for f in $(pages); do
-        grep -oE 'href="[^"]*"' "$f" | sed 's/^href="//; s/"$//' | grep -vE '^(https?|mailto):' |
+        grep -oE '(href|src)="[^"]*"' "$f" | sed -E 's/^(href|src)="//; s/"$//' | grep -vE '^(https?|mailto):' |
             resolve_each "$f" "$(dirname "$f")"
     done
     git ls-files '*.md' ':(exclude)_archive' | while IFS= read -r f; do

@@ -102,9 +102,14 @@
     <h3 class="sub">Find the job output</h3>
     <p>When a job ends, PBS writes its output into your dataset as <code>runs/&lt;job ID&gt;.OU</code>, beside the run directory, <code>runs/&lt;job number&gt;/</code>. When the job succeeds, its output ends with the commands to view and compare it: <code>module load iris</code>, then <code>iris-view</code> with the run directory, and <code>iris-compare</code>. Read it in a terminal in the Virtual Desktop below, for example with <code>tail /srv/scratch/zID/my-dataset/runs/1234567*.OU</code>.</p>
 
-    <!-- Virtual Desktop size: unsw-restech/iris#14. -->
+    <!-- Virtual Desktop size: unsw-restech/iris#14. FastX Desktop is OnDemand's Virtual Desktop (the IRIS maintainer, 2026-11-18, #217). -->
     <h3 class="sub">Start a Virtual Desktop</h3>
-    <p>In Katana OnDemand, start a Virtual Desktop with <strong>no GPU, 4 cores, 16 GB of memory and 4 hours</strong>. That is enough for most volumes, and asking for more only queues you longer. One desktop serves everything below. Open a terminal in it, and run <code>module load iris</code>. That gives the terminal the <code>iris-view</code> and <code>iris-compare</code> commands until you close it, so a new terminal needs it again: without it, the terminal says <code>iris-view: command not found</code>.</p>
+    <p>In Katana OnDemand, start a Virtual Desktop, <strong>FastX Desktop</strong>, with <strong>no GPU, 4 cores, 16 GB of memory and 4 hours</strong>. That is enough for most volumes, and asking for more only queues you longer. One desktop serves everything below. Open a terminal in it, and run <code>module load iris</code>. That gives the terminal the <code>iris-view</code> and <code>iris-compare</code> commands until you close it, so a new terminal needs it again: without it, the terminal says <code>iris-view: command not found</code>.</p>
+    <!-- Screenshot from a pilot run, 2026-11-18 (#216): retake when FastX Desktop's launch page changes. -->
+    <figure class="shot shot-narrow">
+      <a href="../assets/screenshots/fastx-desktop-launch.webp" target="_blank"><img src="../assets/screenshots/fastx-desktop-launch.webp" width="990" height="1084" loading="lazy" decoding="async" alt="The FastX Desktop launch page in Katana OnDemand, with fields for the number of hours, number of cores and memory in GB, an Advanced options button and a Launch button."></a>
+      <figcaption>FastX Desktop's launch page, before you set its hours, cores and memory.</figcaption>
+    </figure>
 
   </section>
 
@@ -115,10 +120,20 @@
 
     <h3 class="sub">View a run: iris-view</h3>
     <p>Run <code>iris-view</code> followed by the run directory, as the job output gives it, such as <code>iris-view /srv/scratch/zID/my-dataset/runs/1234567</code>. napari opens with your volume and the run's label volume over it at half opacity. Scroll through the slices with the slider under the image. Only the slices you look at are read, so even a volume larger than the desktop's memory fits. Close the napari window to quit.</p>
+    <!-- Screenshot from a pilot run, 2026-11-18 (#216): retake when iris-view's napari window changes. -->
+    <figure class="shot">
+      <a href="../assets/screenshots/napari-iris-view.webp" target="_blank"><img src="../assets/screenshots/napari-iris-view.webp" width="1358" height="817" loading="lazy" decoding="async" alt="napari opened by iris-view: a slice of a microCT volume with the run's label volume over it at half opacity, each class in its own colour, the layer controls and the labels and volume layers on the left, and the slice slider under the image."></a>
+      <figcaption>A run open in napari: the label volume over the microCT volume, with the slice slider underneath.</figcaption>
+    </figure>
     <p>Run <code>iris-view</code> with no run directory to list your 10 most recent finished runs, then type the number beside the one to open.</p>
 
     <h3 class="sub">Compare runs: iris-compare</h3>
     <p>Run <code>iris-compare</code>. It adds your new runs to your tracking store, <code>/srv/scratch/zID/iris/tracking.db</code>, then opens MLflow in Firefox inside the desktop. <!-- MLflow 3.17.1 in tools/1, the researcher tools' container; recheck these labels when it changes. -->On the left, switch from <strong>GenAI</strong> to <strong>Model Training</strong>, then click <strong>Runs</strong>: each run is named after its job ID, under its experiment. Select runs and click <strong>Compare</strong> to see their settings and per-class Dice and IoU side by side. Leave the terminal open while you use MLflow; Ctrl+C there stops it.</p>
+    <!-- Screenshot of MLflow 3.17.1, 2026-11-18 (#216): retake with the labels above when tools/1's MLflow changes. -->
+    <figure class="shot">
+      <a href="../assets/screenshots/mlflow-iris-compare.webp" target="_blank"><img src="../assets/screenshots/mlflow-iris-compare.webp" width="1600" height="1043" loading="lazy" decoding="async" alt="MLflow opened by iris-compare, showing the microct-2d-segmentation experiment's runs, each named after its job ID, beside charts of per-class Dice and training loss by epoch, one line per run."></a>
+      <figcaption>MLflow's Runs view for one experiment: each run named after its job ID, with per-class Dice and training loss charted per run.</figcaption>
+    </figure>
     <p>MLflow also lists the dataset each run read, once per run record format. When IRIS moved its workflows to containers, it changed that format, so a run from after the move appears under a new dataset entry, even on a dataset that hasn't changed.</p>
     <p>Your tracking store is created the first time you run <code>iris-compare</code>. If it is ever lost, run <code>/srv/scratch/katana_ai/iris/code/bin/iris-rebuild</code> to rebuild it from your run directories. It isn't in the <code>iris</code> module, so type its full path.</p>
 

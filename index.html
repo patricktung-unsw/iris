@@ -388,8 +388,12 @@
        Empty, it takes no space, and the stage reads as text alone. */
     .stage-thumb:empty { display: none; }
     .stage-thumb { margin-bottom: 16px; }
+    /* A filled slot sits at the stage's foot, so the four line up. */
+    .stage-thumb:not(:empty) { margin-top: auto; }
+    .stage-thumb:not(:empty) + .stage-link { margin-top: 0; }
+    .stage-thumb a { display: block; }
     .stage-thumb img {
-      display: block; width: 100%; aspect-ratio: 16 / 10;
+      display: block; width: 100%; height: auto; aspect-ratio: 16 / 10;
       object-fit: cover; object-position: top left;
       border: 1px solid var(--border); border-radius: 6px;
     }
@@ -542,7 +546,9 @@
 </div>
 
 <!-- LIFECYCLE: each stage's stage-thumb slot takes one screenshot from
-     assets/screenshots/, as <img src="assets/screenshots/..." alt="...">; empty, it shows nothing. -->
+     assets/screenshots/: an img with its width, height, loading="lazy" and alt
+     text, inside a link to where the stage-link goes. Empty, it shows nothing.
+     Transfer's is empty: there is no Globus screenshot (#217). -->
 <section id="lifecycle">
   <div class="section-header">
     <span class="section-title">From dataset to paper</span>
@@ -566,7 +572,7 @@
       <div class="stage-title">Run</div>
       <div class="stage-tools">OpenComposer on Katana OnDemand · Katana GPUs · a fixed container</div>
       <p class="stage-desc">Fill in the workflow's form in your browser and submit it. The job runs on Katana's GPUs in an environment built ahead of time.</p>
-      <div class="stage-thumb"></div>
+      <div class="stage-thumb"><a href="workflows/microct-2d-segmentation/#run"><img src="assets/screenshots/opencomposer-form.webp" width="1600" height="924" loading="lazy" decoding="async" alt="The reference workflow's form in Katana OnDemand, with its fields on the left and the job script they write on the right."></a></div>
       <a class="stage-link" href="workflows/microct-2d-segmentation/#run">Run a workflow →</a>
     </div>
     <div class="stage">
@@ -576,7 +582,7 @@
       <div class="stage-title">View &amp; compare</div>
       <div class="stage-tools">napari · MLflow</div>
       <p class="stage-desc">Check what a run produced in napari, and compare runs side by side in MLflow, from a Katana Virtual Desktop.</p>
-      <div class="stage-thumb"></div>
+      <div class="stage-thumb"><a href="guide/#compare"><img src="assets/screenshots/napari-iris-view.webp" width="1358" height="817" loading="lazy" decoding="async" alt="napari showing a run's label volume over a slice of the microCT volume it segmented."></a></div>
       <a class="stage-link" href="guide/#compare">View and compare →</a>
     </div>
     <div class="stage">
@@ -586,7 +592,7 @@
       <div class="stage-title">Cite &amp; share</div>
       <div class="stage-tools">WorkflowHub · DOI · GitHub</div>
       <p class="stage-desc">Each workflow is minted on WorkflowHub with its own DOI and is open on GitHub, so papers can cite exactly what ran and other labs can reuse it.</p>
-      <div class="stage-thumb"></div>
+      <div class="stage-thumb"><a href="workflows/microct-2d-segmentation/#cite"><img src="assets/screenshots/workflowhub-entry.webp" width="1600" height="1214" loading="lazy" decoding="async" alt="The reference workflow's WorkflowHub entry, with its description and DOI."></a></div>
       <a class="stage-link" href="workflows/microct-2d-segmentation/#cite">Cite a workflow →</a>
     </div>
   </div>
