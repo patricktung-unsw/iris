@@ -104,6 +104,10 @@ _Avoid_: One-click run
 A frozen WorkflowHub snapshot of one workflow at one commit of `main`, with its own DOI. Researchers cite it alongside the commit their run recorded. It is not a version number: nothing versions a workflow.
 _Avoid_: Release, workflow version
 
+**Minting**:
+Publishing a citable version of a workflow on WorkflowHub, which gives it its own DOI and makes that snapshot the official one to cite. The workflow owner mints the first straight after the workflow joins IRIS, then again only when its results would change.
+_Avoid_: Releasing, tagging, publishing
+
 **Run**:
 One submission of a form, producing one job on Katana and one set of outputs.
 _Avoid_: Execution
@@ -180,9 +184,9 @@ _Avoid_: Project, input folder
 What a run notes about the dataset it read, so the researcher can find it again and spot if it changed: what is true of any folder, its path, file count, total size and newest change, plus whatever details its workflow adds, such as a volume's shape and voxel spacing. It holds no content hash; the digest MLflow shows hashes the record itself.
 _Avoid_: Fingerprint, checksum, manifest
 
-**Staging**:
+**Transfer**:
 Copying a dataset from where it was made, such as the researcher's own computer or an instrument PC, into their Katana scratch before its first run, and bringing run directories back. It sits outside the two-click launch.
-_Avoid_: Upload, ingest, data movement
+_Avoid_: Staging, upload, ingest, data movement
 
 **Files**:
 The **Files** item in the top menu of Katana OnDemand, where a researcher browses their scratch, copies in a few training pairs and opens a folder in Globus.
