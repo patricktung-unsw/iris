@@ -18,7 +18,7 @@ IRIS used to be called ARES. The old `patricktung.github.io/ares/` address no lo
 
 ## How a run goes
 
-1. **Stage** a dataset: lay out its folder and copy it into your scratch. The [guide](https://docs.restech.unsw.edu.au/iris/guide/#stage) shows how. Do this once per dataset.
+1. **Transfer** a dataset: lay out its folder and copy it into your scratch. The [guide](https://docs.restech.unsw.edu.au/iris/guide/#stage) shows how. Do this once per dataset.
 2. **Launch** a workflow from the [catalogue](https://docs.restech.unsw.edu.au/iris/): click **Run on Katana** on its page, check the form and submit.
 3. **View and compare** your runs: run `module load iris` in a terminal in a Virtual Desktop, then `iris-view` and `iris-compare`, as the [guide](https://docs.restech.unsw.edu.au/iris/guide/#view) shows. When a job finishes, its output gives you the exact commands to type.
 
