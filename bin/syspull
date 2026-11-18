@@ -17,6 +17,12 @@
 # listing what a pilot tester can't read in the clone
 # (bin/pilot-readable.py), and --apply exits 1 if anything is listed, since
 # the deploy has happened. Over `ssh katana`.
+#
+# A listing records the origin/main commit it listed against in this
+# clone's git folder (iris/syspull-listed), shared by its worktrees, so
+# .githooks/pre-push can refuse a push to main whose request came without
+# one: on 2026-11-18 a push went ahead on a go-ahead that never named the
+# system clone, since bin/syspull ran only after it.
 
 # The system clone, from lib/katana.sh.
 # shellcheck source=lib/katana.sh
@@ -36,7 +42,8 @@ pins() {
 
 if [ $# -eq 0 ]; then
     # shellcheck disable=SC2016  # expanded on Katana
-    ssh katana 'cd '"$sys"' && git fetch -q origin || exit
+    report=$(ssh katana 'cd '"$sys"' && git fetch -q origin || exit
+        echo "origin/main $(git rev-parse origin/main)"
         echo "System clone '"$sys"': $(git rev-parse --abbrev-ref HEAD) at $(git log -1 --format="%h %s")"
         [ "$(git rev-parse --abbrev-ref HEAD)" = main ] || echo "Not on main: --apply will refuse it."
         dirty=$(git status --porcelain --untracked-files=no)
@@ -51,7 +58,17 @@ if [ $# -eq 0 ]; then
         echo "$n commits would deploy to the pilot:"
         git log --oneline HEAD..origin/main
         echo
-        echo "To deploy them: bin/syspull --apply $(git rev-parse --short origin/main)"' || exit
+        echo "To deploy them: bin/syspull --apply $(git rev-parse --short origin/main)"')
+    rc=$?
+    # The first line names origin/main for the record; the rest is the listing.
+    main=$(sed -n '1s/^origin\/main \([0-9a-f]\{40\}\)$/\1/p' <<< "$report")
+    if [ -n "$main" ]; then report=$(sed 1d <<< "$report"); fi
+    [ -z "$report" ] || printf '%s\n' "$report"
+    [ "$rc" = 0 ] || exit "$rc"
+    if [ -n "$main" ]; then
+        listed="$(git -C "$(dirname "$(readlink -f "$0")")" rev-parse --path-format=absolute --git-common-dir)/iris/syspull-listed"
+        mkdir -p "${listed%/*}" && echo "$main $(date -u +%FT%TZ)" >> "$listed"
+    fi
     out=$(pins origin/main)
     case $? in
         0) ;;

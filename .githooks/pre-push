@@ -12,18 +12,25 @@
 #     lib/katana.sh's iris_is_author_env knows one, which a PR may
 #     carry but main never does: bin/review-batch copies it into IRIS's
 #     package and pins its digest alone before the push. Nothing lets
-#     this one through.
+#     this one through;
+#   - a bin/syspull listing must have run in this clone since main last
+#     moved, against the main this push replaces (bin/syspull records it),
+#     since the push request quotes that listing as the system clone's
+#     go-ahead (AGENTS.md's Deploying).
 # The dev clone pulls main next. Pushes to any other branch go through, so
 # CI can run on unchecked work.
 #
-# IRIS_UNCHECKED=<reason> lets the push through without the first, and
-# IRIS_KATANA_UNTESTED=<reason> without the second, naming the reason, for
-# a change the IRIS maintainer has agreed to ship that way.
+# IRIS_UNCHECKED=<reason> lets the push through without the first,
+# IRIS_KATANA_UNTESTED=<reason> without the second and
+# IRIS_NO_SYSPULL=<reason> without the listing, naming the reason, for a
+# change the IRIS maintainer has agreed to ship that way.
 # Turn it on once per clone: git config core.hooksPath .githooks
 
 root="$(git rev-parse --show-toplevel)"
 check_passed="$root/bin/check-passed"
 katana_test="$root/bin/katana-test"
+syspull="$root/bin/syspull"
+listed="$(git rev-parse --path-format=absolute --git-common-dir)/iris/syspull-listed"
 zero=0000000000000000000000000000000000000000
 status=0
 # iris_is_author_env, the one test of an author's container.
@@ -51,6 +58,17 @@ while read -r _ local_sha remote_ref remote_sha; do
         else
             echo "pre-push: no full bin/check in this clone passed on ${local_sha:0:7}'s files." >&2
             echo "  Run bin/check with that commit checked out (again after merging main), or set IRIS_UNCHECKED=<reason> once the IRIS maintainer agrees." >&2
+            status=1
+        fi
+    fi
+
+    # main's first commit has no system clone to list against.
+    if [ -x "$syspull" ] && [ "$remote_sha" != "$zero" ] && ! grep -q "^$remote_sha " "$listed" 2> /dev/null; then
+        if [ -n "$IRIS_NO_SYSPULL" ]; then
+            echo "pre-push: ${local_sha:0:7} goes to main with no bin/syspull listing since main was ${remote_sha:0:7}: $IRIS_NO_SYSPULL" >&2
+        else
+            echo "pre-push: no bin/syspull listing in this clone since main was ${remote_sha:0:7}." >&2
+            echo "  Run bin/syspull and quote the system clone's path and commits in the push request, or set IRIS_NO_SYSPULL=<reason> once the IRIS maintainer agrees." >&2
             status=1
         fi
     fi

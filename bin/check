@@ -855,6 +855,44 @@ check "placeholders left in index.html or a manifest" placeholders
 check "page uses a glossary Avoid word (see GLOSSARY.md)" \
     git grep -niE '\bscans?\b|\bupload|\bstaging\b|files app' -- '*.html' ':(exclude)_archive'
 
+# A GLOSSARY.md entry's definition uses none of its own Avoid words, as a
+# whole word in any case: Minting was first defined as "Publishing a
+# citable version", with publishing on its Avoid list (#213's review).
+# A definition that names one on purpose, to say what it is not or where
+# others use it, is listed here as <term>:<word>, with why.
+# tests/bin/test_glossary_avoid.sh runs it on fixture trees.
+glossary_avoid_kept=(
+    "Workflow:job"           # "the code the job runs": a run's PBS job, not the workflow
+    "Proposal:Request"       # "a workflow author's request": the plain sense, not a name for it
+    "Lab:Group"              # a lab is a facility or research group; IRIS calls both a lab
+    "Lab:facility"
+    "Environment:venv"       # imaging/1, from before containers, really is a venv
+    "Container:Image"        # says registries call it an image and IRIS never does
+    "Endpoint:Collection"    # quotes Globus's own word, then keeps endpoint
+)
+glossary_avoid() {
+    [ -f GLOSSARY.md ] || return 0
+    KEPT_="$(printf '%s\n' "${glossary_avoid_kept[@]}")" awk '
+        BEGIN { n = split(tolower(ENVIRON["KEPT_"]), k, "\n"); for (i = 1; i <= n; i++) kept[k[i]] = 1 }
+        function flush(   n, i, w, re, j) {
+            n = split(avoid, words, /, */)
+            for (i = 1; i <= n; i++) {
+                w = tolower(words[i]); gsub(/^ +| +$/, "", w)
+                if (w == "" || (tolower(term) ":" w) in kept) continue
+                re = "(^|[^a-z])" w "([^a-z]|$)"
+                for (j = 1; j <= ndef; j++)
+                    if (tolower(def[j]) ~ re)
+                        printf "GLOSSARY.md:%d: %s'"'"'s definition uses its own Avoid word \"%s\"\n", line[j], term, words[i]
+            }
+        }
+        { sub(/\r$/, "") }
+        /^\*\*[^*]+\*\*:/ { term = $0; sub(/^\*\*/, "", term); sub(/\*\*:.*/, "", term); ndef = 0; next }
+        /^_Avoid_:/ { if (term != "") { avoid = $0; sub(/^_Avoid_: */, "", avoid); flush() }; term = ""; next }
+        term != "" && NF { def[++ndef] = $0; line[ndef] = NR }
+    ' GLOSSARY.md
+}
+check "glossary entry uses its own Avoid word" glossary_avoid
+
 # Code keeps to GLOSSARY.md's terms too. Only the Avoid words no code
 # needs in another sense are matched, the ones .githooks/avoid-names lists,
 # as a word or a name's part, across a line break and a comment marker
