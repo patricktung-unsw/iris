@@ -316,10 +316,11 @@ def apply(pairs):
     steps = ["bin/review-batch --copy %s %s" % c for c in copies]
     if tested.returncode != 0:
         steps.append(os.path.join(wt, "bin", "katana-test"))
-    # The system clone's go-ahead follows the push (docs/agents/deploying.md),
-    # so the push names that for .githooks/pre-push's listing rule.
+    # .githooks/pre-push refuses a push to main with no bin/syspull listing
+    # since the last deploy; the go-ahead for the system clone is still the
+    # listing after the push (docs/agents/deploying.md).
     steps += [
-        "IRIS_NO_SYSPULL='review batch: the system clone gets its own go-ahead after the push' "
+        "bin/syspull",
         "git push origin %s:main" % tip,
         "bin/ciwait %s" % tip,
         "ssh katana 'cd ~/iris && git pull --ff-only'",
