@@ -44,7 +44,9 @@ push() { # push <remote ref> <local sha> <remote sha>
     (cd "$repo" && echo "refs/heads/x $2 $1 $3" | .githooks/pre-push origin url 2>&1)
 }
 
-# No listing yet: a push to main is refused, naming main's commit.
+# No listing yet: --listed says no, not a usage error, and a push to main
+# is refused, naming main's commit.
+(cd "$repo" && bin/syspull --listed "$old"); [ $? = 1 ] || fail "--listed with no record yet: not 1"
 out="$(push refs/heads/main "$new" "$old")" && fail "pre-push let a push to main through with no listing"
 grep -qF "${old:0:7}" <<< "$out" || { fail "the refusal doesn't name main's commit:"; echo "$out" | sed 's/^/  /'; }
 grep -qF "bin/syspull" <<< "$out" || fail "the refusal doesn't name bin/syspull"

@@ -38,12 +38,21 @@ echo "fake report"
 EOF
 chmod +x "$fake/ssh"
 
+# bin/syspull runs from a throwaway clone, since --apply clears the listing
+# record in the clone it sits in, and this clone's own record must survive
+# a bin/check run beside a real listing.
+repo="$fake/repo"
+mkdir -p "$repo/bin" "$repo/lib"
+cp bin/syspull bin/syspull-pins.sh bin/pilot-readable.py "$repo/bin/"
+cp lib/katana.sh "$repo/lib/"
+git -C "$repo" init -q
+
 # expect <exit code> <output substring> <arg>...
 expect() {
     local want="$1" grep_for="$2" out rc
     shift 2
     rm -f "$fake/args"
-    out="$(PATH="$fake:$PATH" bin/syspull "$@" 2>&1)"
+    out="$(PATH="$fake:$PATH" "$repo/bin/syspull" "$@" 2>&1)"
     rc=$?
     if [ "$rc" != "$want" ]; then
         echo "syspull $*: exit $rc, expected $want"

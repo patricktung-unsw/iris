@@ -300,7 +300,7 @@ grep -qx "    \[ct/2\]=sha256:$a64" <(git -C "$clone" show "$tip:lib/katana.sh")
 git -C "$wt" diff --quiet HEAD || fail "review-batch apply: left uncommitted changes in $wt"
 has "bin/check passed on the batch" apply
 mapfile -t steps < <(sed -nE 's/^  [0-9]+\. //p' <<< "$out")
-want=("bin/review-batch --copy ct/2 ghcr.io/alice-lab/iris-env@sha256:$a64" "git push origin $tip:main" "bin/ciwait $tip"
+want=("bin/review-batch --copy ct/2 ghcr.io/alice-lab/iris-env@sha256:$a64" "IRIS_NO_SYSPULL='review batch: the system clone gets its own go-ahead after the push' git push origin $tip:main" "bin/ciwait $tip"
     "ssh katana 'cd ~/iris && git pull --ff-only'" "$wt/bin/envpull" "bin/syspull")
 [ "$(printf '%s\n' "${steps[@]}")" = "$(printf '%s\n' "${want[@]}")" ] ||
     fail "review-batch apply: printed the steps $(printf '\n    %s' "${steps[@]}")"

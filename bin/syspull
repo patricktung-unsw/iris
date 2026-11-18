@@ -107,7 +107,7 @@ elif [ $# -eq 2 ] && [ "$1" = --apply ] && [[ "$2" =~ ^[0-9a-f]{7,40}$ ]]; then
     rm -f "$listed"
     readable || { echo "syspull: deployed, but pilot testers can't read the paths above; fix their ACLs." >&2; exit 1; }
 elif [ $# -eq 2 ] && [ "$1" = --listed ] && [[ "$2" =~ ^[0-9a-f]{40}$ ]]; then
-    grep -q "^$2 " "$listed" 2> /dev/null
+    [ -f "$listed" ] && grep -q "^$2 " "$listed"
 else
     usage
 fi
