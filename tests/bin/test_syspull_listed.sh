@@ -63,6 +63,17 @@ echo "$new" > "$fake/main"
 listing > /dev/null
 push refs/heads/main "$new" "$new" > /dev/null || fail "pre-push refused after a new listing"
 
+# A deploy clears the record: the listing after one push, run before its
+# --apply, never counts for the next push.
+(cd "$repo" && PATH="$fake:$PATH" bin/syspull --apply "${new:0:7}" > /dev/null 2>&1) || fail "--apply failed"
+push refs/heads/main "$new" "$new" > /dev/null && fail "a listing from before the last deploy let the next push through"
+listing > /dev/null
+
+# --listed answers for a full commit only.
+(cd "$repo" && bin/syspull --listed "$new") || fail "--listed: no for a listed commit"
+(cd "$repo" && bin/syspull --listed "$old"); [ $? = 1 ] || fail "--listed: not 1 for an unlisted commit"
+(cd "$repo" && bin/syspull --listed "${new:0:7}" 2> /dev/null); [ $? = 2 ] || fail "--listed: a short commit isn't a usage error"
+
 # IRIS_NO_SYSPULL lets one through, repeating its reason; other branches,
 # deletes and main's first commit need no listing.
 other="$(printf 'f%.0s' {1..40})"

@@ -858,37 +858,58 @@ check "page uses a glossary Avoid word (see GLOSSARY.md)" \
 # A GLOSSARY.md entry's definition uses none of its own Avoid words, as a
 # whole word in any case: Minting was first defined as "Publishing a
 # citable version", with publishing on its Avoid list (#213's review).
-# A definition that names one on purpose, to say what it is not or where
-# others use it, is listed here as <term>:<word>, with why.
-# tests/bin/test_glossary_avoid.sh runs it on fixture trees.
+# A definition that names one on purpose is listed here as <term>:<word>,
+# with why, and a listed pair its entry no longer uses fails too, so the
+# list can't go stale. tests/bin/test_glossary_avoid.sh runs it on fixture
+# trees.
 glossary_avoid_kept=(
     "Workflow:job"           # "the code the job runs": a run's PBS job, not the workflow
-    "Proposal:Request"       # "a workflow author's request": the plain sense, not a name for it
-    "Lab:Group"              # a lab is a facility or research group; IRIS calls both a lab
-    "Lab:facility"
     "Environment:venv"       # imaging/1, from before containers, really is a venv
     "Container:Image"        # says registries call it an image and IRIS never does
     "Endpoint:Collection"    # quotes Globus's own word, then keeps endpoint
+    # The definition's genus, the shape Minting's was: kept until the IRIS
+    # maintainer rewords them (#213's retro).
+    "Proposal:Request"       # "A workflow author's request"
+    "Lab:Group"              # "The imaging facility or research group"
+    "Lab:facility"
 )
 glossary_avoid() {
     [ -f GLOSSARY.md ] || return 0
     KEPT_="$(printf '%s\n' "${glossary_avoid_kept[@]}")" awk '
         BEGIN { n = split(tolower(ENVIRON["KEPT_"]), k, "\n"); for (i = 1; i <= n; i++) kept[k[i]] = 1 }
-        function flush(   n, i, w, re, j) {
+        # has_word <text> <word>: <word> stands in <text> as a whole word,
+        # matched as a literal string, so an Avoid word needs no escaping.
+        function has_word(s, w,   at, before, after) {
+            while ((at = index(s, w)) > 0) {
+                before = at > 1 ? substr(s, at - 1, 1) : ""
+                after = substr(s, at + length(w), 1)
+                if (before !~ /[a-z]/ && after !~ /[a-z]/) return 1
+                s = substr(s, at + 1)
+            }
+            return 0
+        }
+        function flush(   n, i, w, pair, j) {
             n = split(avoid, words, /, */)
             for (i = 1; i <= n; i++) {
                 w = tolower(words[i]); gsub(/^ +| +$/, "", w)
-                if (w == "" || (tolower(term) ":" w) in kept) continue
-                re = "(^|[^a-z])" w "([^a-z]|$)"
-                for (j = 1; j <= ndef; j++)
-                    if (tolower(def[j]) ~ re)
-                        printf "GLOSSARY.md:%d: %s'"'"'s definition uses its own Avoid word \"%s\"\n", line[j], term, words[i]
+                if (w == "") continue
+                pair = tolower(term) ":" w
+                for (j = 1; j <= ndef; j++) {
+                    if (!has_word(tolower(def[j]), w)) continue
+                    if (pair in kept) used[pair] = 1
+                    else printf "GLOSSARY.md:%d: %s'"'"'s definition uses its own Avoid word \"%s\"\n", line[j], term, words[i]
+                }
             }
         }
         { sub(/\r$/, "") }
         /^\*\*[^*]+\*\*:/ { term = $0; sub(/^\*\*/, "", term); sub(/\*\*:.*/, "", term); ndef = 0; next }
-        /^_Avoid_:/ { if (term != "") { avoid = $0; sub(/^_Avoid_: */, "", avoid); flush() }; term = ""; next }
+        /^_Avoid_:/ { if (term != "") { seen[tolower(term)] = 1; avoid = $0; sub(/^_Avoid_: */, "", avoid); flush() }; term = ""; next }
         term != "" && NF { def[++ndef] = $0; line[ndef] = NR }
+        END {
+            for (p in kept)
+                if (p != "" && !(p in used) && (substr(p, 1, index(p, ":") - 1) in seen))
+                    print "bin/check: glossary_avoid_kept lists " p ", which its GLOSSARY.md entry no longer uses; drop it"
+        }
     ' GLOSSARY.md
 }
 check "glossary entry uses its own Avoid word" glossary_avoid

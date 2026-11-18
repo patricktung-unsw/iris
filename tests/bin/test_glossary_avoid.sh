@@ -43,6 +43,14 @@ make_glossary kept-elsewhere $'**Volume**:\nOne image stack.\n_Avoid_: Image, sc
 expect fail "$scratch/kept-elsewhere" "$name"
 make_glossary crlf $'**Minting**:\r\nPublishing a citable version.\r\n_Avoid_: Releasing, tagging, publishing\r'
 expect fail "$scratch/crlf" "$name"
+# A kept pair whose entry no longer uses its word goes stale and fails.
+make_glossary kept-stale $'**Container**:\nThe file a run starts inside.\n_Avoid_: Image'
+expect fail "$scratch/kept-stale" "$name"
+# An Avoid word is a literal string, not a pattern.
+make_glossary literal $'**Script**:\nOne file of code, (run) by hand.\n_Avoid_: C++, (run), a.b'
+expect fail "$scratch/literal" "$name"
+make_glossary literal-clean $'**Script**:\nOne file of code, run as axb.\n_Avoid_: C++, (run), a.b'
+expect pass "$scratch/literal-clean" "$name"
 
 # The failure names the line, the term and the word.
 out="$("$scratch/own-word/bin/check" "$name" 2>&1)"

@@ -6,6 +6,8 @@
 #
 #   bin/syspull                 list every file and the commits a pull would bring
 #   bin/syspull --apply <sha>   fast-forward the clone to <sha>, on origin/main
+#   bin/syspull --listed <sha>  exit 0 if a listing ran against main at <sha>
+#                               since the last deploy, 1 if not (pre-push)
 #
 # The listing ends with the commits and the --apply line for origin/main's
 # tip. Quote every commit verbatim in the go-ahead request, naming the
@@ -19,16 +21,19 @@
 # the deploy has happened. Over `ssh katana`.
 #
 # A listing records the origin/main commit it listed against in this
-# clone's git folder (iris/syspull-listed), shared by its worktrees, so
-# .githooks/pre-push can refuse a push to main whose request came without
-# one: on 2026-11-18 a push went ahead on a go-ahead that never named the
-# system clone, since bin/syspull ran only after it.
+# clone's git folder (iris/syspull-listed), shared by its worktrees, and a
+# deploy clears the record, so the listing after one push never counts for
+# the next. .githooks/pre-push asks --listed and refuses a push to main
+# with no listing since main last moved: on 2026-11-14 the clone was two
+# pushes behind, since their requests never ran one. It can't tell whether
+# the request quoted the listing, only that one ran (#213's retro).
 
 # The system clone, from lib/katana.sh.
 # shellcheck source=lib/katana.sh
 . "$(dirname "$(readlink -f "$0")")/../lib/katana.sh" || exit 2
 sys="$IRIS_SYSTEM_CLONE"
-usage() { echo "usage: bin/syspull [--apply <sha>]" >&2; exit 2; }
+listed="$(git -C "$(dirname "$(readlink -f "$0")")" rev-parse --path-format=absolute --git-common-dir)/iris/syspull-listed"
+usage() { echo "usage: bin/syspull [--apply <sha> | --listed <sha>]" >&2; exit 2; }
 # Lists what a pilot tester can't read in the clone; fails if anything.
 readable() {
     ssh katana python3 - "$sys" < "$(dirname "$0")/pilot-readable.py"
@@ -66,7 +71,6 @@ if [ $# -eq 0 ]; then
     [ -z "$report" ] || printf '%s\n' "$report"
     [ "$rc" = 0 ] || exit "$rc"
     if [ -n "$main" ]; then
-        listed="$(git -C "$(dirname "$(readlink -f "$0")")" rev-parse --path-format=absolute --git-common-dir)/iris/syspull-listed"
         mkdir -p "${listed%/*}" && echo "$main $(date -u +%FT%TZ)" >> "$listed"
     fi
     out=$(pins origin/main)
@@ -99,7 +103,11 @@ elif [ $# -eq 2 ] && [ "$1" = --apply ] && [[ "$2" =~ ^[0-9a-f]{7,40}$ ]]; then
         [ -z "$(git status --porcelain --untracked-files=no)" ] || refuse "the clone has uncommitted changes"
         git merge-base --is-ancestor '"$2"' origin/main 2>/dev/null || refuse "'"$2"' is not on origin/main"
         git merge --ff-only '"$2"' && git log -1 --oneline' || exit
+    # Deployed: the next push needs a listing of its own.
+    rm -f "$listed"
     readable || { echo "syspull: deployed, but pilot testers can't read the paths above; fix their ACLs." >&2; exit 1; }
+elif [ $# -eq 2 ] && [ "$1" = --listed ] && [[ "$2" =~ ^[0-9a-f]{40}$ ]]; then
+    grep -q "^$2 " "$listed" 2> /dev/null
 else
     usage
 fi

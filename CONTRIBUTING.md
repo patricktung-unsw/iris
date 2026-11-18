@@ -53,7 +53,7 @@ iris/
 ├── .githooks/pre-commit              # Refuses a commit while git's index holds a script run by path without its executable bit (bin/exec-bits), printing the command that sets it
 ├── .githooks/commit-msg              # Refuses AI attribution, git's conflict list or a glossary Avoid word in a commit message; AGENTS.md turns the hooks on
 ├── .githooks/avoid-names(.pl)        # The glossary Avoid words bin/check fails in tracked files and commit-msg refuses in a message, and the script matching them
-├── .githooks/pre-push                # Refuses a push to main of a tree no full bin/check passed on, or whose forms, module, job library, library copies or the tests bin/katana-test runs no passing bin/katana-test tested, or whose digest map names an author's container, or with no bin/syspull listing since main last moved
+├── .githooks/pre-push                # Refuses a push to main of a tree no full bin/check passed on, or whose forms, module, job library, library copies or the tests bin/katana-test runs no passing bin/katana-test tested, or whose digest map names an author's container, or with no bin/syspull listing since main last moved or the system clone was last deployed
 ├── ruff.toml                         # The Python lint rules bin/check applies
 ├── bin/
 │   ├── check                         # Every check to pass before committing
@@ -85,7 +85,7 @@ iris/
 │   ├── qwait                         # Wait for Katana jobs and show how they ended (desktop)
 │   ├── review-batch                  # List every ready PR, then merge the batch on one yes and print its deploy, copying authors' containers by digest (desktop)
 │   ├── run-proof                     # Write a workflow's run proof from a test-instance run (Katana); check a PR's proofs (bin/check runs it)
-│   ├── syspull                       # Show, then deploy, what a pull brings the system clone (desktop); a listing records the main it ran against for pre-push
+│   ├── syspull                       # Show, then deploy, what a pull brings the system clone (desktop); a listing records the main it ran against, which --listed tells pre-push, until a deploy clears it
 │   ├── tracked-tree                  # Print the tree a commit of every uncommitted edit would hold (check-passed and katana-test run it)
 │   └── workflowhub                   # Walkthrough registering a workflow on WorkflowHub and minting its citable versions, from its manifest (desktop)
 ├── envs/                             # Environment containers: the core list, each environment's packages and versions, CI's build and checks (see its README)
