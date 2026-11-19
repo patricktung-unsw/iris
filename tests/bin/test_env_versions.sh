@@ -4,9 +4,10 @@
 # in lib/katana.sh are well formed and match envs/, every form pins a
 # version in the digest map, and a later version of an environment may add,
 # change or remove packages: envs/build-kind.sh calls one that only adds a
-# layer and any other fresh, and bin/check notes the changes. Also its
-# check that a published version's Dockerfile is unchanged, comments aside.
-# Prints each failed case and nothing on success, so bin/check can run it.
+# layer and any other, or one carrying its own Dockerfile, fresh from the
+# nearest Dockerfile, and bin/check notes why. Also its check that a
+# published version's Dockerfile is unchanged, comments aside. Prints each
+# failed case and nothing on success, so bin/check can run it.
 #
 #   tests/bin/test_env_versions.sh
 #
@@ -23,7 +24,7 @@ digest=sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 # make_tree <name>: a site with a seg workflow in the microct-lab section,
 # lib/katana.sh's digest map holding microct/1 unpublished, its lab table
 # starting microct-lab on it and the researcher tools on it too, and
-# microct/1's lock.
+# microct/1's lock and Dockerfile.
 make_tree() {
     local tree="$scratch/$1"
     site_tree "$tree" seg:microct-lab:active
@@ -34,7 +35,14 @@ make_tree() {
     sed -i '/^declare -gA IRIS_LAB_ENVS=(/,/^)/c\declare -gA IRIS_LAB_ENVS=(\n    [microct-lab]=microct/1\n)' \
         "$tree/lib/katana.sh"
     printf '%s\n' 'numpy==2.3.0' 'xarray==2025.6.1' > "$tree/envs/microct/1/requirements.lock"
+    printf '%s\n' 'FROM python:3.12-slim' > "$tree/envs/microct/1/Dockerfile"
     git -C "$tree" add -A
+}
+
+# dockerfile <tree> <env>/<n>: the version carries its own Dockerfile.
+dockerfile() {
+    printf '%s\n' 'FROM python:3.13-slim' > "$scratch/$1/envs/$2/Dockerfile"
+    git -C "$scratch/$1" add -A
 }
 
 # add_version <tree> <env>/<n> <digest> <lock line>...: a version in the
@@ -152,9 +160,11 @@ edit tools-missing lib/katana.sh 's|^IRIS_TOOLS_ENV_VERSION=.*|IRIS_TOOLS_ENV_VE
 expect fail "$scratch/tools-missing" "$name"
 
 # A later version may add, change or remove packages (ADR-0010). One that
-# keeps every line of the lock before it is a layer on it; any other, and a
-# first version, is built fresh. bin/check notes a version that changes
-# pins, naming the packages, without failing it.
+# carries no Dockerfile and keeps every line of the lock before it is a
+# layer on it; any other, and a first version, is built fresh, from the
+# Dockerfile of the nearest version at or before it that has one.
+# bin/check notes a version that changes pins, naming the packages, or
+# carries its own Dockerfile, without failing it.
 # kind <tree> <version> <want>: envs/build-kind.sh's first line is <want>.
 kind() {
     local got
@@ -168,7 +178,7 @@ note() {
     grep -qE "^NOTE: .*$2" <<< "$out" ||
         { echo "$1: no NOTE line matching '$2'"; echo "$out" | sed 's/^/  /'; }
 }
-kind clean microct/1 fresh
+kind clean microct/1 'fresh envs/microct/1/Dockerfile'
 make_tree adds
 add_version adds microct/2 unpublished 'numpy==2.3.0' 'scipy==1.16.0' 'xarray==2025.6.1'
 expect pass "$scratch/adds" "$name"
@@ -178,12 +188,12 @@ out="$("$scratch/adds/bin/check" "$name" 2>&1)"
 make_tree removes
 add_version removes microct/2 unpublished 'numpy==2.3.0' 'scipy==1.16.0'
 expect pass "$scratch/removes" "$name"
-kind removes microct/2 fresh
+kind removes microct/2 'fresh envs/microct/1/Dockerfile'
 note removes 'microct/2 removes xarray==2025\.6\.1.*built fresh'
 make_tree changes
 add_version changes microct/2 unpublished 'numpy==2.3.1' 'xarray==2025.6.1'
 expect pass "$scratch/changes" "$name"
-kind changes microct/2 fresh
+kind changes microct/2 'fresh envs/microct/1/Dockerfile'
 note changes 'microct/2 changes numpy==2\.3\.0 to numpy==2\.3\.1.*built fresh'
 make_tree both
 add_version both microct/2 unpublished 'NumPy==2.3.1 # pinned' 'scipy==1.16.0'
@@ -194,14 +204,40 @@ make_tree after-fresh
 add_version after-fresh microct/2 unpublished 'numpy==2.3.1' 'xarray==2025.6.1'
 add_version after-fresh microct/3 unpublished 'numpy==2.3.1' 'scipy==1.16.0' 'xarray==2025.6.1'
 kind after-fresh microct/3 layer
+# A version that carries its own Dockerfile is built fresh from it, even
+# when its lock only adds, and bin/check notes why.
+make_tree own
+add_version own microct/2 unpublished 'numpy==2.3.0' 'scipy==1.16.0' 'xarray==2025.6.1'
+dockerfile own microct/2
+expect pass "$scratch/own" "$name"
+kind own microct/2 'fresh envs/microct/2/Dockerfile'
+note own 'microct/2 carries its own Dockerfile.*built fresh'
+# A later version built fresh without its own Dockerfile builds from the
+# nearest version at or before it that has one, so microct/3, which changes
+# a pin, keeps what microct/2's Dockerfile added; one that only adds is
+# still a layer.
+make_tree nearest
+add_version nearest microct/2 unpublished 'numpy==2.3.0' 'scipy==1.16.0' 'xarray==2025.6.1'
+dockerfile nearest microct/2
+add_version nearest microct/3 unpublished 'numpy==2.3.1' 'scipy==1.16.0' 'xarray==2025.6.1'
+add_version nearest microct/4 unpublished 'numpy==2.3.1' 'scipy==1.16.0' 'tifffile==2025.6.11' 'xarray==2025.6.1'
+expect pass "$scratch/nearest" "$name"
+kind nearest microct/3 'fresh envs/microct/2/Dockerfile'
+kind nearest microct/4 layer
+note nearest 'microct/3 changes numpy==2\.3\.0 to numpy==2\.3\.1.*built fresh'
+# With no later Dockerfile, a fresh version builds from the first version's.
+make_tree first
+add_version first microct/2 unpublished 'numpy==2.3.0' 'scipy==1.16.0' 'xarray==2025.6.1'
+add_version first microct/3 unpublished 'numpy==2.3.1' 'scipy==1.16.0' 'xarray==2025.6.1'
+kind first microct/3 'fresh envs/microct/1/Dockerfile'
 
 # A published version's Dockerfile is never edited (#209): bin/check fails
 # a change to it, comments and blank lines aside, after the commit that
 # first gave the version a digest-map value other than unpublished, an
 # author's container included.
 freeze="published Dockerfiles are unchanged"
-# frozen_tree <name> [<value>]: make_tree with microct/1's own Dockerfile,
-# committed, then microct/1 given <value> (the org's digest by default) in
+# frozen_tree <name> [<value>]: make_tree with a header and a recipe line
+# in microct/1's Dockerfile, committed, then microct/1 given <value> (the org's digest by default) in
 # a commit of its own.
 frozen_tree() {
     make_tree "$1"
@@ -236,7 +272,6 @@ frozen_commit comment-edit "Correct the header"
 expect pass "$scratch/comment-edit" "$freeze"
 # Before it is published, a version's Dockerfile is the author's to change.
 make_tree unpublished-edit
-printf '%s\n' 'FROM python:3.12-slim' > "$scratch/unpublished-edit/envs/microct/1/Dockerfile"
 frozen_commit unpublished-edit "microct/1"
 edit unpublished-edit envs/microct/1/Dockerfile '$a\RUN apt-get update && apt-get install -y libgl1'
 frozen_commit unpublished-edit "Add libgl1"

@@ -9,10 +9,13 @@
 #
 # CI builds, checks and publishes it (.github/workflows/containers.yml);
 # ../../README.md covers how. A later version whose lock only adds is built
-# on top of the one before it by ../../next.Dockerfile; one that changes or
-# removes a pin is built fresh from this file with its own lock
-# (../../build-kind.sh, ADR-0010). This file is never edited once
-# published.
+# on top of the one before it by ../../next.Dockerfile. One that changes or
+# removes a pin is built fresh with its own lock, from the Dockerfile of the
+# nearest version at or before it that has one, this file when no later
+# version has its own; a version that carries its own Dockerfile, beside its
+# lock, is built fresh from it (../../build-kind.sh, ADR-0010). This file is
+# never edited once published: a version that needs another base Python or
+# other system libraries carries its own.
 
 # python:3.13.2-slim-bookworm, pinned by digest alone: Apptainer refuses a
 # reference that has both a tag and a digest.
