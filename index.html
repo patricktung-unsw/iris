@@ -416,38 +416,12 @@
     .stage-link:hover { color: var(--text); }
 
     /* ── PARTNER WITH US ── */
-    .feature-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 16px;
-    }
-    .feature {
-      background: var(--bg2);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 24px;
-    }
-    .feature-title {
-      font-family: 'Syne', sans-serif;
-      font-weight: 700; font-size: 15px;
-      color: #fff; margin-bottom: 8px;
-    }
-    .feature-desc { font-size: 13px; color: var(--muted); line-height: 1.6; }
-
     .partner-intro {
       font-size: 16px; font-weight: 300;
       color: var(--text); line-height: 1.7;
       max-width: 640px; margin-bottom: 32px;
     }
-    .partner-close {
-      display: flex; align-items: center; justify-content: space-between;
-      gap: 24px; flex-wrap: wrap;
-      margin-top: 32px;
-    }
-    .partner-close p {
-      font-family: 'DM Mono', monospace;
-      font-size: 12px; color: var(--muted); line-height: 1.7;
-    }
+    .partner-intro strong { font-weight: 500; color: #fff; }
 
     /* ── LAB TILES ── */
     .lab-tiles {
@@ -519,7 +493,6 @@
         bottom: -27px; left: 50%; transform: translateX(-50%);
       }
       .stage:nth-child(2)::after { display: block; }
-      .feature-grid { grid-template-columns: 1fr; }
       footer { flex-direction: column; gap: 16px; text-align: center; }
     }
   </style>
@@ -751,25 +724,8 @@
   <div class="section-header">
     <span class="section-title">Partner with us</span>
   </div>
-  <p class="partner-intro">IRIS is built for UNSW's imaging labs and facilities. If your research needs more than a ready-made workflow, let's talk.</p>
-  <div class="feature-grid">
-    <div class="feature">
-      <div class="feature-title">Research collaborations</div>
-      <p class="feature-desc">Work with ResTech on imaging and AI methods for your projects.</p>
-    </div>
-    <div class="feature">
-      <div class="feature-title">Grant applications</div>
-      <p class="feature-desc">Letters of support and in-kind contributions to applications, by discussion.</p>
-    </div>
-    <div class="feature">
-      <div class="feature-title">Bespoke workflows</div>
-      <p class="feature-desc">A workflow built for an analysis too complex for a self-serve form.</p>
-    </div>
-  </div>
-  <div class="partner-close">
-    <p>Every partnership starts as a conversation; nothing here is a commitment.</p>
-    <a href="mailto:patrick.tung@unsw.edu.au" class="btn btn-primary">Get in touch</a>
-  </div>
+  <p class="partner-intro">IRIS is built for UNSW's imaging labs and facilities. If your research needs more than a ready-made workflow, please get in touch: ResTech works with labs on <strong>research collaborations</strong> in imaging and AI methods, supports <strong>grant applications</strong> with letters of support and in-kind contributions, and builds <strong>bespoke workflows</strong> for analyses too complex for a self-serve form.</p>
+  <a href="mailto:patrick.tung@unsw.edu.au" class="btn btn-primary">Get in touch</a>
 </section>
 
 <!-- FOOTER -->
