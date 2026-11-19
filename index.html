@@ -411,9 +411,6 @@
       height: 28px; display: flex; align-items: center;
     }
     .stage-logo img { display: block; height: 28px; width: auto; }
-    /* WorkflowHub's file pads its logo by about 40% of its height, so it
-       is drawn larger to show the logo itself about 28px tall. */
-    .stage-logo img.stage-logo-padded { height: 48px; margin: -10px 0; }
     .stage-logo-name {
       font-family: 'Syne', sans-serif;
       font-weight: 700; font-size: 18px; color: var(--text);
@@ -485,18 +482,9 @@
     .hero-sub     { animation: fadeUp 0.5s 0.2s ease both; }
     .hero-actions { animation: fadeUp 0.5s 0.3s ease both; }
 
+    /* Too narrow for the row, the stages stack in one column, the gold line
+       running down their left edge so it stays one path from 1 to 4. */
     @media (max-width: 1000px) {
-      .lifecycle { grid-template-columns: 1fr 1fr; }
-      .stage:nth-child(2)::after { display: none; }
-    }
-
-    @media (max-width: 768px) {
-      body > nav { padding: 0 20px; }
-      h1 { font-size: clamp(36px, 11vw, 48px); letter-spacing: -1px; }
-      .nav-links { display: none; }
-      .hero { padding: 120px 20px 60px; }
-      section { padding: 0 20px 60px; }
-      /* Stacked, the gold line runs down the stages' left edge. */
       .lifecycle { grid-template-columns: 1fr; }
       .stage {
         border-top: none; border-left: 1px solid var(--gold);
@@ -507,7 +495,14 @@
         width: 1px; height: 32px;
       }
       .stage::before { top: 0; left: -4px; }
-      .stage:nth-child(2)::after { display: block; }
+    }
+
+    @media (max-width: 768px) {
+      body > nav { padding: 0 20px; }
+      h1 { font-size: clamp(36px, 11vw, 48px); letter-spacing: -1px; }
+      .nav-links { display: none; }
+      .hero { padding: 120px 20px 60px; }
+      section { padding: 0 20px 60px; }
       footer { flex-direction: column; gap: 16px; text-align: center; }
     }
   </style>
@@ -580,7 +575,7 @@
       <div class="stage-head"><span class="stage-num">4</span><span class="stage-title">Cite &amp; share</span></div>
       <div class="stage-tools">WorkflowHub · DOI · GitHub</div>
       <p class="stage-desc">Each workflow is minted on WorkflowHub with its own DOI and is open on GitHub, so papers can cite exactly what ran and other labs can reuse it.</p>
-      <div class="stage-logo"><img class="stage-logo-padded" src="assets/logos/workflowhub.svg" width="1200" height="300" alt="WorkflowHub"></div>
+      <div class="stage-logo"><img src="assets/logos/workflowhub.svg" width="1153" height="177" alt="WorkflowHub"></div>
       <a class="stage-link" href="contribute/#mint">Mint a DOI →</a>
     </div>
   </div>
