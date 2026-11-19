@@ -1007,19 +1007,28 @@ check "name uses a glossary Avoid word (see GLOSSARY.md)" avoid_names
 # with origin/main, so it fails a branch, never main itself, and the full
 # run before a push sees the branch. #231's glossary commit made "batch"
 # Image set's Avoid word while Review batch and the forms' Batch size
-# still used it, which only review caught. A new word kept on purpose,
-# since its other uses mean something else, is listed here with why, and
-# a listed word no _Avoid_ list names fails too, so the list can't go
-# stale. tests/bin/test_avoid_uses.sh runs it on fixture trees.
+# still used it, which only review caught. A use kept on purpose, since
+# it means something else, is listed here as <word>:<path>, with why, as
+# glossary_avoid_kept lists its pairs. A pair fails once its word is on
+# no _Avoid_ list or its file no longer holds the word, so the list can't
+# go stale after the word stops being new. tests/bin/test_avoid_uses.sh
+# runs it on fixture trees.
 new_avoid_kept=()
 new_avoid_uses() {
     git rev-parse -q --verify origin/main > /dev/null || return 0
-    local out k
+    local out pair word path words
     out="$(python3 bin/avoid-uses --new 2>&1)"
-    for k in "${new_avoid_kept[@]}"; do
-        out="$(grep -viF ": \"$k\", " <<< "$out")"
-        python3 bin/avoid-uses --words | grep -qixF -- "$k" ||
-            echo "bin/check: new_avoid_kept lists \"$k\", which no GLOSSARY.md _Avoid_ list names; drop it"
+    [ ${#new_avoid_kept[@]} = 0 ] || words="$(python3 bin/avoid-uses --words)"
+    for pair in "${new_avoid_kept[@]}"; do
+        word="${pair%%:*}" path="${pair#*:}"
+        # Drops the pair's own lines: <path>:<line>: "<word>", ...
+        out="$(W_="$word" P_="$path" awk '
+            !(index($0, ENVIRON["P_"] ":") == 1 && index(tolower($0), ": \"" tolower(ENVIRON["W_"]) "\", "))' <<< "$out")"
+        if ! grep -qixF -- "$word" <<< "$words"; then
+            echo "bin/check: new_avoid_kept lists $pair, but no GLOSSARY.md _Avoid_ list names \"$word\"; drop it"
+        elif ! grep -qiwF -- "$word" "$path" 2> /dev/null; then
+            echo "bin/check: new_avoid_kept lists $pair, but $path no longer uses \"$word\"; drop it"
+        fi
     done
     [ -z "$out" ] || printf '%s\n' "$out"
 }

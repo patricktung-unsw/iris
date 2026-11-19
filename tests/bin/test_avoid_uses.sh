@@ -39,16 +39,16 @@ git -C "$repo" update-ref refs/remotes/origin/main HEAD
 case="a file"
 out="$("$repo/bin/avoid-uses" "$repo/text.md")"; code=$?
 [ "$code" = 1 ] || fail "exit $code, not 1"
-want=("$repo/text.md:2: \"container image\", Container's Avoid word: A container image is pulled."
-      "$repo/text.md:3: \"Stack\", Image set's Avoid word: The STACK of"
-      "$repo/text.md:7: \"Stack\", Image set's Avoid word: A stack and a stack.")
+want=("$repo/text.md:2: \"container image\", the Avoid word of Container: A container image is pulled."
+      "$repo/text.md:3: \"Stack\", the Avoid word of Image set: The STACK of"
+      "$repo/text.md:7: \"Stack\", the Avoid word of Image set: A stack and a stack.")
 for w in "${want[@]}"; do grep -qxF -- "$w" <<< "$out" || fail "no line '$w'"; done
 [ "$(wc -l <<< "$out")" = 3 ] || fail "not 3 lines: image inside a term, a path, \"except\" or a repeat on one line was listed:
 $out"
 
 case="standard input"
 out="$("$repo/bin/avoid-uses" - < "$repo/text.md")"
-grep -qxF -- "-:3: \"Stack\", Image set's Avoid word: The STACK of" <<< "$out" || fail "no line for '-'"
+grep -qxF -- "-:3: \"Stack\", the Avoid word of Image set: The STACK of" <<< "$out" || fail "no line for '-'"
 
 case="a clean file"
 out="$("$repo/bin/avoid-uses" "$repo/clean.md")"; code=$?
@@ -74,7 +74,24 @@ echo "# a batch" > "$repo/workflows/w/lib/copy.py"
 commit "$repo" batch
 out="$("$repo/bin/avoid-uses" --new)"; code=$?
 [ "$code" = 1 ] || fail "exit $code, not 1"
-[ "$out" = 'notes.md:1: "batch", Image set'"'"'s Avoid word: Review the batch.' ] || fail "listed:
+[ "$out" = 'notes.md:1: "batch", the Avoid word of Image set: Review the batch.' ] || fail "listed:
+$out"
+
+# Another entry's definition uses the new word; its own _Avoid_ line doesn't.
+case="a word gained, used in the glossary"
+sed -i 's/^Moving a dataset to Katana.$/Moving a batch of datasets to Katana./' "$repo/GLOSSARY.md"
+commit "$repo" glossary-use
+out="$("$repo/bin/avoid-uses" --new)"
+[ "$out" = 'GLOSSARY.md:12: "batch", the Avoid word of Image set: Moving a batch of datasets to Katana.
+notes.md:1: "batch", the Avoid word of Image set: Review the batch.' ] || fail "listed:
+$out"
+
+# A word two entries list is one line naming both.
+case="a word on two lists"
+printf '%s\n' "**Run**:" "One submission of a form." "_Avoid_: batch" >> "$repo/GLOSSARY.md"
+echo "A batch." > "$repo/one.md"
+out="$("$repo/bin/avoid-uses" "$repo/one.md")"
+[ "$out" = "$repo/one.md:1: \"batch\", the Avoid word of Image set, Run: A batch." ] || fail "listed:
 $out"
 
 case="a base given"
@@ -100,19 +117,31 @@ case="check"
 make_site used
 expect fail "$scratch/used" "$name"
 out="$("$scratch/used/bin/check" "$name" 2>&1)"
-grep -qF 'notes.md:1: "batch", Image set'"'"'s Avoid word' <<< "$out" || fail "the failure doesn't name the use: $out"
+grep -qF 'notes.md:1: "batch", the Avoid word of Image set' <<< "$out" || fail "the failure doesn't name the use: $out"
 
 make_site reworded
 echo "Review the pull requests." > "$scratch/reworded/notes.md"
 expect pass "$scratch/reworded" "$name"
 
-# A word kept on purpose passes; once no _Avoid_ list names it, it fails.
+# A use kept on purpose, as <word>:<path>, passes and covers that file only;
+# the pair fails once the file no longer uses the word, or no _Avoid_ list
+# names it.
+kept() { sed -i "s|^new_avoid_kept=()\$|new_avoid_kept=(\"$2\")|" "$scratch/$1/bin/check"
+    grep -qxF "new_avoid_kept=(\"$2\")" "$scratch/$1/bin/check" || fail "bin/check has no new_avoid_kept=() line"; }
 make_site kept
-sed -i 's/^new_avoid_kept=()$/new_avoid_kept=("batch")/' "$scratch/kept/bin/check"
-grep -qx 'new_avoid_kept=("batch")' "$scratch/kept/bin/check" || fail "bin/check has no new_avoid_kept=() line"
+kept kept batch:notes.md
 expect pass "$scratch/kept" "$name"
-glossary "$scratch/kept" "Stack"
+echo "Another batch." > "$scratch/kept/more.md"
+git -C "$scratch/kept" add -A
 expect fail "$scratch/kept" "$name"
+make_site kept-reworded
+kept kept-reworded batch:notes.md
+echo "Review the pull requests." > "$scratch/kept-reworded/notes.md"
+expect fail "$scratch/kept-reworded" "$name"
+make_site kept-unlisted
+kept kept-unlisted batch:notes.md
+glossary "$scratch/kept-unlisted" "Stack"
+expect fail "$scratch/kept-unlisted" "$name"
 
 # With no origin/main there is no base, so nothing is new.
 make_site no-main

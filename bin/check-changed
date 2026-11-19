@@ -5,9 +5,9 @@
 #
 #   bin/check-changed [<base>]
 #
-# With no <base>, the base is the tree of the newest full bin/check pass
-# (bin/check-passed) whose commit is HEAD or one of its ancestors, and
-# with none, the merge-base of origin/main and HEAD. A pass covered every
+# With no <base>, the base is the tree of the full bin/check pass nearest
+# HEAD (bin/check-passed --last), and with none, the merge-base of
+# origin/main and HEAD. A pass covered every
 # check on its tree, so only what changed since needs its slow checks
 # again: on an integration branch, which changes lib/ and workflows/
 # since origin/main, the merge-base reached nearly every slow check, and
@@ -37,32 +37,10 @@
 
 cd "$(dirname "$(readlink -f "$0")")/.." || exit 1
 [ $# -le 1 ] || { echo "usage: bin/check-changed [<base>]" >&2; exit 2; }
-# last_pass: prints "<tree> <commit>" for the newest recorded pass whose
-# commit is HEAD or an ancestor and whose tree git still holds, or returns
-# 1. One rev-list, not a git call per record: on the Windows mount each
-# costs tens of milliseconds, and the record grows by one a full run.
-last_pass() {
-    local passed tree commit full
-    local -A ancestor=()
-    passed="$(git rev-parse --git-common-dir)/iris/check-passed"
-    [ -s "$passed" ] || return 1
-    while read -r full; do ancestor[${full:0:7}]="$full"; done < <(git rev-list -n 5000 HEAD)
-    while read -r tree _ commit; do
-        [ ${#commit} -ge 7 ] || continue
-        full="${ancestor[${commit:0:7}]-}"
-        # The record's short commit is a prefix of the ancestor's.
-        if [ -z "$full" ] || [ "${full#"$commit"}" = "$full" ]; then continue; fi
-        git cat-file -e "$tree^{tree}" 2> /dev/null || continue
-        echo "$tree $commit"
-        return 0
-    done < <(tac "$passed")
-    return 1
-}
-
 if [ $# = 1 ]; then
     base="$(git rev-parse --verify -q "$1^{commit}")" || { echo "bin/check-changed: no commit $1" >&2; exit 2; }
     since="$1"
-elif pass="$(last_pass)"; then
+elif pass="$(bin/check-passed --last)"; then
     base="${pass%% *}"
     since="the full pass on ${pass#* }"
 else

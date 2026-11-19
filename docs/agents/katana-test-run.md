@@ -18,8 +18,8 @@ It runs from `/pun/sys/`, since the pilot's only users are testers (Patrick, 202
 
 The test instance serves the IRIS maintainer's dev clone, `~/iris`, and runs as them (ADR-0012), so the run's code must be checked out there. Code on `main` gets there by the dev-clone pull. Code not yet on `main` goes there as a branch, such as an integration branch whose new workflow is proved before the one push to `main` that turns its card Active, so the live site never shows a runnable workflow as Planned (IRIS maintainer, 2026-11-19):
 
-- **Push the branch**, never `main`: `git push origin <branch>`. A branch push deploys nothing, so it needs no push go-ahead.
-- **Check it out detached** once `ssh katana 'cd ~/iris && git status --porcelain'` prints nothing and no job of the IRIS maintainer's is running from the dev clone, since a running job reads its library there: `ssh katana 'cd ~/iris && git fetch -q origin && git switch --detach origin/<branch>'`.
+- **Push the branch**, never `main`: `git push origin <branch>`. A branch push deploys nothing.
+- **Check it out detached** once `ssh katana 'cd ~/iris && git status --porcelain'` prints nothing and no job of the IRIS maintainer's is running from the dev clone, since a running job reads its library there: `ssh katana 'cd ~/iris && git fetch -q origin'`, then `ssh katana 'cd ~/iris && git switch --detach origin/<branch>'`, each its own command.
 - **Switch back** with `ssh katana 'cd ~/iris && git switch main'` as soon as step 4 has written the run proof, since every test-instance run until then runs the branch.
 - **Delete the GitHub branch** once its work is in `origin/main`, with the IRIS maintainer's go-ahead naming it: `git push origin --delete <branch>`.
 

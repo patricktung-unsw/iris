@@ -17,7 +17,7 @@ trap 'rm -rf "$scratch"' EXIT
 
 repo="$scratch/repo"
 mkdir -p "$repo/bin" "$repo/tests/bin" "$repo/lib" "$repo/.github/workflows" "$repo/_archive/old" "$repo/envs/tools/1"
-cp bin/check-changed "$repo/bin/"
+cp bin/check-changed bin/check-passed bin/tracked-tree "$repo/bin/"
 printf '#!/bin/bash\necho run\n' > "$repo/bin/run"
 printf '#!/bin/bash\necho run-more\n' > "$repo/bin/run-more"
 echo 'name: ci' > "$repo/.github/workflows/ci.yml"
@@ -110,20 +110,12 @@ code=$?
 [ "$code" = 1 ] || fail "a base given: exit $code, not 1"
 git -C "$repo" reset -q --hard origin/main
 
-# A recorded full pass on the branch is the base: only what changed since
-# it is listed. bin/check-passed's record is "<tree> <when> <commit>".
+# A recorded full pass nearest HEAD is the base (bin/check-passed --last):
+# only what changed since it is listed.
 passed="$repo/.git/iris/check-passed"
-mkdir -p "${passed%/*}"
-# record_pass [<commit>]: records the working tree's tracked files as a
-# pass on <commit> (HEAD if not given), as bin/check-passed --record does.
-record_pass() {
-    local index tree
-    index="$(mktemp)"
-    cp "$repo/.git/index" "$index"
-    tree="$(cd "$repo" && GIT_INDEX_FILE="$index" git add -u && GIT_INDEX_FILE="$index" git write-tree)"
-    rm -f "$index"
-    echo "$tree 2026-01-01T00:00:00Z $(git -C "$repo" rev-parse --short "${1-HEAD}")" >> "$passed"
-}
+# record_pass: records the working tree as a full pass on HEAD, as a
+# passing bin/check does.
+record_pass() { (cd "$repo" && bin/check-passed --record "$(bin/tracked-tree)"); }
 
 case="no pass recorded"
 echo '# more' >> "$repo/bin/run"
@@ -165,7 +157,6 @@ case="a pass off the branch"
 git -C "$repo" switch -q -c other origin/main
 echo '# other' >> "$repo/notes.md"
 git -C "$repo" -c user.name=t -c user.email=t@t commit -q -am other
-other="$(git -C "$repo" rev-parse HEAD)"
 record_pass
 git -C "$repo" switch -q main
 git -C "$repo" branch -q -D other
@@ -176,6 +167,19 @@ has base "the full pass on $(git -C "$repo" rev-parse --short HEAD)"
 lacks file notes.md
 git -C "$repo" checkout -q -- bin/run
 
+# A pass recorded later on an older commit, as a main clone records one on
+# the main a branch then merges: the pass nearest HEAD is still the base.
+case="a newer pass further back"
+git -C "$repo" switch -q --detach origin/main
+record_pass
+git -C "$repo" switch -q main
+echo '# more' >> "$repo/bin/run"
+listed
+has base "the full pass on $(git -C "$repo" rev-parse --short HEAD)"
+lacks file bin/run-more
+git -C "$repo" checkout -q -- bin/run
+
+# A record written by hand, since git keeps every tree a test can make.
 case="a pass whose tree git no longer holds"
 : > "$passed"
 echo "0123456789abcdef0123456789abcdef01234567 2026-01-01T00:00:00Z $(git -C "$repo" rev-parse --short HEAD)" >> "$passed"
@@ -186,7 +190,6 @@ has file bin/run-more
 git -C "$repo" checkout -q -- bin/run
 rm -f "$passed"
 git -C "$repo" reset -q --hard origin/main
-[ -n "$other" ] || fail "a pass off the branch: no commit made"
 
 case="an archived script"
 echo '# more' >> "$repo/_archive/old/form.sh"
