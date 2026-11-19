@@ -14,8 +14,9 @@
 #                       commit on a full run
 #   bin/check --changed run every rule over the tree, and of the slow
 #                       checks only those that cover the files changed
-#                       since the merge-base with origin/main, working tree
-#                       and untracked files included, as bin/check-changed
+#                       since the branch's last full pass (the merge-base
+#                       with origin/main before one), working tree and
+#                       untracked files included, as bin/check-changed
 #                       lists them: each tests/bin test naming one, the
 #                       scripts among them through shellcheck, and
 #                       actionlint, ruff and the Python tests where they
@@ -54,9 +55,11 @@ if [ "$only" = --changed ]; then
     wanted[shellcheck]=1
     named_checks=()
     out="$(bin/check-changed)"
-    case $? in
-        0) ;;
-        1) echo "No file changed since origin/main."; exit 2 ;;
+    code=$?
+    since="$(sed -n 's/^base\t//p' <<< "$out")"
+    case $code in
+        0) echo "Changes since $since." ;;
+        1) echo "No file changed since $since."; exit 2 ;;
         *) exit 2 ;;
     esac
     while IFS=$'\t' read -r kind value; do
@@ -998,6 +1001,30 @@ avoid_names() {
 }
 check "name uses a glossary Avoid word (see GLOSSARY.md)" avoid_names
 
+# A word a change adds to an _Avoid_ list leaves no uses behind
+# (CODING_STANDARDS.md): bin/avoid-uses --new lists each use in tracked
+# files of a word GLOSSARY.md's _Avoid_ lists gained since the merge-base
+# with origin/main, so it fails a branch, never main itself, and the full
+# run before a push sees the branch. #231's glossary commit made "batch"
+# Image set's Avoid word while Review batch and the forms' Batch size
+# still used it, which only review caught. A new word kept on purpose,
+# since its other uses mean something else, is listed here with why, and
+# a listed word no _Avoid_ list names fails too, so the list can't go
+# stale. tests/bin/test_avoid_uses.sh runs it on fixture trees.
+new_avoid_kept=()
+new_avoid_uses() {
+    git rev-parse -q --verify origin/main > /dev/null || return 0
+    local out k
+    out="$(python3 bin/avoid-uses --new 2>&1)"
+    for k in "${new_avoid_kept[@]}"; do
+        out="$(grep -viF ": \"$k\", " <<< "$out")"
+        python3 bin/avoid-uses --words | grep -qixF -- "$k" ||
+            echo "bin/check: new_avoid_kept lists \"$k\", which no GLOSSARY.md _Avoid_ list names; drop it"
+    done
+    [ -z "$out" ] || printf '%s\n' "$out"
+}
+check "new glossary Avoid word still used (see GLOSSARY.md)" new_avoid_uses
+
 # Every catalogue workflow with a form names its workflow owner in its
 # manifest (bin/manifest-owner gives the shape) and on its page, under the
 # description, as <p class="wf-owner"> linking their GitHub profile and
@@ -1271,7 +1298,7 @@ if [ "$failed" = 0 ]; then
             bin/check-passed --record "$start_tree" || echo "bin/check: the pass isn't recorded for .githooks/pre-push" >&2
         fi
     elif [ -n "$changed_mode" ]; then
-        echo "The rules over the tree and the checks covering the changed files passed ($ran run); commit on a full run."
+        echo "The rules over the tree and the checks covering the files changed since $since passed ($ran run); commit on a full run."
     else
         echo "Checks matching '$only' passed ($ran run)."
     fi

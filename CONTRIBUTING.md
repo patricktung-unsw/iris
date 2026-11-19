@@ -56,6 +56,7 @@ iris/
 ├── .githooks/pre-push                # Refuses a push to main of a tree no full bin/check passed on, or whose forms, module, job library, library copies or the tests bin/katana-test runs no passing bin/katana-test tested, or whose digest map names an author's container, or with no bin/syspull listing since main last moved or the system clone was last deployed
 ├── ruff.toml                         # The Python lint rules bin/check applies
 ├── bin/
+│   ├── avoid-uses                    # List every use of a GLOSSARY.md Avoid word in files or a ticket's text, or of one a branch adds (bin/check runs it)
 │   ├── check                         # Every check to pass before committing
 │   ├── check-passed                  # Record the tree a full bin/check passed on; say whether a commit's tree passed (pre-push runs it)
 │   ├── ciwait                        # Wait for a pushed commit's CI run, check or containers (desktop)

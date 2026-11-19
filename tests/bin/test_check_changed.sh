@@ -110,6 +110,84 @@ code=$?
 [ "$code" = 1 ] || fail "a base given: exit $code, not 1"
 git -C "$repo" reset -q --hard origin/main
 
+# A recorded full pass on the branch is the base: only what changed since
+# it is listed. bin/check-passed's record is "<tree> <when> <commit>".
+passed="$repo/.git/iris/check-passed"
+mkdir -p "${passed%/*}"
+# record_pass [<commit>]: records the working tree's tracked files as a
+# pass on <commit> (HEAD if not given), as bin/check-passed --record does.
+record_pass() {
+    local index tree
+    index="$(mktemp)"
+    cp "$repo/.git/index" "$index"
+    tree="$(cd "$repo" && GIT_INDEX_FILE="$index" git add -u && GIT_INDEX_FILE="$index" git write-tree)"
+    rm -f "$index"
+    echo "$tree 2026-01-01T00:00:00Z $(git -C "$repo" rev-parse --short "${1-HEAD}")" >> "$passed"
+}
+
+case="no pass recorded"
+echo '# more' >> "$repo/bin/run"
+listed
+has base "the merge-base with origin/main"
+git -C "$repo" checkout -q -- bin/run
+
+case="a pass on the branch"
+echo '# more' >> "$repo/bin/run-more"
+git -C "$repo" -c user.name=t -c user.email=t@t commit -q -am more
+record_pass
+echo '# more' >> "$repo/bin/run"
+listed
+has base "the full pass on $(git -C "$repo" rev-parse --short HEAD)"
+has test tests/bin/test_run.sh
+lacks test tests/bin/test_more.sh
+lacks file bin/run-more
+git -C "$repo" checkout -q -- bin/run
+
+case="nothing changed since the pass"
+listed
+[ "$code" = 1 ] || fail "$case: exit $code, not 1"
+has base "the full pass on $(git -C "$repo" rev-parse --short HEAD)"
+
+case="a pass that saw an edit since undone"
+echo '# edit' >> "$repo/bin/run"
+record_pass
+git -C "$repo" checkout -q -- bin/run
+listed
+has file bin/run
+lacks file bin/run-more
+
+case="a given base over a pass"
+"$repo/bin/check-changed" origin/main > "$scratch/given"
+grep -qxF "$(printf 'base\torigin/main')" "$scratch/given" || fail "$case: no line 'base origin/main'"
+grep -qxF "$(printf 'file\tbin/run-more')" "$scratch/given" || fail "$case: bin/run-more not listed"
+
+case="a pass off the branch"
+git -C "$repo" switch -q -c other origin/main
+echo '# other' >> "$repo/notes.md"
+git -C "$repo" -c user.name=t -c user.email=t@t commit -q -am other
+other="$(git -C "$repo" rev-parse HEAD)"
+record_pass
+git -C "$repo" switch -q main
+git -C "$repo" branch -q -D other
+echo '# more' >> "$repo/bin/run"
+listed
+# The newest record is other's, not on main, so main's earlier pass is used.
+has base "the full pass on $(git -C "$repo" rev-parse --short HEAD)"
+lacks file notes.md
+git -C "$repo" checkout -q -- bin/run
+
+case="a pass whose tree git no longer holds"
+: > "$passed"
+echo "0123456789abcdef0123456789abcdef01234567 2026-01-01T00:00:00Z $(git -C "$repo" rev-parse --short HEAD)" >> "$passed"
+echo '# more' >> "$repo/bin/run"
+listed
+has base "the merge-base with origin/main"
+has file bin/run-more
+git -C "$repo" checkout -q -- bin/run
+rm -f "$passed"
+git -C "$repo" reset -q --hard origin/main
+[ -n "$other" ] || fail "a pass off the branch: no commit made"
+
 case="an archived script"
 echo '# more' >> "$repo/_archive/old/form.sh"
 listed
