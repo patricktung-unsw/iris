@@ -318,7 +318,7 @@ The catalogue is **imaging only**, grouped into one section per lab. Each card c
 | Tier | Workflows | What exists |
 |---|---|---|
 | **Run and verified** | `hello-world` (onboarding), `microct-2d-segmentation` (microCT) | Page, form, job script, executed end to end |
-| **Planned** | `microct-denoising`, `microct-super-resolution`, `microct-reconstruction` (microCT), `mri-rat-brain-tumour-segmentation` (MRI) | Page only, describing what the workflow will do. No form, no Run button |
+| **Planned** | `microct-denoising`, `microct-super-resolution`, `microct-reconstruction` (microCT), `mri-rat-brain-tumour-segmentation` (MRI), `microscopy-cell-segmentation` (microscopy) | Page only, describing what the workflow will do. No form, no Run button |
 | **Unmaintained** | None | Page only, with the `unmaintained-banner` saying it can't be run, so its citable versions and cited commits still lead somewhere. No card, no Run button, form and manifest moved to `_archive/<slug>/`, since it has no workflow owner to mention on a PR. When a workflow lands here, and how one is adopted: [The workflow owner](#the-workflow-owner) |
 
 `hello-world` ran from the browser through the system OnDemand instance (job 9622779), and so did `microct-2d-segmentation` (job 9622783), both from `/pun/sys/` at `3fa4177`. Both had earlier run through the dev clone (`hello-world` job 9584951, #53; `microct-2d-segmentation` job 9577519, #46). Since 2026-11-12, `/pun/sys/OpenComposer/` is the IRIS instance, on the fork ([ADR-0012](docs/adr/0012-the-iris-instance-replaces-the-shared-opencomposer.md)): `hello-world` has run there on the fork at `88d45b1` (job 9751644), and so has `microct-2d-segmentation` (job 9752576).
