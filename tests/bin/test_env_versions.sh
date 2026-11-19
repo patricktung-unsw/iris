@@ -4,8 +4,9 @@
 # in lib/katana.sh are well formed and match envs/, every form pins a
 # version in the digest map, and a later version of an environment may add,
 # change or remove packages: envs/build-kind.sh calls one that only adds a
-# layer and any other fresh, and bin/check notes the changes. Prints each
-# failed case and nothing on success, so bin/check can run it.
+# layer and any other fresh, and bin/check notes the changes. Also its
+# check that a published version's Dockerfile is unchanged, comments aside.
+# Prints each failed case and nothing on success, so bin/check can run it.
 #
 #   tests/bin/test_env_versions.sh
 #
@@ -193,3 +194,55 @@ make_tree after-fresh
 add_version after-fresh microct/2 unpublished 'numpy==2.3.1' 'xarray==2025.6.1'
 add_version after-fresh microct/3 unpublished 'numpy==2.3.1' 'scipy==1.16.0' 'xarray==2025.6.1'
 kind after-fresh microct/3 layer
+
+# A published version's Dockerfile is never edited (#209): bin/check fails
+# a change to it, comments and blank lines aside, after the commit that
+# first gave the version a digest-map value other than unpublished, an
+# author's container included.
+freeze="published Dockerfiles are unchanged"
+# frozen_tree <name> [<value>]: make_tree with microct/1's own Dockerfile,
+# committed, then microct/1 given <value> (the org's digest by default) in
+# a commit of its own.
+frozen_tree() {
+    make_tree "$1"
+    printf '%s\n' '# microct/1: never edited once published.' 'FROM python:3.12-slim' \
+        'RUN apt-get update && apt-get install -y libgl1' > "$scratch/$1/envs/microct/1/Dockerfile"
+    frozen_commit "$1" "microct/1"
+    edit "$1" lib/katana.sh "s|\[microct/1\]=unpublished|[microct/1]=${2:-$digest}|"
+    frozen_commit "$1" "Publish microct/1"
+}
+# frozen_commit <tree> <message>
+frozen_commit() {
+    git -C "$scratch/$1" add -A
+    git -C "$scratch/$1" -c user.name=t -c user.email=t@t commit -q -m "$2"
+}
+frozen_tree recipe-edit
+edit recipe-edit envs/microct/1/Dockerfile 's/libgl1/libgl1 libegl1/'
+frozen_commit recipe-edit "Add libegl1"
+expect fail "$scratch/recipe-edit" "$freeze"
+out="$("$scratch/recipe-edit/bin/check" "$freeze" 2>&1)"
+grep -q 'envs/microct/1/Dockerfile.*microct/1.*published.*own Dockerfile' <<< "$out" ||
+    { echo "recipe-edit: the failure doesn't name the version, its Dockerfile and the route"; echo "$out" | sed 's/^/  /'; }
+# An edit not yet committed fails too.
+frozen_tree recipe-uncommitted
+edit recipe-uncommitted envs/microct/1/Dockerfile 's/python:3.12/python:3.13/'
+expect fail "$scratch/recipe-uncommitted" "$freeze"
+# A header can still be corrected.
+frozen_tree comment-edit
+edit comment-edit envs/microct/1/Dockerfile 's/^# microct\/1: .*/# microct\/1, built fresh: never edited once published./;1a\
+\
+# Its system libraries.'
+frozen_commit comment-edit "Correct the header"
+expect pass "$scratch/comment-edit" "$freeze"
+# Before it is published, a version's Dockerfile is the author's to change.
+make_tree unpublished-edit
+printf '%s\n' 'FROM python:3.12-slim' > "$scratch/unpublished-edit/envs/microct/1/Dockerfile"
+frozen_commit unpublished-edit "microct/1"
+edit unpublished-edit envs/microct/1/Dockerfile '$a\RUN apt-get update && apt-get install -y libgl1'
+frozen_commit unpublished-edit "Add libgl1"
+expect pass "$scratch/unpublished-edit" "$freeze"
+# An author's container, built by their fork's CI, counts as published.
+frozen_tree author-edit "ghcr.io/an-author/iris-env@$digest"
+edit author-edit envs/microct/1/Dockerfile 's/libgl1/libgl1 libegl1/'
+frozen_commit author-edit "Add libegl1"
+expect fail "$scratch/author-edit" "$freeze"

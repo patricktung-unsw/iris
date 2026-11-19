@@ -435,6 +435,39 @@ env_version_notes() {
 }
 ! wants "$env_versions_check" || env_version_notes
 
+# A published version's Dockerfile is never edited (ADR-0010, #209), so the
+# repo holds the recipe of every container a cited run ran in. A version is
+# published from the first commit that gives it a digest-map value other
+# than unpublished, an author's ghcr.io/<login>/iris-env@sha256:... included,
+# since their fork's CI built it from that file. Its own Dockerfile,
+# envs/<env>/<n>/Dockerfile beside its lock, in the working tree must match
+# that commit's, comment and blank lines dropped, so a header can still be
+# corrected; a Dockerfile added or removed after it counts as a change. It
+# reads git history: CI checks out every commit (fetch-depth: 0), and a
+# shallow clone's first commit holds the whole file, so it still compares.
+# tests/bin/test_env_versions.sh runs it on fixture trees.
+published_dockerfiles() {
+    local v c value since f
+    # shellcheck source=lib/katana.sh
+    . <(tr -d '\r' < lib/katana.sh) 2>/dev/null || return 0
+    git rev-parse -q --verify HEAD > /dev/null || return 0
+    recipe() { tr -d '\r' | sed -E '/^[[:space:]]*(#|$)/d'; }
+    for v in $(printf '%s\n' "${!IRIS_ENV_DIGESTS[@]}" | sort); do
+        iris_is_env_version "$v" || continue
+        since=""
+        for c in $(git log --reverse --format=%H -G "^ *\[$v\]=" -- lib/katana.sh); do
+            value="$(git show "$c:lib/katana.sh" 2>/dev/null | tr -d '\r' |
+                sed -nE "/^declare -gA IRIS_ENV_DIGESTS=\(/,/^\)/s|^ *\[$v\]=([^[:space:]]*).*|\1|p")"
+            if [ -n "$value" ] && [ "$value" != unpublished ]; then since="$c"; break; fi
+        done
+        [ -n "$since" ] || continue
+        f="envs/$v/Dockerfile"
+        [ "$(git show "$since:$f" 2>/dev/null | recipe)" = "$(recipe < "$f" 2>/dev/null)" ] ||
+            echo "$f: changed since $(git rev-parse --short "$since") published $v; a published Dockerfile is never edited, so give your new version its own Dockerfile, beside its lock, rather than edit this one"
+    done
+}
+check "published Dockerfiles are unchanged" published_dockerfiles
+
 # Print form lines that break a rule, by top-level section: no heredoc in
 # script: (every line there stays indented), no Ruby #{} in check: (it
 # collides with OpenComposer's own substitution). An imaging form's script
