@@ -98,6 +98,7 @@ has() { grep -qE -- "$2" <<< "$out" || { echo "prune-merged $1: no line matching
 lacks() { ! grep -qE -- "$2" <<< "$out" || { echo "prune-merged $1: has a line matching '$2'"; echo "$out" | sed 's/^/  /'; }; }
 
 [ "$rc" = 0 ] || echo "prune-merged: bare run exited $rc"
+lacks same-copy "running origin/main's copy"
 has plain '^  merged-plain$'
 has worktree "^  merged-wt  \(worktree $wt_plain\)$"
 has harness "^  merged-harness  \(worktree $wt_harness\)$"
@@ -234,3 +235,30 @@ for b in iris-fork main fork-unmerged; do
 done
 [ "$(git -C "$fake/fork-origin.git" for-each-ref --format='%(refname) %(objectname)')" = "$fork_remote" ] || echo "prune-merged --repo --apply: changed the fork origin's branches"
 [ "$(git -C "$clone" for-each-ref refs/heads)" = "$iris_branches" ] || echo "prune-merged --repo --apply: changed the clone it ran from"
+
+# A main clone whose checked-out copy is behind origin/main's, as after a
+# push <sha>:main that changes this script, runs origin/main's copy on the
+# clone, whatever branch it has checked out (spec-branch here), and leaves
+# no copy behind (#223's retro). A copy ahead of origin/main's, committed
+# on a branch or edited in place, runs as it is.
+newer="$fake/iris-newer"
+git -C "$clone" worktree add -q -b newer-copy "$newer" origin/main
+sed -i '1a echo "newer copy ran"' "$newer/bin/prune-merged"
+git -C "$newer" commit -qam "newer copy" && land newer-copy
+mkdir "$fake/tmp"
+out=$(TMPDIR="$fake/tmp" run)
+has newer-copy '^newer copy ran$'
+has newer-notice "running origin/main's copy"
+has newer-listing '^origin/main is at [0-9a-f]+ newer copy$'
+has newer-checked-out '^  spec-branch: checked out in the main clone$'
+[ -z "$(ls -A "$fake/tmp")" ] || echo "prune-merged, newer copy: left $(ls -A "$fake/tmp") in TMPDIR"
+sed -i '1a echo "ahead copy ran"' "$newer/bin/prune-merged"
+git -C "$newer" commit -qam "ahead copy"
+out=$(cd "$newer" && bin/prune-merged 2>&1)
+has ahead-copy '^ahead copy ran$'
+lacks ahead-notice "running origin/main's copy"
+sed -i '1a echo "edited copy ran"' "$clone/bin/prune-merged"
+out=$(run)
+has edited-copy '^edited copy ran$'
+lacks edited-notice "running origin/main's copy"
+git -C "$clone" checkout -q -- bin/prune-merged
