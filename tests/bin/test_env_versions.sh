@@ -6,7 +6,8 @@
 # change or remove packages: envs/build-kind.sh calls one that only adds a
 # layer and any other, or one carrying its own Dockerfile, fresh from the
 # nearest Dockerfile, and bin/check notes why. Also its check that a
-# published version's Dockerfile is unchanged, comments aside. Prints each
+# published version's Dockerfile, and the one it was built from, is
+# unchanged, comments aside. Prints each
 # failed case and nothing on success, so bin/check can run it.
 #
 #   tests/bin/test_env_versions.sh
@@ -281,3 +282,35 @@ frozen_tree author-edit "ghcr.io/an-author/iris-env@$digest"
 edit author-edit envs/microct/1/Dockerfile 's/libgl1/libgl1 libegl1/'
 frozen_commit author-edit "Add libegl1"
 expect fail "$scratch/author-edit" "$freeze"
+# A published layer, which carries no Dockerfile, passes.
+frozen_tree layer-published
+add_version layer-published microct/2 "$digest" 'numpy==2.3.0' 'scipy==1.16.0' 'xarray==2025.6.1'
+frozen_commit layer-published "Publish microct/2"
+expect pass "$scratch/layer-published" "$freeze"
+# A shallow clone's first commit would stand in for the publishing one and
+# pass an edit committed after it, so the check fails there, saying to fetch
+# full history.
+frozen_tree shallow-source
+edit shallow-source envs/microct/1/Dockerfile 's/libgl1/libgl1 libegl1/'
+frozen_commit shallow-source "Add libegl1"
+git clone -q --depth 1 "file://$scratch/shallow-source" "$scratch/shallow"
+out="$("$scratch/shallow/bin/check" "$freeze" 2>&1)"
+grep -q 'shallow clone.*fetch full history' <<< "$out" ||
+    { echo "shallow: no line saying to fetch full history"; echo "$out" | sed 's/^/  /'; }
+# A published version built fresh from an earlier version's Dockerfile, as
+# envs/build-kind.sh names it, freezes that file too, though the version it
+# belongs to is unpublished: microct/3 changes a pin and builds from
+# microct/2's.
+make_tree nearest-edit
+add_version nearest-edit microct/2 unpublished 'numpy==2.3.0' 'scipy==1.16.0' 'xarray==2025.6.1'
+dockerfile nearest-edit microct/2
+add_version nearest-edit microct/3 unpublished 'numpy==2.3.1' 'scipy==1.16.0' 'xarray==2025.6.1'
+frozen_commit nearest-edit "microct/2 and microct/3"
+edit nearest-edit lib/katana.sh "s|\[microct/3\]=unpublished|[microct/3]=$digest|"
+frozen_commit nearest-edit "Publish microct/3"
+edit nearest-edit envs/microct/2/Dockerfile 's/python:3.13/python:3.14/'
+frozen_commit nearest-edit "Move microct/2 to Python 3.14"
+expect fail "$scratch/nearest-edit" "$freeze"
+out="$("$scratch/nearest-edit/bin/check" "$freeze" 2>&1)"
+grep -q 'envs/microct/2/Dockerfile.*published microct/3' <<< "$out" ||
+    { echo "nearest-edit: the failure doesn't name microct/2's Dockerfile and microct/3"; echo "$out" | sed 's/^/  /'; }

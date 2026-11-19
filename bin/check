@@ -441,33 +441,58 @@ env_version_notes() {
 # repo holds the recipe of every container a cited run ran in. A version is
 # published from the first commit that gives it a digest-map value other
 # than unpublished, an author's ghcr.io/<login>/iris-env@sha256:... included,
-# since their fork's CI built it from that file. Its own Dockerfile,
-# envs/<env>/<n>/Dockerfile beside its lock, in the working tree must match
-# that commit's, comment and blank lines dropped, so a header can still be
-# corrected; a Dockerfile added or removed after it counts as a change. It
-# reads git history: CI checks out every commit (fetch-depth: 0), and a
-# shallow clone's first commit holds the whole file, so it still compares.
+# since their fork's CI built it from that file. Frozen from that commit are
+# its own Dockerfile, envs/<env>/<n>/Dockerfile beside its lock, and the one
+# envs/build-kind.sh names for it in that commit's tree, which for a fresh
+# version without its own is an earlier version's, published or not. Each
+# must match that commit's in the working tree, comment and blank lines
+# dropped, so a header can still be corrected; a Dockerfile added or
+# removed after it counts as a change. It reads git history, so it fails in
+# a shallow clone, whose first commit would stand in for the publishing
+# one; CI checks out every commit (fetch-depth: 0).
 # tests/bin/test_env_versions.sh runs it on fixture trees.
 published_dockerfiles() {
-    local v c value since f
+    local v c value since f tree built
+    local -A frozen
     # shellcheck source=lib/katana.sh
     . <(tr -d '\r' < lib/katana.sh) 2>/dev/null || return 0
     git rev-parse -q --verify HEAD > /dev/null || return 0
-    recipe() { tr -d '\r' | sed -E '/^[[:space:]]*(#|$)/d'; }
+    if [ "$(git rev-parse --is-shallow-repository)" = true ]; then
+        echo "a shallow clone can't show when each version was published; fetch full history (git fetch --unshallow)"
+        return
+    fi
     for v in $(printf '%s\n' "${!IRIS_ENV_DIGESTS[@]}" | sort); do
         iris_is_env_version "$v" || continue
         since=""
         for c in $(git log --reverse --format=%H -G "^ *\[$v\]=" -- lib/katana.sh); do
-            value="$(git show "$c:lib/katana.sh" 2>/dev/null | tr -d '\r' |
-                sed -nE "/^declare -gA IRIS_ENV_DIGESTS=\(/,/^\)/s|^ *\[$v\]=([^[:space:]]*).*|\1|p")"
+            value="$(env_digest_at "$c" "$v")"
             if [ -n "$value" ] && [ "$value" != unpublished ]; then since="$c"; break; fi
         done
         [ -n "$since" ] || continue
-        f="envs/$v/Dockerfile"
-        [ "$(git show "$since:$f" 2>/dev/null | recipe)" = "$(recipe < "$f" 2>/dev/null)" ] ||
-            echo "$f: changed since $(git rev-parse --short "$since") published $v; a published Dockerfile is never edited, so give your new version its own Dockerfile, beside its lock, rather than edit this one"
+        frozen=(["envs/$v/Dockerfile"]=1)
+        tree="$(mktemp -d)"
+        git archive "$since" envs lib/katana.sh 2>/dev/null | tar -x -C "$tree" 2>/dev/null
+        cp envs/build-kind.sh "$tree/envs/build-kind.sh"
+        built="$("$tree/envs/build-kind.sh" "$v" 2>/dev/null | head -n1)"
+        rm -rf "$tree"
+        [ "${built%% *}" != fresh ] || frozen["${built#fresh }"]=1
+        for f in $(printf '%s\n' "${!frozen[@]}" | sort); do
+            [ "$(git show "$since:$f" 2>/dev/null | dockerfile_recipe)" = "$(dockerfile_recipe 2>/dev/null < "$f")" ] ||
+                echo "$f: changed since $(git rev-parse --short "$since") published $v; a published Dockerfile is never edited, so give your new version its own Dockerfile, beside its lock, rather than edit this one"
+        done
     done
 }
+# env_digest_at <commit> <env>/<n>: the version's digest-map value at
+# <commit>, read by sourcing lib/katana.sh as it was then, which only sets
+# constants; empty if it isn't in that map.
+env_digest_at() {
+    ( unset IRIS_ENV_DIGESTS
+      # shellcheck source=lib/katana.sh
+      . <(git show "$1:lib/katana.sh" 2>/dev/null | tr -d '\r') 2>/dev/null
+      printf '%s' "${IRIS_ENV_DIGESTS[$2]-}" )
+}
+# dockerfile_recipe: a Dockerfile on stdin without its comment and blank lines.
+dockerfile_recipe() { tr -d '\r' | sed -E '/^[[:space:]]*(#|$)/d'; }
 check "published Dockerfiles are unchanged" published_dockerfiles
 
 # Print form lines that break a rule, by top-level section: no heredoc in
