@@ -73,6 +73,17 @@ ssh_client=$!
 git -C "$clone" worktree add -q -b fresh "$clone/.claude/worktrees/agent-2" origin/main
 branch merged-locked "$fake/iris-5" && land merged-locked
 git -C "$clone" worktree lock "$fake/iris-5"
+# The harness's lock alone doesn't keep a harness worktree; the other
+# guards still do, and its reason on a worktree elsewhere is a plain lock.
+wt_harness_locked="$clone/.claude/worktrees/agent-3"
+branch merged-harness-locked "$wt_harness_locked" && land merged-harness-locked
+git -C "$clone" worktree lock --reason "claude agent agent-3 (pid 999999 start 1)" "$wt_harness_locked"
+wt_harness_dirty="$clone/.claude/worktrees/agent-4"
+branch merged-harness-dirty "$wt_harness_dirty" && land merged-harness-dirty
+git -C "$clone" worktree lock --reason "claude agent agent-4 (pid 999999 start 1)" "$wt_harness_dirty"
+echo new > "$wt_harness_dirty/stray"
+branch merged-claude-lock-outside "$fake/iris-9" && land merged-claude-lock-outside
+git -C "$clone" worktree lock --reason "claude agent agent-9 (pid 999999 start 1)" "$fake/iris-9"
 branch merged-missing "$fake/iris-6" && land merged-missing
 rm -rf "$fake/iris-6"
 tip=$(git -C "$clone" rev-parse --short origin/main)
@@ -94,6 +105,9 @@ lacks unmerged 'unmerged'
 has main '^  main: main itself, checked out in the main clone$'
 has fresh "^  fresh  \(worktree $clone/.claude/worktrees/agent-2\): no commits of its own in its reflog"
 has locked "^  merged-locked  \(worktree $fake/iris-5\): its worktree is locked$"
+has harness-locked "^  merged-harness-locked  \(worktree $wt_harness_locked\)$"
+has claude-lock-outside "^  merged-claude-lock-outside  \(worktree $fake/iris-9\): its worktree is locked$"
+has harness-dirty "^  merged-harness-dirty  \(worktree $wt_harness_dirty\): uncommitted or untracked files$"
 has missing "^  merged-missing  \(worktree $fake/iris-6\): its worktree folder is missing"
 has dirty "^  merged-dirty  \(worktree $fake/iris-2\): uncommitted or untracked files$"
 has untracked "^  merged-untracked  \(worktree $fake/iris-3\): uncommitted or untracked files$"
@@ -140,6 +154,10 @@ gone apply merged-wt "$wt_plain"
 gone apply merged-harness "$wt_harness"
 gone apply moved
 gone apply merged-mux "$fake/iris-7"
+gone apply merged-harness-locked "$wt_harness_locked"
+kept apply merged-claude-lock-outside "$fake/iris-9"
+kept apply merged-harness-dirty "$wt_harness_dirty"
+git -C "$clone" worktree list --porcelain | grep -qx "locked claude agent agent-4 (pid 999999 start 1)" || echo "prune-merged --apply: unlocked merged-harness-dirty's worktree"
 kept apply unmerged
 kept apply main
 kept apply merged-dirty "$fake/iris-2"
