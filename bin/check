@@ -374,8 +374,9 @@ check "Katana constants match lib/katana.sh" katana_constants
 # tools' IRIS_TOOLS_ENV_VERSION and every form's IRIS_ENV_VERSION are in the map, published or not: a job stops with one
 # line when its container file is missing. A later version may add, change
 # or remove packages (ADR-0010): env_version_notes, outside the check,
-# prints a NOTE for each one that changes pins, from envs/build-kind.sh,
-# which also tells the build whether it is a layer or fresh.
+# prints a NOTE for each one built fresh, from envs/build-kind.sh, which
+# also tells the build whether it is a layer or fresh, and from which
+# Dockerfile.
 # tests/bin/test_env_versions.sh runs it on fixture trees.
 env_versions() {
     local v n prev lab f labs vs
@@ -422,8 +423,9 @@ env_versions_check="environment versions match the digest map"
 check "$env_versions_check" env_versions
 
 # A NOTE, not a failure, for each later version whose lock changes or
-# removes a line of the one before it, so its author and the maintainer
-# reviewing it see that it is built fresh and what it changes.
+# removes a line of the one before it or that carries its own Dockerfile,
+# so its author and the maintainer reviewing it see that it is built fresh
+# and why.
 env_version_notes() {
     local v note
     # shellcheck source=lib/katana.sh
