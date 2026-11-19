@@ -3,10 +3,8 @@
 # it (envs/build-kind.sh prints "layer"): the version before it, pulled by
 # digest, plus the packages <env>/<n>'s lock adds, as one new layer. The
 # registry stores the layers the two share only once. pip installs only what
-# is new: every other line is already satisfied. A version that carries its
-# own Dockerfile is built fresh from it instead, and one that changes or
-# removes a line is built fresh from the Dockerfile of the nearest version
-# at or before it that has one (ADR-0010).
+# is new: every other line is already satisfied. Any other version is built
+# fresh, from the Dockerfile envs/build-kind.sh names (ADR-0010).
 #
 # envs/build-container.sh <env>/<n> builds it, with envs/<env>/<n>/ as the
 # context and PREVIOUS the version before it by digest alone

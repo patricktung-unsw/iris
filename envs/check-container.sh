@@ -29,7 +29,8 @@ LOCK="$ENVS/$VERSION/requirements.lock"
 # before any Docker run so a lock with neither fails at once.
 QT=
 if grep -qiE '^napari==' "$LOCK"; then
-    pinned=$( { grep -oE '^PyQt[56]==' "$LOCK" || true; } | cut -c1-5 | sort -u | tr '\n' ' ')
+    # Each binding pinned, by its name before ==, any case, written PyQt5 or PyQt6.
+    pinned=$(sed -nE 's/^pyqt([56])[[:space:]]*==.*/PyQt\1/Ip' "$LOCK" | sort -u | tr '\n' ' ')
     case "$pinned" in
         "PyQt5 "|"PyQt6 ") QT="${pinned% }" ;;
         "") echo "FAILED: envs/$VERSION/requirements.lock pins napari but neither PyQt5 nor PyQt6."; exit 1 ;;

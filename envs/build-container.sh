@@ -9,11 +9,9 @@
 # choice of its own. A version it calls a layer builds from
 # envs/next.Dockerfile on top of the version before it, pulled by the digest
 # lib/katana.sh's digest map gives it, so that version must be published
-# first. One it calls fresh, a first version, one that carries its own
-# Dockerfile or one whose lock changes or removes a line of the one before
-# it, builds from the Dockerfile it names, its own or the nearest earlier
-# version's, and needs no other version published; its note saying why is
-# printed first. The context is envs/<env>/<n>/, which holds its lock.
+# first. One it calls fresh builds from the Dockerfile it names and needs
+# no other version published; its note saying why is printed first. The
+# context is envs/<env>/<n>/, which holds its lock.
 
 set -euo pipefail
 
