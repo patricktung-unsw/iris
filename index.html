@@ -343,7 +343,9 @@
     }
     .status-dot.planned { background: var(--muted); box-shadow: none; }
 
-    /* ── LIFECYCLE ── */
+    /* ── HOW IRIS WORKS ── */
+    /* Numbered steps, not cards: no box, and a thin gold line along the
+       top of each stage, carried across the gap to the next one. */
     .lifecycle {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
@@ -352,28 +354,35 @@
     .stage {
       position: relative;
       display: flex; flex-direction: column;
-      background: var(--bg2);
-      border: 1px solid var(--border);
-      border-top: 2px solid var(--gold);
-      border-radius: 10px;
-      padding: 24px;
+      border-top: 1px solid var(--gold);
+      padding-top: 20px;
     }
-    /* The arrow to the next stage, in the gap between them. */
     .stage:not(:last-child)::after {
-      content: '→';
-      position: absolute; top: 34px; right: -25px;
-      font-family: 'DM Mono', monospace;
-      font-size: 16px; color: var(--gold);
+      content: '';
+      position: absolute; top: -1px; right: -32px;
+      width: 32px; height: 1px;
+      background: var(--gold);
     }
-    .stage-icon {
-      width: 32px; height: 32px;
-      color: var(--gold2);
-      margin-bottom: 16px;
+    /* A gold dot where each stage meets the line. */
+    .stage::before {
+      content: '';
+      position: absolute; top: -4px; left: 0;
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--gold);
+    }
+    .stage-head {
+      display: flex; align-items: baseline; gap: 12px;
+      margin-bottom: 8px;
+    }
+    .stage-num {
+      font-family: 'Syne', sans-serif;
+      font-weight: 800; font-size: 40px; line-height: 1;
+      color: var(--gold);
     }
     .stage-title {
       font-family: 'Syne', sans-serif;
       font-weight: 700; font-size: 16px;
-      color: #fff; margin-bottom: 6px;
+      color: #fff;
     }
     .stage-tools {
       font-family: 'DM Mono', monospace;
@@ -384,21 +393,21 @@
       font-size: 13px; color: var(--muted);
       line-height: 1.6; margin-bottom: 16px;
     }
-    /* A stage's screenshot slot: one image from assets/screenshots/, scaled to fit.
-       Empty, it takes no space, and the stage reads as text alone. */
-    .stage-thumb:empty { display: none; }
-    .stage-thumb { margin-bottom: 16px; }
-    /* A filled slot sits at the stage's foot, so the four line up. */
-    .stage-thumb:not(:empty) { margin-top: auto; }
-    .stage-thumb:not(:empty) + .stage-link { margin-top: 0; }
-    .stage-thumb a { display: block; }
-    .stage-thumb img {
-      display: block; width: 100%; height: auto; aspect-ratio: 16 / 10;
-      object-fit: cover; object-position: top left;
-      border: 1px solid var(--border); border-radius: 6px;
+    /* A stage's logo, or its product's name as text, at the stage's foot
+       so the four line up. */
+    .stage-logo {
+      margin-top: auto; margin-bottom: 16px;
+      height: 28px; display: flex; align-items: center;
+    }
+    .stage-logo img { display: block; height: 28px; width: auto; }
+    /* WorkflowHub's file pads its logo by about 40% of its height, so it
+       is drawn larger to show the logo itself about 28px tall. */
+    .stage-logo img.stage-logo-padded { height: 48px; margin: -10px 0; }
+    .stage-logo-name {
+      font-family: 'Syne', sans-serif;
+      font-weight: 700; font-size: 18px; color: var(--text);
     }
     .stage-link {
-      margin-top: auto;
       font-family: 'DM Mono', monospace;
       font-size: 12px; color: var(--blue2); text-decoration: none;
     }
@@ -502,11 +511,17 @@
       .nav-links { display: none; }
       .hero { padding: 120px 20px 60px; }
       section { padding: 0 20px 60px; }
+      /* Stacked, the gold line runs down the stages' left edge. */
       .lifecycle { grid-template-columns: 1fr; }
-      .stage:not(:last-child)::after {
-        content: '↓'; top: auto; right: auto;
-        bottom: -27px; left: 50%; transform: translateX(-50%);
+      .stage {
+        border-top: none; border-left: 1px solid var(--gold);
+        padding: 0 0 0 20px;
       }
+      .stage:not(:last-child)::after {
+        top: auto; right: auto; bottom: -32px; left: -1px;
+        width: 1px; height: 32px;
+      }
+      .stage::before { top: 0; left: -4px; }
       .stage:nth-child(2)::after { display: block; }
       .feature-grid { grid-template-columns: 1fr; }
       footer { flex-direction: column; gap: 16px; text-align: center; }
@@ -545,54 +560,41 @@
   </div>
 </div>
 
-<!-- LIFECYCLE: each stage's stage-thumb slot takes one screenshot from
-     assets/screenshots/: an img with its width, height, loading="lazy" and alt
-     text, inside a link to where the stage-link goes. Empty, it shows nothing.
-     Transfer's is empty: there is no Globus screenshot (#217). -->
+<!-- HOW IRIS WORKS: numbered steps, not cards; a stage-link is the only link
+     in a stage. Each stage-logo holds its product's logo from assets/logos/
+     (sources and licences in its README.md), or the product's name as text
+     where its terms rule the logo out. -->
 <section id="lifecycle">
   <div class="section-header">
-    <span class="section-title">From dataset to paper</span>
-    <span class="section-mono">Four stages, one path</span>
+    <span class="section-title">How IRIS works</span>
   </div>
   <div class="lifecycle">
     <div class="stage">
-      <svg class="stage-icon" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M5 11h20l-5-5M27 21H7l5 5"/>
-      </svg>
-      <div class="stage-title">Transfer</div>
+      <div class="stage-head"><span class="stage-num">1</span><span class="stage-title">Transfer</span></div>
       <div class="stage-tools">Globus · both ways</div>
       <p class="stage-desc">Copy your dataset to Katana once, and bring run directories back when you need them.</p>
-      <div class="stage-thumb"></div>
+      <div class="stage-logo"><span class="stage-logo-name">Globus</span></div>
       <a class="stage-link" href="guide/#send">Send it to Katana →</a>
     </div>
     <div class="stage">
-      <svg class="stage-icon" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <rect x="5" y="5" width="22" height="22" rx="3"/><path d="M13 11v10l8-5z"/>
-      </svg>
-      <div class="stage-title">Run</div>
+      <div class="stage-head"><span class="stage-num">2</span><span class="stage-title">Run</span></div>
       <div class="stage-tools">OpenComposer on Katana OnDemand · Katana GPUs · a fixed container</div>
       <p class="stage-desc">Fill in the workflow's form in your browser and submit it. The job runs on Katana's GPUs in an environment built ahead of time.</p>
-      <div class="stage-thumb"><a href="workflows/microct-2d-segmentation/#run"><img src="assets/screenshots/opencomposer-form.webp" width="1600" height="924" loading="lazy" decoding="async" alt="The reference workflow's form in Katana OnDemand, with its fields on the left and the job script they write on the right."></a></div>
-      <a class="stage-link" href="workflows/microct-2d-segmentation/#run">Run a workflow →</a>
+      <div class="stage-logo"><img src="assets/logos/open-ondemand.png" width="1186" height="308" alt="Open OnDemand"></div>
+      <a class="stage-link" href="#workflows">Run a workflow →</a>
     </div>
     <div class="stage">
-      <svg class="stage-icon" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M5 27V5M5 27h22"/><path d="M10 21l5-6 4 3 7-9"/>
-      </svg>
-      <div class="stage-title">View &amp; compare</div>
+      <div class="stage-head"><span class="stage-num">3</span><span class="stage-title">View &amp; compare</span></div>
       <div class="stage-tools">napari · MLflow</div>
       <p class="stage-desc">Check what a run produced in napari, and compare runs side by side in MLflow, from a Katana Virtual Desktop.</p>
-      <div class="stage-thumb"><a href="guide/#compare"><img src="assets/screenshots/napari-iris-view.webp" width="1358" height="817" loading="lazy" decoding="async" alt="napari showing a run's label volume over a slice of the microCT volume it segmented."></a></div>
+      <div class="stage-logo"><span class="stage-logo-name">MLflow</span></div>
       <a class="stage-link" href="guide/#compare">View and compare →</a>
     </div>
     <div class="stage">
-      <svg class="stage-icon" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M9 4h10l6 6v18H9z"/><path d="M19 4v6h6M13 16h8M13 21h8"/>
-      </svg>
-      <div class="stage-title">Cite &amp; share</div>
+      <div class="stage-head"><span class="stage-num">4</span><span class="stage-title">Cite &amp; share</span></div>
       <div class="stage-tools">WorkflowHub · DOI · GitHub</div>
       <p class="stage-desc">Each workflow is minted on WorkflowHub with its own DOI and is open on GitHub, so papers can cite exactly what ran and other labs can reuse it.</p>
-      <div class="stage-thumb"><a href="workflows/microct-2d-segmentation/#cite"><img src="assets/screenshots/workflowhub-entry.webp" width="1600" height="1214" loading="lazy" decoding="async" alt="The reference workflow's WorkflowHub entry, with its description and DOI."></a></div>
+      <div class="stage-logo"><img class="stage-logo-padded" src="assets/logos/workflowhub.svg" width="1200" height="300" alt="WorkflowHub"></div>
       <a class="stage-link" href="workflows/microct-2d-segmentation/#cite">Cite a workflow →</a>
     </div>
   </div>
