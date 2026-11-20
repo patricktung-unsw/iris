@@ -29,6 +29,7 @@
     <tbody><tr><td>Input</td><td>Fluorescence microscopy images of nuclei, with some of them labelled to train on, transferred to your scratch.</td></tr><tr><td>Output</td><td>A label for every pixel of every image, marking background, nucleus or nucleus edge, with the run recorded so you can view the labels over the images and compare runs.</td></tr></tbody>
   </table>
   <h2>Its data</h2>
+  <!-- The runnable workflow (form, entry script, tests and prepare_bbbc039.py, which builds the prepared dataset) is kept on the git tag kglmf-demo-runnable (#231). The prepared dataset is /srv/scratch/katana_ai/iris/datasets/bbbc039-nuclei on Katana; its README.txt gives the BBBC039 download URLs, their sha256 checksums and the job that built it (#235). -->
   <p class="wf-desc">The demonstration will train on <a href="https://bbbc.broadinstitute.org/BBBC039" target="_blank">BBBC039</a>, a public collection of fluorescence images of U2OS nuclei. BBBC039's recommended citation is:</p>
   <p class="wf-desc">We used image set BBBC039v1 Caicedo et al. 2018, available from the Broad Bioimage Benchmark Collection [Ljosa et al., Nature Methods, 2012].</p>
   <h2>Not settled yet</h2>
