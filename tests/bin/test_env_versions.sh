@@ -169,7 +169,7 @@ expect fail "$scratch/tools-missing" "$name"
 # kind <tree> <version> <want>: envs/build-kind.sh's first line is <want>.
 kind() {
     local got
-    got="$("$scratch/$1/envs/build-kind.sh" "$2" 2>&1 | head -n1)"
+    got="$("$scratch/$1/envs/build-kind.sh" "$2" 2>&1 | sed -n 1p)"
     [ "$got" = "$3" ] || echo "$1: envs/build-kind.sh $2 printed '$got', expected $3"
 }
 # note <tree> <pattern>: bin/check's output has a NOTE line matching it.

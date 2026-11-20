@@ -244,8 +244,8 @@ changed
 ran_fail "notes test"
 no_fail "boom test"
 # A failing run names the tests it ran on the line before FAILED:.
-[ "$(tail -n2 <<< "$out" | head -n1)" = "tests/bin tests run: notes test" ] ||
-    fail "--changed $case: the line before FAILED: isn't the tests run: $(tail -n2 <<< "$out" | head -n1)"
+[ "$(tail -n2 <<< "$out" | sed -n 1p)" = "tests/bin tests run: notes test" ] ||
+    fail "--changed $case: the line before FAILED: isn't the tests run: $(tail -n2 <<< "$out" | sed -n 1p)"
 ran_fail shellcheck
 grep -qF "bin/new-tool:1:1: checked" <<< "$out" || fail "--changed $case: shellcheck skipped the untracked script"
 ! grep -qF "bin/old-tool" <<< "$out" || fail "--changed $case: shellcheck read an unchanged script"

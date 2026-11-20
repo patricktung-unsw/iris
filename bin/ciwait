@@ -50,7 +50,7 @@ fi
 id=""
 for _ in $(seq 24); do
     id="$(gh run list -R "$repo" --workflow "$workflow.yml" --limit 20 --json databaseId,headSha \
-        --jq ".[] | select(.headSha == \"$sha\") | .databaseId" | head -1)" || exit 2
+        --jq ".[] | select(.headSha == \"$sha\") | .databaseId" | sed -n 1p)" || exit 2
     [ -n "$id" ] && break
     sleep 5
 done

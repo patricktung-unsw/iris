@@ -97,7 +97,7 @@ card_field() {
     die "$slug is not a slug: lowercase letters and digits in words joined by single hyphens, as $REF"
 planned=0
 if [ -e "workflows/$slug" ]; then
-    others=$(cd "workflows/$slug" && find . -mindepth 1 ! -name index.html | head -n1)
+    others=$(cd "workflows/$slug" && find . -mindepth 1 ! -name index.html | sed -n 1p)
     if [ -z "$others" ] && grep -q "href=\"workflows/$slug/\" class=\"workflow-card planned\"" <<< "$index"; then
         planned=1
     elif [ -f "workflows/$slug/index.html" ] && grep -q 'class="unmaintained-banner"' "workflows/$slug/index.html"; then
@@ -143,7 +143,7 @@ if [ -z "$modality" ]; then
 fi
 [[ "$modality" =~ ^[a-z0-9-]+$ ]] && grep -qE "\.card-domain\.${modality}[ {]" <<< "$index" ||
     die "index.html has no .card-domain.$modality style; a new modality needs an approved proposal (CONTRIBUTING.md, Scaffold)"
-modality_label=$(sed -nE "s|.*<span class=\"card-domain $modality\">([^<]*)</span>.*|\1|p" <<< "$index" | head -n1)
+modality_label=$(sed -nE "s|.*<span class=\"card-domain $modality\">([^<]*)</span>.*|\1|p" <<< "$index" | sed -n 1p)
 [ -n "$modality_label" ] || modality_label="${modality^}"
 
 owner_block() {
@@ -157,7 +157,7 @@ problem=$(bin/manifest-owner "$tmp/manifest.yml" 2>&1) || die "the workflow owne
 
 git diff --quiet HEAD -- lib/ ||
     die "lib/ has uncommitted changes; commit them first, since the library copy records the commit it is copied from"
-ref_pin=$(iris_form_pins "workflows/$REF/form.yml.erb" | head -n1)
+ref_pin=$(iris_form_pins "workflows/$REF/form.yml.erb" | sed -n 1p)
 ref_title=$(tr -d '\r' < "workflows/$REF/manifest.yml" | sed -nE 's/^name: *"?([^"]*)"? *$/\1/p')
 ref_job=$(tr -d '\r' < "workflows/$REF/form.yml.erb" | awk '/^  job_name:/ { on = 1 } on && /^    value:/ { v = $0; sub(/^    value: *"?/, "", v); sub(/"? *$/, "", v); print v; exit }')
 icon=$(tr -d '\r' < "workflows/$REF/manifest.yml" | sed -n 's/^icon: //p')

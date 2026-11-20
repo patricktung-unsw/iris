@@ -176,8 +176,8 @@ grep -q '<h1 class="wf-title">microCT Denoising</h1>' "$c/workflows/microct-deno
     echo "planned: the page's title isn't its card's, microCT Denoising"
 [ "$(cd "$c" && bin/manifest-owner workflows/microct-denoising/manifest.yml orcid)" = 0000-0002-1825-0097 ] ||
     echo "planned: the manifest has no owner ORCID"
-grep '^| \*\*Planned' "$c/CONTRIBUTING.md" | grep -q 'microct-denoising' && echo "planned: still in the Planned row"
-grep '^| \*\*Planned' "$c/CONTRIBUTING.md" | grep -qF '`microct-super-resolution`, `microct-reconstruction` (microCT), `mri-rat-brain-tumour-segmentation` (MRI), `microscopy-cell-segmentation` (microscopy) |' ||
+grep -q 'microct-denoising' <<< "$(grep '^| \*\*Planned' "$c/CONTRIBUTING.md")" && echo "planned: still in the Planned row"
+grep -qF '`microct-super-resolution`, `microct-reconstruction` (microCT), `mri-rat-brain-tumour-segmentation` (MRI), `microscopy-cell-segmentation` (microscopy) |' <<< "$(grep '^| \*\*Planned' "$c/CONTRIBUTING.md")" ||
     echo "planned: the Planned row lost more than microct-denoising: $(grep '^| \*\*Planned' "$c/CONTRIBUTING.md")"
 
 # Refused, writing nothing: a taken slug, a malformed one, a lab with no

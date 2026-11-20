@@ -44,7 +44,7 @@ ref="$registry:${VERSION/\//-}"
 docker tag "$LOCAL" "$ref"
 docker push "$ref"
 digest="$(docker inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$ref" |
-    sed -n "s|^$registry@||p" | head -n1)"
+    sed -n "s|^$registry@||p" | sed -n 1p)"
 [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "No digest for $ref after the push."; exit 1; }
 line="    [$VERSION]=$prefix$digest"
 echo "Published $ref as $registry@$digest"

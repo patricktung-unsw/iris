@@ -365,7 +365,7 @@ if [[ -n "$ENTRY_URL" ]]; then
   ENTRY_URL="${ENTRY_URL%/}"
 elif [[ $PRODUCTION == yes ]]; then
   LISTED_DOI=$(tr -d '\r' < "$ROOT/$WF/index.html" |
-    awk '/ id="cite"/ { c = 1 } c && /<\/details>/ { c = 0 } c' | grep -oE "$DOI_RE" | head -n1 || true)
+    awk '/ id="cite"/ { c = 1 } c && /<\/details>/ { c = 0 } c' | grep -oE "$DOI_RE" | sed -n 1p || true)
   if [[ -n "$LISTED_DOI" ]]; then
     ENTRY_URL=${LISTED_DOI#10.48546/workflowhub.workflow.}
     ENTRY_URL=$WH/workflows/${ENTRY_URL%%.*}

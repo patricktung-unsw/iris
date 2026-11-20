@@ -256,7 +256,7 @@ usage_tags() {
     local f d
     for f in workflows/*/form.yml.erb; do
         d=$(basename "$(dirname "$f")")
-        tr -d '\r' < "$f" | grep -qx "  #PBS -A iris-$d" || echo "$f: no '#PBS -A iris-$d'"
+        grep -qx "  #PBS -A iris-$d" <<< "$(tr -d '\r' < "$f")" || echo "$f: no '#PBS -A iris-$d'"
     done
 }
 check "usage tag matches the folder" usage_tags
@@ -268,7 +268,7 @@ library_job_tags() {
     local f
     for f in lib/tests/katana/*.pbs; do
         [ -f "$f" ] || continue
-        tr -d '\r' < "$f" | grep -qx '#PBS -A iris-tests' || echo "$f: no '#PBS -A iris-tests'"
+        grep -qx '#PBS -A iris-tests' <<< "$(tr -d '\r' < "$f")" || echo "$f: no '#PBS -A iris-tests'"
     done
 }
 check "library test jobs use the iris-tests usage tag" library_job_tags
@@ -477,7 +477,7 @@ published_dockerfiles() {
         tree="$(mktemp -d)"
         git archive "$since" envs lib/katana.sh 2>/dev/null | tar -x -C "$tree" 2>/dev/null
         cp envs/build-kind.sh "$tree/envs/build-kind.sh"
-        built="$("$tree/envs/build-kind.sh" "$v" 2>/dev/null | head -n1)"
+        built="$("$tree/envs/build-kind.sh" "$v" 2>/dev/null | sed -n 1p)"
         rm -rf "$tree"
         [ "${built%% *}" != fresh ] || frozen["${built#fresh }"]=1
         for f in $(printf '%s\n' "${!frozen[@]}" | sort); do
@@ -507,7 +507,7 @@ check "published Dockerfiles are unchanged" published_dockerfiles
 form_sections() {
     local f imaging
     for f in workflows/*/form.yml.erb; do
-        imaging=0; imaging_forms | grep -qxF "$f" && imaging=1
+        imaging=0; grep -qxF "$f" <<< "$(imaging_forms)" && imaging=1
         tr -d '\r' < "$f" | awk -v f="$f" -v imaging="$imaging" '
             /^[A-Za-z_]+:/ { sec = $1 }
             sec == "script:" && /<</ && !imaging { print f ":" NR ": heredoc in script: (build files with printf '%s\\n')" }
@@ -560,11 +560,12 @@ check "rendered-form tests" ruby_tests
 # @apps_dir, guarded because OpenComposer re-reads the form on submit with
 # @apps_dir unset. The rendered-form checks cover the imaging forms.
 code_guard() {
-    local f
+    local f form
     for f in workflows/*/form.yml.erb; do
-        imaging_forms | grep -qxF "$f" && continue
-        tr -d '\r' < "$f" | grep -qxF '<% code = @apps_dir ? File.expand_path(File.join(@apps_dir, @OC_DIR_NAME)) : "" %>' &&
-            tr -d '\r' < "$f" | grep -qxF '  CODE="<%= code %>"' || echo "$f"
+        grep -qxF "$f" <<< "$(imaging_forms)" && continue
+        form="$(tr -d '\r' < "$f")"
+        grep -qxF '<% code = @apps_dir ? File.expand_path(File.join(@apps_dir, @OC_DIR_NAME)) : "" %>' <<< "$form" &&
+            grep -qxF '  CODE="<%= code %>"' <<< "$form" || echo "$f"
     done
 }
 check "other forms set CODE from a guarded @apps_dir" code_guard
@@ -573,7 +574,7 @@ check "other forms set CODE from a guarded @apps_dir" code_guard
 manifest_icons() {
     local f
     for f in workflows/*/manifest.yml; do
-        tr -d '\r' < "$f" | grep -qE '^icon: bi-[a-z0-9-]+$' || echo "$f"
+        grep -qE '^icon: bi-[a-z0-9-]+$' <<< "$(tr -d '\r' < "$f")" || echo "$f"
     done
 }
 check "manifests use a built-in bi- icon" manifest_icons
@@ -692,7 +693,7 @@ resolve_link() {
     if [ ! -f "$target" ]; then echo "$from: $link: no such file"
     elif [ -z "$frag" ]; then :
     elif [[ "$target" == *.md ]]; then
-        md_anchors "$target" | grep -qxF -- "$frag" || echo "$from: $link: no heading with that anchor"
+        grep -qxF -- "$frag" <<< "$(md_anchors "$target")" || echo "$from: $link: no heading with that anchor"
     elif ! grep -qF " id=\"$frag\"" "$target"; then echo "$from: $link: no id=\"$frag\""
     fi
 }
@@ -731,7 +732,7 @@ readme_paths() {
     local p first
     tr -d '\r' < README.md | grep '^| `' | cut -d'|' -f2 | grep -oE '`[^`]+`' | tr -d '`' |
         while IFS= read -r p; do
-            first=$(compgen -G "${p//<workflow>/*}" | head -n1)
+            first=$(compgen -G "${p//<workflow>/*}" | sed -n 1p)
             [ -n "$first" ] && [ -e "$first" ] || echo "README.md: $p does not exist"
         done
 }
@@ -812,16 +813,17 @@ check "card status matches the CONTRIBUTING tier table" card_status
 # site_cards), and its page's breadcrumb links that section (../../#<lab>).
 # tests/bin/test_lab_sections.sh runs it on fixture trees.
 lab_sections() {
-    local slug lab
+    local slug lab page crumbs
     cards | while IFS=$'\t' read -r slug lab _; do
         case "$lab" in
             -) echo "index.html: $slug's card is outside every lab section"; continue ;;
             \?) echo "index.html: $slug's card is in a lab section with no id"; continue ;;
         esac
-        [ -f "workflows/$slug/index.html" ] &&
-            tr -d '\r' < "workflows/$slug/index.html" | grep 'class="breadcrumb"' |
-            grep -qF "href=\"../../#$lab\"" ||
-            echo "workflows/$slug/index.html: the breadcrumb doesn't link its card's lab (../../#$lab)"
+        page="workflows/$slug/index.html"
+        crumbs=""
+        [ ! -f "$page" ] || crumbs="$(tr -d '\r' < "$page" | grep 'class="breadcrumb"')"
+        grep -qF "href=\"../../#$lab\"" <<< "$crumbs" ||
+            echo "$page: the breadcrumb doesn't link its card's lab (../../#$lab)"
     done
 }
 check "cards sit in a lab section their page's breadcrumb links" lab_sections
@@ -856,7 +858,7 @@ tier_jobs() {
     local doc slug
     doc=$(tr -d '\r' < CONTRIBUTING.md)
     for slug in $(tiers | awk -F'\t' '$2 == "Run and verified" { print $1 }'); do
-        grep -v '^|' <<< "$doc" | grep -qE "\`$slug\`[^\`]*\(job [0-9]+" ||
+        grep -qE "\`$slug\`[^\`]*\(job [0-9]+" <<< "$(grep -v '^|' <<< "$doc")" ||
             echo "CONTRIBUTING.md: $slug is Run and verified but no line cites its job: \"\`$slug\` ... (job <ID>\", with no backtick between them"
     done
 }
@@ -887,7 +889,7 @@ unmaintained() {
             echo "$page: $slug is Unmaintained in the CONTRIBUTING tier table, but its page has no unmaintained-banner"
         grep -qE 'class="run-btn|/pun/(dev|sys)/OpenComposer/' "$page" &&
             echo "$page: Unmaintained, but has a Run button"
-        cards | cut -f1 | grep -qx "$slug" &&
+        grep -qx "$slug" <<< "$(cards | cut -f1)" &&
             echo "index.html: $slug is Unmaintained, but has a catalogue card"
         [ -e "workflows/$slug/form.yml.erb" ] &&
             echo "workflows/$slug/form.yml.erb: $slug is Unmaintained; move its form to _archive/$slug/"
@@ -1118,7 +1120,7 @@ workflow_owner() {
         d=$(dirname "$f")
         [ "$d" = workflows/hello-world ] && continue
         page=$(tr -d '\r' 2>/dev/null < "$d/index.html" |
-            sed -nE 's|.*<p class="wf-owner">Workflow owner: <a href="https://github\.com/([A-Za-z0-9-]+)"[^>]*>([^<]*)</a>(.*)|\1\t\2\t\3|p' | head -n1)
+            sed -nE 's|.*<p class="wf-owner">Workflow owner: <a href="https://github\.com/([A-Za-z0-9-]+)"[^>]*>([^<]*)</a>(.*)|\1\t\2\t\3|p' | sed -n 1p)
         IFS=$'\t' read -r login name page <<< "$page"
         mailto=$(sed -nE 's|^ · <a href="mailto:([^"]*)">([^<]*)</a></p>.*|\1|p' <<< "$page")
         email_text=$(sed -nE 's|^ · <a href="mailto:([^"]*)">([^<]*)</a></p>.*|\2|p' <<< "$page")
@@ -1197,7 +1199,7 @@ check "CITATION.cff and workflow pages list the same citable versions" citation_
 site_name() {
     local f logo logos="" title
     for f in $(pages); do
-        logo=$(tr -d '\r\n' < "$f" | grep -o 'nav-logo-text">[^<]*' | head -1 |
+        logo=$(tr -d '\r\n' < "$f" | grep -o 'nav-logo-text">[^<]*' | sed -n 1p |
             sed 's/^nav-logo-text">//; s/^[[:space:]]*//; s/[[:space:]]*$//')
         if [ -z "$logo" ]; then echo "$f has no nav-logo-text logo"; else logos+="$f: $logo"$'\n'; fi
     done
@@ -1209,7 +1211,7 @@ site_name() {
     title=$(tr -d '\r' < CITATION.cff | sed -n 's/^title: *"\(.*\)" *$/\1/p')
     if [ -z "$title" ]; then
         echo "CITATION.cff has no double-quoted title: line"
-    elif ! tr -d '\r' < README.md | grep -E '^[[:space:]]*>' | grep -qF -- "*$title*"; then
+    elif ! grep -qF -- "*$title*" <<< "$(tr -d '\r' < README.md | grep -E '^[[:space:]]*>')"; then
         echo "README.md's citation example (a > quoted line) doesn't give CITATION.cff's title, *$title*"
     fi
 }
@@ -1254,9 +1256,91 @@ check "full paths to iris-view or iris-compare (give module load iris, then the 
 # restech.support@unsw.edu.au.
 check "IRIS contact is patrick.tung@unsw.edu.au" git grep -niE '(restech|imaging)@unsw\.edu\.au' -- ':(exclude)_archive'
 
-# Shell scripts (by .sh or a sh/bash shebang, outside _archive), warnings
-# and errors only. CRs are stripped: a Windows working copy can still hold
-# CRLF files from before .gitattributes pinned LF.
+# shell_files: of the paths on standard input, each file outside _archive/
+# that is a shell script, by .sh or a sh or bash shebang.
+shell_files() {
+    local f first
+    grep -v '^_archive/' | while IFS= read -r f; do
+        [ -f "$f" ] || continue
+        case "$f" in
+            *.sh) echo "$f" ;;
+            *)
+                first=""
+                IFS= read -r first < "$f"
+                grep -qE '^#!.*\b(ba)?sh\b' <<< "$first" && echo "$f" ;;
+        esac
+    done
+}
+
+# A pipe into a reader that exits before its input ends, grep -q (alone or
+# among combined short options), grep --quiet or head, leaves a writer
+# still holding output facing a closed pipe: with SIGPIPE ignored it prints
+# "Broken pipe", which fails any check that reads output as failure (#239's
+# CI run), and under pipefail the pipeline returns 141 on a match (#242).
+# Every shell file shellcheck reads is checked but the workflows' library
+# copies, which library_copies holds equal to lib/. A pipe whose | ends the
+# line counts, as does one inside a quoted command, such as one sent over
+# ssh; a here-string (grep -q x <<< "$(cmd)") or a file argument is no pipe.
+# Whole-line comments aren't read. tests/bin/test_early_exit_pipes.sh runs
+# it on fixture trees.
+early_exit_pipes() {
+    local files
+    mapfile -t files < <(git ls-files | grep -v '^workflows/[^/]*/lib/' | shell_files)
+    [ ${#files[@]} -gt 0 ] || return 0
+    awk '
+        # early(<text after a |>): whether the command it starts is head, or
+        # grep with -q among its options before its pattern.
+        function early(rest,   n, w, k, j, o, c) {
+            n = split(rest, w, /[[:space:];)]+/)
+            k = 1
+            while (k <= n && w[k] == "") k++
+            # |& pipes standard error too.
+            if (w[k] == "&") k++
+            else if (w[k] ~ /^&/) w[k] = substr(w[k], 2)
+            # Assignments before a command, such as LC_ALL=C.
+            while (k <= n && w[k] ~ /^[A-Za-z_][A-Za-z0-9_]*=/) k++
+            if (w[k] == "command") k++
+            if (w[k] == "head") return 1
+            if (w[k] != "grep" && w[k] != "egrep" && w[k] != "fgrep") return 0
+            for (k++; k <= n; k++) {
+                o = w[k]
+                if (o == "--quiet" || o == "--silent") return 1
+                if (o == "--" || o !~ /^-/) return 0
+                if (o ~ /^--/) continue
+                for (j = 2; j <= length(o); j++) {
+                    c = substr(o, j, 1)
+                    if (c == "q") return 1
+                    # An option taking an argument ends the cluster; on its
+                    # own, its argument is the next word.
+                    if (index("efmABCdD", c)) { if (j == length(o)) k++; break }
+                }
+            }
+            return 0
+        }
+        FNR == 1 { pending = 0 }
+        {
+            line = $0
+            sub(/\r$/, "", line)
+            if (line ~ /^[[:space:]]*#/) next
+            s = (pending ? "|" : "") line
+            for (i = 1; i <= length(s); i++) {
+                if (substr(s, i, 1) != "|") continue
+                if (substr(s, i + 1, 1) == "|") { i++; continue }
+                if (early(substr(s, i + 1))) {
+                    print FILENAME ":" FNR ": a pipe into grep -q or head, which stops reading before its writer is done; use a reader that takes all its input (sed -n 1p for head, a here-string or the file as an argument for grep -q)"
+                    break
+                }
+            }
+            t = line
+            sub(/[[:space:]]*\\?[[:space:]]*$/, "", t)
+            pending = (t ~ /(^|[^|])\|$/)
+        }' "${files[@]}"
+}
+check "early-exit pipes" early_exit_pipes
+
+# Shell scripts (shell_files), warnings and errors only. CRs are stripped:
+# a Windows working copy can still hold CRLF files from before
+# .gitattributes pinned LF.
 # One shellcheck for scripts and for the CI workflows' run: scripts.
 shellcheck_pin=shellcheck-py==0.11.0.1
 shellcheck_all() {
@@ -1267,12 +1351,7 @@ shellcheck_all() {
             for f in "${!changed_files[@]}"; do [ -f "$f" ] && echo "$f"; done | sort
         else
             git ls-files
-        fi; } | grep -v '^_archive/' | while IFS= read -r f; do
-        case "$f" in
-            *.sh) echo "$f" ;;
-            *) head -n1 "$f" | grep -qE '^#!.*\b(ba)?sh\b' && echo "$f" ;;
-        esac
-    done)
+        fi; } | shell_files)
     for f in "${files[@]}"; do
         tr -d '\r' < "$f" |
             uvx --quiet --from "$shellcheck_pin" shellcheck -s bash -S warning -f gcc - |
@@ -1297,7 +1376,7 @@ check "actionlint" uvx --quiet --from actionlint-py==1.7.12.25 --with "$shellche
 # none, so a new test runs with no other edit.
 for t in tests/bin/test_*.sh; do
     [ -f "$t" ] || continue
-    n=$(tr -d '\r' < "$t" | sed -n 's/^# bin\/check name: //p' | head -n1)
+    n=$(tr -d '\r' < "$t" | sed -n 's/^# bin\/check name: //p' | sed -n 1p)
     name="${n:-$t}"
     slow[$name]=1
     if [ -n "${wanted[$t]-}" ]; then
@@ -1350,7 +1429,7 @@ if selected "synthetic-dataset test"; then
             version="$(. lib/katana.sh && echo "$IRIS_TOOLS_ENV_VERSION")"
         else
             # shellcheck source=lib/katana.sh
-            version="$(. lib/katana.sh && iris_form_pins "${dir%/tests}/form.yml.erb" 2>/dev/null | head -n1)"
+            version="$(. lib/katana.sh && iris_form_pins "${dir%/tests}/form.yml.erb" 2>/dev/null | sed -n 1p)"
         fi
         py_tests "$dir" "$version"
     done

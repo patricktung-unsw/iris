@@ -45,7 +45,7 @@ for form in "$repo"/workflows/*/form.yml.erb; do
     [ -f "$form" ] || continue
     dir="${form%/form.yml.erb}"
     slug="${dir##*/}"
-    pin="$(iris_form_pins "$form" | head -n1)"
+    pin="$(iris_form_pins "$form" | sed -n 1p)"
     [[ "$pin" == "$env"/* ]] && [ "${pin#*/}" -lt "$n" ] 2>/dev/null || continue
     mapfile -t tests < <(iris_py_tests "$dir/tests" container)
     if [ ${#tests[@]} = 0 ]; then

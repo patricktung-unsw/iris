@@ -162,7 +162,7 @@ grep -q '^gh pr list .*--label ready' "$fake/calls" || fail "review-batch listin
 grep -q '^gh pr list .*--base main' "$fake/calls" || fail "review-batch listing: didn't limit the PRs to those into main"
 # Each PR, oldest first, with its author, its body and its diff.
 has "#7 seg on ct/2"; has "#9 seg's page"; has "#12 seg's heading"
-[ "$(grep -n '#7 seg on ct/2' <<< "$out" | head -n1 | cut -d: -f1)" -lt "$(grep -n "#12 seg's heading" <<< "$out" | head -n1 | cut -d: -f1)" ] ||
+[ "$(grep -n '#7 seg on ct/2' <<< "$out" | sed -n 1p | cut -d: -f1)" -lt "$(grep -n "#12 seg's heading" <<< "$out" | sed -n 1p | cut -d: -f1)" ] ||
     fail "review-batch listing: #12 comes before #7"
 has "alice-lab"; has "Urgent: a quick fix."
 has "+print(2)"; has "+# IRIS, changed"; has "workflows/seg/src/run.py"
@@ -293,10 +293,10 @@ tip=$(git -C "$clone" rev-parse -q --verify "refs/heads/$branch") || fail "revie
 [ "$(git -C "$wt" rev-parse HEAD 2> /dev/null)" = "$tip" ] || fail "review-batch apply: $wt isn't at the batch's tip"
 [ "$(git -C "$clone" log --format=%s "$main_sha..$tip^" --first-parent)" = "$(printf '%s\n' 'Merge #12: PR 12' 'Merge #7: PR 7')" ] ||
     fail "review-batch apply: the batch's merges aren't #7 then #12: $(git -C "$clone" log --oneline --first-parent "$main_sha..$tip")"
-git -C "$clone" log -1 --format=%s "$tip" | grep -q "copies ct/2's container" || fail "review-batch apply: its tip isn't the digest map's rewrite"
+grep -q "copies ct/2's container" <<< "$(git -C "$clone" log -1 --format=%s "$tip")" || fail "review-batch apply: its tip isn't the digest map's rewrite"
 grep -qx "    \[ct/2\]=sha256:$a64" <(git -C "$clone" show "$tip:lib/katana.sh") ||
     fail "review-batch apply: the batch's digest map doesn't pin ct/2 by its digest alone"
-! git -C "$clone" show "$tip:lib/katana.sh" | grep -q alice-lab || fail "review-batch apply: the batch's digest map still names the author's container"
+! grep -q alice-lab <<< "$(git -C "$clone" show "$tip:lib/katana.sh")" || fail "review-batch apply: the batch's digest map still names the author's container"
 git -C "$wt" diff --quiet HEAD || fail "review-batch apply: left uncommitted changes in $wt"
 has "bin/check passed on the batch" apply
 mapfile -t steps < <(sed -nE 's/^  [0-9]+\. //p' <<< "$out")

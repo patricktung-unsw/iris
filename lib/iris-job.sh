@@ -164,7 +164,7 @@ echo "Environment : $IRIS_ENV_VERSION (${IRIS_ENV_DIGEST:-digest unknown: no ${I
 echo "Container   : $IRIS_ENV_FILE"
 echo "Run dir     : $RUN_DIR"
 if iris_has_gpu; then
-    echo "GPU         : $(nvidia-smi --query-gpu=name --format=csv,noheader | head -1)"
+    echo "GPU         : $(nvidia-smi --query-gpu=name --format=csv,noheader | sed -n 1p)"
 else
     echo "GPU         : none, running on CPU"
 fi

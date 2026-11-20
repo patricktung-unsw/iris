@@ -103,7 +103,7 @@ iris_py_tests() {
     for t in "$1"/test_*.py; do
         [ -f "$t" ] || continue
         on_host=container
-        tr -d '\r' < "$t" | grep -qx '# bin/check: on the host' && on_host=host
+        grep -qx '# bin/check: on the host' <<< "$(tr -d '\r' < "$t")" && on_host=host
         [ "$on_host" != "$2" ] || { t="${t##*/}"; echo "${t%.py}"; }
     done
 }

@@ -33,13 +33,15 @@ case $1 in
        fi ;;
 esac
 is_blob "$file" || { echo "pageswait: origin/main has no $file to serve: nothing polled." >&2; exit 2; }
-git -C "$repo" cat-file blob "origin/main:$file" | grep -qF -- "$2" || {
+grep -qF -- "$2" <<< "$(git -C "$repo" cat-file blob "origin/main:$file")" || {
     echo "pageswait: '$2' is not in origin/main's $file: nothing polled. The marker is a fixed string, copied from the page." >&2
     exit 2
 }
 
 for i in $(seq 18); do
-    if curl -fsS "$url?t=$(date +%s)" 2>/dev/null | grep -qF -- "$2"; then
+    # The page is read whole before grep, so curl never meets a closed
+    # pipe (#242); a failed fetch is never live, whatever the marker.
+    if page="$(curl -fsS "$url?t=$(date +%s)" 2>/dev/null)" && grep -qF -- "$2" <<< "$page"; then
         echo "live after $(( (i - 1) * 10 ))s: $url"
         exit 0
     fi

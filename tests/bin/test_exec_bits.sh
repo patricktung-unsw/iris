@@ -33,7 +33,7 @@ git -C "$repo" commit -qm tools || fail "refused a commit whose scripts are all 
 printf '#!/bin/bash\n' > "$repo/tests/bin/test_new.sh"
 chmod +x "$repo/tests/bin/test_new.sh"
 git -C "$repo" add tests/bin/test_new.sh
-git -C "$repo" ls-files -s tests/bin/test_new.sh | grep -q '^100644' ||
+grep -q '^100644' <<< "$(git -C "$repo" ls-files -s tests/bin/test_new.sh)" ||
     fail "setup: the scratch index didn't hold test_new.sh as 100644; core.fileMode isn't off"
 out="$(cd "$repo" && bin/exec-bits)"
 [ "$out" = tests/bin/test_new.sh ] || fail "bin/exec-bits listed '$out', expected tests/bin/test_new.sh"

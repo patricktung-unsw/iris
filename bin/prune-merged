@@ -156,7 +156,7 @@ while IFS= read -r b; do
     [ "$b" != main ] || why="main itself"
     [ "$b" != "$main_branch" ] || why="${why:+$why, }checked out in the main clone"
     if [ -n "$why" ]; then :
-    elif ! git reflog show --format=%gs "refs/heads/$b" 2>/dev/null | grep -qE '^(commit|merge|pull|rebase|cherry-pick|revert)'; then
+    elif ! grep -qE '^(commit|merge|pull|rebase|cherry-pick|revert)' <<< "$(git reflog show --format=%gs "refs/heads/$b" 2>/dev/null)"; then
         why="no commits of its own in its reflog, as a branch just made from origin/main"
     elif [ -n "$wt" ]; then
         if [ -n "${missing[$wt]:-}" ]; then why="its worktree folder is missing (git worktree prune clears it)"

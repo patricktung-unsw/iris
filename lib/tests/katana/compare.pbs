@@ -39,7 +39,7 @@ probe() {
     local url="" t0="" pid port addr
     for _ in $(seq 600); do
         [ -z "$t0" ] && [ -e "$IRIS_HOME/ui.log" ] && t0=$(date +%s)
-        url=$(grep -o "http://127.0.0.1:[0-9]*" compare.out | head -1)
+        url=$(grep -o "http://127.0.0.1:[0-9]*" compare.out | sed -n 1p)
         [ -n "$url" ] && break
         sleep 1
     done
@@ -66,7 +66,7 @@ PY
     fi
     echo "$(ts) PROBE: Ctrl+C to $pid"; kill -INT "$pid"
     sleep 10
-    if ss -ltn "sport = :$port" | tail -n +2 | grep -q .; then
+    if grep -q . <<< "$(ss -ltn "sport = :$port" | tail -n +2)"; then
         echo "still listening (bad)"
     else
         echo "port $port closed after Ctrl+C"
@@ -79,4 +79,4 @@ echo "$(ts) starting iris-compare"
 echo "$(ts) iris-compare exit $?"
 wait
 echo "== iris-compare said"; cat compare.out
-echo "== ui.log timing"; grep -E "Uvicorn running|GET /health" "$IRIS_HOME/ui.log" | head -2
+echo "== ui.log timing"; grep -E "Uvicorn running|GET /health" "$IRIS_HOME/ui.log" | sed -n 1,2p

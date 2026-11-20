@@ -65,7 +65,7 @@ for f in "${changed[@]}"; do
     re="(^|[^[:alnum:]_.-])$(printf '%s' "$f" | sed 's/[][\\.^$*+?(){}|]/\\&/g')(\$|[^[:alnum:]_.-])"
     for t in tests/bin/test_*.sh; do
         [ -f "$t" ] || continue
-        if tr -d '\r' < "$t" | grep -v '^# bin/check name:' | grep -qE -- "$re"; then
+        if grep -qE -- "$re" <<< "$(tr -d '\r' < "$t" | grep -v '^# bin/check name:')"; then
             tests[$t]=1; named=1
         fi
     done

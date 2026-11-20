@@ -119,7 +119,7 @@ elif [ $# -eq 2 ] && [ "$1" = --apply ] && [[ "$2" =~ ^[0-9a-f]{7,40}$ ]]; then
         missing | on\ *) ;;
         behind\ *)
             echo "The dev install $dev_path is at ${dev#* }. To move it to $2 too, refusing if it has uncommitted changes or keeps its own copy of a file, run:"
-            echo "ssh katana 'cd $dev_path && { git diff --quiet HEAD && ! git ls-files -v | grep -q \"^S\" || { echo \"ocpull: $dev_path has uncommitted changes or keeps its own copy of a file (skip-worktree), so nothing moved it; move it by hand.\" >&2; exit 1; }; } && git fetch -q origin && git checkout -q --detach $2'" ;;
+            echo "ssh katana 'cd $dev_path && { git diff --quiet HEAD && [ -z \"\$(git ls-files -v | grep \"^S\")\" ] || { echo \"ocpull: $dev_path has uncommitted changes or keeps its own copy of a file (skip-worktree), so nothing moved it; move it by hand.\" >&2; exit 1; }; } && git fetch -q origin && git checkout -q --detach $2'" ;;
         other\ *) echo "The dev install $dev_path is at ${dev#* }, ahead of $2 or off the fork's main, so nothing here moves it; ask the IRIS maintainer where it goes." ;;
         *) echo "ocpull: couldn't tell which commit the dev install $dev_path is on; move it to $2 by hand if it isn't there." >&2 ;;
     esac

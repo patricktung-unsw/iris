@@ -76,7 +76,7 @@ git -C "$scratch/no-edit-hook" commit -q -m "Merge other" > /dev/null 2>&1 ||
 conflicted_repo editor-hook
 GIT_EDITOR=true git -C "$scratch/editor-hook" commit -q > /dev/null 2>&1 ||
     echo "hook: refused a conflicted merge finished in an editor"
-! git -C "$scratch/editor-hook" log -1 --format=%B | grep -q '^# Conflicts:' ||
+! grep -q '^# Conflicts:' <<< "$(git -C "$scratch/editor-hook" log -1 --format=%B)" ||
     echo "hook: an editor session kept the conflict list"
 
 # With no terminal, a cherry-pick's --continue strips the list with no

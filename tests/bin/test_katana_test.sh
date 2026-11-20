@@ -88,16 +88,16 @@ fail() { echo "katana-test $1"; }
 
 # A clean tree sends HEAD, links kept as links.
 run > /dev/null || fail "clean tree: exit $?, expected 0"
-tar tvf "$fake/tree.tar" | grep -q '^l.* module/bin/link -> \.\./\.\./bin/katana-test' ||
+grep -q '^l.* module/bin/link -> \.\./\.\./bin/katana-test' <<< "$(tar tvf "$fake/tree.tar")" ||
     fail "sent module/bin/link as something other than a link"
-tar xOf "$fake/tree.tar" tracked.txt | grep -qx committed || fail "clean tree: tracked.txt isn't HEAD's"
+grep -qx committed <<< "$(tar xOf "$fake/tree.tar" tracked.txt)" || fail "clean tree: tracked.txt isn't HEAD's"
 
 # Uncommitted edits to tracked files go; untracked files stay behind.
 echo edited > "$repo/tracked.txt"
 echo new > "$repo/untracked.txt"
 run > /dev/null
-tar xOf "$fake/tree.tar" tracked.txt | grep -qx edited || fail "didn't send the uncommitted edit"
-! tar tf "$fake/tree.tar" | grep -q untracked.txt || fail "sent an untracked file"
+grep -qx edited <<< "$(tar xOf "$fake/tree.tar" tracked.txt)" || fail "didn't send the uncommitted edit"
+! grep -q untracked.txt <<< "$(tar tf "$fake/tree.tar")" || fail "sent an untracked file"
 [ "$(git -C "$repo" stash list | wc -l)" = 0 ] || fail "left a stash entry"
 grep -qx edited "$repo/tracked.txt" || fail "changed the working tree"
 
@@ -107,7 +107,7 @@ echo intent > "$repo/added.txt"
 git -C "$repo" add -N added.txt
 index_before="$(git -C "$repo" ls-files -s --debug | git hash-object --stdin)"
 run > /dev/null || fail "a git add -N file: exit $?, expected 0"
-tar xOf "$fake/tree.tar" added.txt 2> /dev/null | grep -qx intent || fail "didn't send a git add -N file"
+grep -qx intent <<< "$(tar xOf "$fake/tree.tar" added.txt 2> /dev/null)" || fail "didn't send a git add -N file"
 [ "$(git -C "$repo" ls-files -s --debug | git hash-object --stdin)" = "$index_before" ] || fail "changed the index"
 git -C "$repo" rm -q --cached added.txt; rm "$repo/added.txt"
 
@@ -123,12 +123,12 @@ git -C "$repo" rm -q --cached conflict.txt
 # since a form test there would be skipped.
 mkdir -p "$repo/workflows/new/tests"
 echo "# test" > "$repo/workflows/new/tests/test_form.rb"
-run | grep -qF "workflows/new/tests/test_form.rb" || fail "didn't name an untracked file under workflows/"
+grep -qF "workflows/new/tests/test_form.rb" <<< "$(run)" || fail "didn't name an untracked file under workflows/"
 rm -r "$repo/workflows"
 
 # Run from elsewhere, it sends its own clone.
 (cd / && PATH="$fake/bin:$PATH" "$repo/bin/katana-test" > /dev/null 2>&1) || fail "failed when run from outside its clone"
-tar xOf "$fake/tree.tar" tracked.txt | grep -qx edited || fail "run from elsewhere: didn't send its own clone"
+grep -qx edited <<< "$(tar xOf "$fake/tree.tar" tracked.txt)" || fail "run from elsewhere: didn't send its own clone"
 
 # On Katana: a folder of its own in scratch, deleted on exit, and both tests.
 grep -qF 'mktemp -d "/srv/scratch/$USER/' "$fake/args" || fail "doesn't make its own scratch folder"
@@ -209,7 +209,7 @@ echo 999 > "$fake/rm-fails"
 echo 'exit 1' > "$repo/module/tests/test_module.sh"
 out="$(run)"; r=$?
 [ "$r" = 1 ] || fail "a failing test and a folder left behind: exit $r, expected 1"
-tail -1 <<< "$out" | grep -qF "katana-test: left behind $fake/scratch/katana-test." ||
+grep -qF "katana-test: left behind $fake/scratch/katana-test." <<< "$(tail -1 <<< "$out")" ||
     fail "a failing test and a folder left behind: doesn't end naming the folder"
 [ "$(stamped)" = "$before" ] || fail "a failing test and a folder left behind: recorded the tree as tested"
 git -C "$repo" checkout -q module/tests/test_module.sh

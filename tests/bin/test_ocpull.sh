@@ -124,7 +124,7 @@ move_dev() {
 devline() {
     # shellcheck disable=SC2088  # the ~ is for Katana's shell, in the printed line
     local d="~/$IRIS_DEV_INSTALL"
-    printf "ssh katana 'cd %s && { git diff --quiet HEAD && ! git ls-files -v | grep -q \"^S\" || { echo \"ocpull: %s has uncommitted changes or keeps its own copy of a file (skip-worktree), so nothing moved it; move it by hand.\" >&2; exit 1; }; } && git fetch -q origin && git checkout -q --detach %s'" \
+    printf "ssh katana 'cd %s && { git diff --quiet HEAD && [ -z \"\$(git ls-files -v | grep \"^S\")\" ] || { echo \"ocpull: %s has uncommitted changes or keeps its own copy of a file (skip-worktree), so nothing moved it; move it by hand.\" >&2; exit 1; }; } && git fetch -q origin && git checkout -q --detach %s'" \
         "$d" "$d" "$1"
 }
 # refused <case>: the dev install line refused, saying why.
@@ -156,7 +156,7 @@ dev_at listing "$A"
 # --apply line is <line>.
 listed_before_apply() {
     local before
-    before=$(PATH="$fake:$PATH" "$tools/bin/ocpull" 2>&1 | grep -B1 -F "bin/ocpull --apply" | head -1)
+    before=$(PATH="$fake:$PATH" "$tools/bin/ocpull" 2>&1 | grep -B1 -F "bin/ocpull --apply" | sed -n 1p)
     [ "$before" = "$2" ] || printf 'ocpull listing %s: before the --apply line, %s\n  not %s\n' "$1" "$before" "$2"
 }
 # The form test helper renders as A, not the tip C: the listing says so up

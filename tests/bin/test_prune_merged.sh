@@ -158,7 +158,7 @@ gone apply merged-mux "$fake/iris-7"
 gone apply merged-harness-locked "$wt_harness_locked"
 kept apply merged-claude-lock-outside "$fake/iris-9"
 kept apply merged-harness-dirty "$wt_harness_dirty"
-git -C "$clone" worktree list --porcelain | grep -qx "locked claude agent agent-4 (pid 999999 start 1)" || echo "prune-merged --apply: unlocked merged-harness-dirty's worktree"
+grep -qx "locked claude agent agent-4 (pid 999999 start 1)" <<< "$(git -C "$clone" worktree list --porcelain)" || echo "prune-merged --apply: unlocked merged-harness-dirty's worktree"
 kept apply unmerged
 kept apply main
 kept apply merged-dirty "$fake/iris-2"

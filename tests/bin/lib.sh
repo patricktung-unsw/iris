@@ -91,9 +91,9 @@ expect() {
     rc=$?
     if [ "$want" = pass ] && [ "$rc" != 0 ]; then
         echo "${tree##*/}: failed, expected a pass"
-    elif [ "$want" = fail ] && { [ "$rc" != 1 ] || ! grep '^FAIL: ' <<< "$out" | grep -qF -- "$name"; }; then
+    elif [ "$want" = fail ] && { [ "$rc" != 1 ] || ! grep -qF -- "$name" <<< "$(grep '^FAIL: ' <<< "$out")"; }; then
         echo "${tree##*/}: passed (exit $rc), expected a failure"
-    elif [ "$want" = fail ] && ! tail -n1 <<< "$out" | grep '^FAILED: ' | grep -qF -- "$name"; then
+    elif [ "$want" = fail ] && ! grep -qF -- "$name" <<< "$(tail -n1 <<< "$out" | grep '^FAILED: ')"; then
         echo "${tree##*/}: its last line doesn't name the failed check: $(tail -n1 <<< "$out")"
     else
         return 0
