@@ -20,7 +20,9 @@
 #                       lists them: each tests/bin test naming one, the
 #                       scripts among them through shellcheck, and
 #                       actionlint, ruff and the Python tests where they
-#                       apply; it notes each changed file no test names
+#                       apply; it notes each changed file no test names,
+#                       and names the tests/bin tests it ran on its last
+#                       line, or on the line before FAILED: if one failed
 # Neither records a pass: commit on a full run.
 #
 # A full run that passes records the tree it checked for .githooks/pre-push
@@ -76,6 +78,8 @@ failures=()
 # The tree this run checks, taken before any check reads a file.
 start_tree="$(bin/tracked-tree 2> /dev/null)"
 ran=0
+# With --changed, the tests/bin tests run, by name, for its last lines.
+tests_run=()
 
 # Whether the check named $1 is selected by the <text> argument, or with
 # --changed is a rule over the tree or a slow check bin/check-changed listed.
@@ -1294,9 +1298,13 @@ check "actionlint" uvx --quiet --from actionlint-py==1.7.12.25 --with "$shellche
 for t in tests/bin/test_*.sh; do
     [ -f "$t" ] || continue
     n=$(tr -d '\r' < "$t" | sed -n 's/^# bin\/check name: //p' | head -n1)
-    slow["${n:-$t}"]=1
-    [ -z "${wanted[$t]-}" ] || wanted["${n:-$t}"]=1
-    check "${n:-$t}" bash "$t"
+    name="${n:-$t}"
+    slow[$name]=1
+    if [ -n "${wanted[$t]-}" ]; then
+        wanted[$name]=1
+        tests_run+=("$name")
+    fi
+    check "$name" bash "$t"
 done
 
 # Mechanical Python checks only; ruff.toml holds the rule set.
@@ -1357,6 +1365,15 @@ if [ "$ran" = 0 ]; then
     echo "No check name contains '$only'."
     exit 2
 fi
+# With --changed, the tests/bin tests run, by name, passed or failed, so a
+# session need not run them again by hand to learn whether a shared file's
+# users ran (#239's session).
+if [ ${#tests_run[@]} -gt 0 ]; then
+    printf -v tests_run_names '%s, ' "${tests_run[@]}"
+    tests_run_names="${tests_run_names%, }"
+else
+    tests_run_names=none
+fi
 if [ "$failed" = 0 ]; then
     if [ -z "$only" ]; then
         echo "All checks passed."
@@ -1367,11 +1384,12 @@ if [ "$failed" = 0 ]; then
             bin/check-passed --record "$start_tree" || echo "bin/check: the pass isn't recorded for .githooks/pre-push" >&2
         fi
     elif [ -n "$changed_mode" ]; then
-        echo "The rules over the tree and the checks covering the files changed since $since passed ($ran run); commit on a full run."
+        echo "The rules over the tree and the checks covering the files changed since $since passed ($ran run; tests/bin tests run: $tests_run_names); commit on a full run."
     else
         echo "Checks matching '$only' passed ($ran run)."
     fi
 else
+    [ -z "$changed_mode" ] || echo "tests/bin tests run: $tests_run_names"
     printf -v list '%s | ' "${failures[@]}"
     echo "FAILED: ${list% | }"
 fi

@@ -1,9 +1,9 @@
 #!/bin/bash
 # bin/check-changed, which picks bin/check --changed's checks, in a
 # throwaway repo with its own origin/main, then bin/check --changed itself
-# in a scratch site tree: the tests it runs, shellcheck on changed scripts
-# only, every rule over the tree, a check name it lacks, and no pass
-# recorded for .githooks/pre-push.
+# in a scratch site tree: the tests it runs and the names it gives them,
+# its shellcheck of changed scripts only, every rule over the tree, a
+# check name it lacks, and no pass recorded for .githooks/pre-push.
 # Prints each failed case and nothing on success, so bin/check can run it.
 #
 #   tests/bin/test_check_changed.sh
@@ -243,6 +243,9 @@ changed
 [ "$code" = 1 ] || fail "--changed $case: exit $code, not 1"
 ran_fail "notes test"
 no_fail "boom test"
+# A failing run names the tests it ran on the line before FAILED:.
+[ "$(tail -n2 <<< "$out" | head -n1)" = "tests/bin tests run: notes test" ] ||
+    fail "--changed $case: the line before FAILED: isn't the tests run: $(tail -n2 <<< "$out" | head -n1)"
 ran_fail shellcheck
 grep -qF "bin/new-tool:1:1: checked" <<< "$out" || fail "--changed $case: shellcheck skipped the untracked script"
 ! grep -qF "bin/old-tool" <<< "$out" || fail "--changed $case: shellcheck read an unchanged script"
@@ -254,13 +257,31 @@ git -C "$site" -c user.name=t -c user.email=t@t commit -q -am pass
 changed
 [ "$code" = 0 ] || fail "--changed $case: exit $code: $out"
 (cd "$site" && bin/check-passed HEAD) && fail "--changed $case: recorded a pass for pre-push"
+# The last line names the tests/bin tests it ran, so a run need not be
+# repeated by hand to learn which did.
+last="$(tail -n1 <<< "$out")"
+[[ "$last" == *"; tests/bin tests run: notes test); commit on a full run." ]] ||
+    fail "--changed $case: last line names no tests run: $last"
+
+case="two tests"
+echo '# more' >> "$site/tests/bin/test_boom.sh"
+echo 'fail' > "$site/notes.md"
+changed
+ran_fail "boom test"
+ran_fail "notes test"
+grep -qxF "tests/bin tests run: boom test, notes test" <<< "$out" || fail "--changed $case: both tests not named in order"
+git -C "$site" checkout -q -- tests/bin/test_boom.sh notes.md
 
 # A rule over the tree runs whatever changed, no test naming the page.
+# origin/main moves up to the committed notes.md, so the page is the only
+# change and no tests/bin test runs.
 case="a page no test names"
+git -C "$site" update-ref refs/remotes/origin/main HEAD
 echo '<a href="/root">root</a>' >> "$site/guide/index.html"
 changed
 [ "$code" = 1 ] || fail "--changed $case: exit $code, not 1"
 ran_fail "root-absolute links"
+grep -qxF "tests/bin tests run: none" <<< "$out" || fail "--changed $case: no 'tests/bin tests run: none' line: $(tail -n3 <<< "$out")"
 git -C "$site" checkout -q -- guide/index.html
 
 case="a check name bin/check lacks"
