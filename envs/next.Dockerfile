@@ -8,9 +8,9 @@
 #
 # Once a layer version is published, this file is never edited beyond its
 # comments and blank lines, which bin/check holds it to (#241), since every
-# published layer was built from it. A version that needs another layer
-# recipe carries its own Dockerfile, beside its lock, and is built fresh
-# from it.
+# published layer was built from it. A version that needs another recipe
+# for its layer carries its own Dockerfile, beside its lock, and is built
+# fresh from it.
 #
 # envs/build-container.sh <env>/<n> builds it, with envs/<env>/<n>/ as the
 # context and PREVIOUS the version before it by digest alone
