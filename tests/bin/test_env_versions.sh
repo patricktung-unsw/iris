@@ -6,9 +6,9 @@
 # change or remove packages: envs/build-kind.sh calls one that only adds a
 # layer and any other, or one carrying its own Dockerfile, fresh from the
 # nearest Dockerfile, and bin/check notes why. Also its check that a
-# published version's Dockerfile, and the one it was built from, is
-# unchanged, comments aside. Prints each
-# failed case and nothing on success, so bin/check can run it.
+# published version's Dockerfile, and the one it was built from,
+# envs/next.Dockerfile for a layer, is unchanged, comments aside. Prints
+# each failed case and nothing on success, so bin/check can run it.
 #
 #   tests/bin/test_env_versions.sh
 #
@@ -314,3 +314,49 @@ expect fail "$scratch/nearest-edit" "$freeze"
 out="$("$scratch/nearest-edit/bin/check" "$freeze" 2>&1)"
 grep -q 'envs/microct/2/Dockerfile.*published microct/3' <<< "$out" ||
     { echo "nearest-edit: the failure doesn't name microct/2's Dockerfile and microct/3"; echo "$out" | sed 's/^/  /'; }
+# Every layer version is built from envs/next.Dockerfile on the version
+# before it, so once one is published that file is frozen too (#241): a
+# change beyond comment and blank lines fails, naming the file, the
+# publishing commit and the version, and so does removing it. While every
+# published version is fresh, it stays free to edit.
+# layer_tree <name>: frozen_tree with envs/next.Dockerfile committed, then
+# microct/2, a layer on microct/1, published in a commit of its own.
+layer_tree() {
+    frozen_tree "$1"
+    printf '%s\n' '# The layer recipe.' 'ARG BASE' 'FROM $BASE' 'RUN pip install -r requirements.lock' \
+        > "$scratch/$1/envs/next.Dockerfile"
+    add_version "$1" microct/2 unpublished 'numpy==2.3.0' 'scipy==1.16.0' 'xarray==2025.6.1'
+    frozen_commit "$1" "microct/2"
+    edit "$1" lib/katana.sh "s|\[microct/2\]=unpublished|[microct/2]=$digest|"
+    frozen_commit "$1" "Publish microct/2"
+}
+layer_tree next-edit
+since="$(git -C "$scratch/next-edit" rev-parse --short HEAD)"
+edit next-edit envs/next.Dockerfile 's/requirements.lock/requirements.lock --no-deps/'
+frozen_commit next-edit "Install the layer without deps"
+expect fail "$scratch/next-edit" "$freeze"
+out="$("$scratch/next-edit/bin/check" "$freeze" 2>&1)"
+[ "$(grep -c 'envs/next.Dockerfile' <<< "$out")" = 1 ] &&
+    grep -q "envs/next.Dockerfile.*$since.*published microct/2.*own Dockerfile" <<< "$out" ||
+    { echo "next-edit: no one line naming envs/next.Dockerfile, $since, microct/2 and the route"; echo "$out" | sed 's/^/  /'; }
+layer_tree next-comment
+edit next-comment envs/next.Dockerfile 's/^# The layer recipe\./# The layer recipe, frozen once a layer is published./;1a\
+'
+frozen_commit next-comment "Correct the header"
+expect pass "$scratch/next-comment" "$freeze"
+layer_tree next-removed
+git -C "$scratch/next-removed" rm -q envs/next.Dockerfile
+frozen_commit next-removed "Remove the layer recipe"
+expect fail "$scratch/next-removed" "$freeze"
+# Only fresh versions published: microct/1, and microct/2 built fresh from
+# its own Dockerfile.
+frozen_tree next-fresh-only
+printf '%s\n' 'ARG BASE' 'FROM $BASE' > "$scratch/next-fresh-only/envs/next.Dockerfile"
+add_version next-fresh-only microct/2 unpublished 'numpy==2.3.0' 'scipy==1.16.0' 'xarray==2025.6.1'
+dockerfile next-fresh-only microct/2
+frozen_commit next-fresh-only "microct/2"
+edit next-fresh-only lib/katana.sh "s|\[microct/2\]=unpublished|[microct/2]=$digest|"
+frozen_commit next-fresh-only "Publish microct/2"
+edit next-fresh-only envs/next.Dockerfile '$a\RUN pip install -r requirements.lock'
+frozen_commit next-fresh-only "Install the layer's lock"
+expect pass "$scratch/next-fresh-only" "$freeze"

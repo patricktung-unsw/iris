@@ -448,12 +448,15 @@ env_version_notes() {
 # since their fork's CI built it from that file. Frozen from that commit are
 # its own Dockerfile, envs/<env>/<n>/Dockerfile beside its lock, and the one
 # envs/build-kind.sh names for it in that commit's tree, which for a fresh
-# version without its own is an earlier version's, published or not. Each
-# must match that commit's in the working tree, comment and blank lines
-# dropped, so a header can still be corrected; a Dockerfile added or
-# removed after it counts as a change. It reads git history, so it fails in
-# a shallow clone, whose first commit would stand in for the publishing
-# one; CI checks out every commit (fetch-depth: 0).
+# version without its own is an earlier version's, published or not. For a
+# layer, which it prints as layer, that is envs/next.Dockerfile, the layer
+# recipe every layer version is built from on the version before it
+# (#241); until a layer version is published, that file stays free to
+# edit. Each must match that commit's in the working tree, comment and
+# blank lines dropped, so a header can still be corrected; a Dockerfile
+# added or removed after it counts as a change. It reads git history, so
+# it fails in a shallow clone, whose first commit would stand in for the
+# publishing one; CI checks out every commit (fetch-depth: 0).
 # tests/bin/test_env_versions.sh runs it on fixture trees.
 published_dockerfiles() {
     local v c value since f tree built
@@ -479,10 +482,17 @@ published_dockerfiles() {
         cp envs/build-kind.sh "$tree/envs/build-kind.sh"
         built="$("$tree/envs/build-kind.sh" "$v" 2>/dev/null | sed -n 1p)"
         rm -rf "$tree"
-        [ "${built%% *}" != fresh ] || frozen["${built#fresh }"]=1
+        case "$built" in
+            "fresh "*) frozen["${built#fresh }"]=1 ;;
+            layer) frozen[envs/next.Dockerfile]=1 ;;
+        esac
         for f in $(printf '%s\n' "${!frozen[@]}" | sort); do
-            [ "$(git show "$since:$f" 2>/dev/null | dockerfile_recipe)" = "$(dockerfile_recipe 2>/dev/null < "$f")" ] ||
+            [ "$(git show "$since:$f" 2>/dev/null | dockerfile_recipe)" != "$(dockerfile_recipe 2>/dev/null < "$f")" ] || continue
+            if [ "$f" = envs/next.Dockerfile ]; then
+                echo "$f: changed since $(git rev-parse --short "$since") published $v, a layer built from it; the layer recipe is never edited once a layer version is published, so a version that needs another carries its own Dockerfile, beside its lock, and is built fresh from it"
+            else
                 echo "$f: changed since $(git rev-parse --short "$since") published $v; a published Dockerfile is never edited, so give your new version its own Dockerfile, beside its lock, rather than edit this one"
+            fi
         done
     done
 }
