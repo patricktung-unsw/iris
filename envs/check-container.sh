@@ -2,7 +2,11 @@
 # Check a built container against its version's recipe, as CI does after
 # every build and before any publish (.github/workflows/containers.yml):
 #
-#   DISPLAY=<X display open to any client> envs/check-container.sh <local name> <env>/<n>
+#   [DISPLAY=<X display open to any client>] envs/check-container.sh <local name> <env>/<n>
+#
+# CI passes its own Xvfb's DISPLAY. With no DISPLAY, as in WSL, which has
+# no Xvfb, a napari version's checks start one in a throwaway container
+# and remove it on exit (envs/README.md's Building on the desktop).
 #
 # Fails, naming what is wrong, unless:
 #   - pip freeze inside it is envs/<env>/<n>/requirements.lock exactly
@@ -25,6 +29,12 @@ ENVS="$(cd "$(dirname "$0")" && pwd)"
 LOCK="$ENVS/$VERSION/requirements.lock"
 [ -f "$LOCK" ] || { echo "No $LOCK."; exit 1; }
 
+# Until Docker Desktop runs, its WSL docker isn't there and PATH reaches
+# Windows docker.exe, which can't mount a WSL path.
+case "$(command -v docker)" in
+    /mnt/*) echo "FAILED: docker is $(command -v docker), Windows' own, which can't mount WSL paths; start Docker Desktop, whose WSL docker is /usr/bin/docker."; exit 1 ;;
+esac
+
 # The Qt binding napari draws with is whichever one the lock pins, read
 # before any Docker run so a lock with neither fails at once.
 QT=
@@ -38,8 +48,12 @@ if grep -qiE '^napari==' "$LOCK"; then
     esac
 fi
 
+# The X socket folder the checks mount: the host's, or the throwaway
+# Xvfb's volume.
+X11=/tmp/.X11-unix
+
 in_container() {
-    docker run --rm -v "$ENVS:/recipe:ro" -v /tmp/.X11-unix:/tmp/.X11-unix \
+    docker run --rm -v "$ENVS:/recipe:ro" -v "$X11:/tmp/.X11-unix" \
         -e DISPLAY -e MLFLOW_DISABLE_AGENT_HINT=1 "$NAME" "$@"
 }
 
@@ -66,7 +80,25 @@ if [ -z "$QT" ]; then
     exit 0
 fi
 
-: "${DISPLAY:?set DISPLAY to an X server that accepts any client, e.g. Xvfb :99 -ac}"
+if [ -z "${DISPLAY:-}" ]; then
+    X11="iris-check-x11-$$"
+    xvfb="iris-check-xvfb-$$"
+    trap 'docker rm -f "$xvfb" >/dev/null 2>&1; docker volume rm "$X11" >/dev/null 2>&1' EXIT
+    echo "== Xvfb in a throwaway container ($xvfb)"
+    docker run -d --name "$xvfb" -v "$X11:/tmp/.X11-unix" debian:bookworm-slim sh -c \
+        'apt-get update -q >/dev/null && apt-get install -yq xvfb >/dev/null && exec Xvfb :99 -ac -screen 0 1280x1024x24' >/dev/null
+    for _ in $(seq 60); do
+        docker exec "$xvfb" test -S /tmp/.X11-unix/X99 2>/dev/null && break
+        if [ "$(docker inspect -f '{{.State.Running}}' "$xvfb")" != true ]; then
+            docker logs "$xvfb"
+            echo "FAILED: Xvfb's container $xvfb stopped (its log above)."
+            exit 1
+        fi
+        sleep 5
+    done
+    docker exec "$xvfb" test -S /tmp/.X11-unix/X99 || { echo "FAILED: Xvfb in $xvfb made no display in 5 minutes."; exit 1; }
+    export DISPLAY=:99
+fi
 
 case "$QT" in
     PyQt5) modules="Core Gui Widgets OpenGL Svg" ;;

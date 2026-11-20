@@ -86,15 +86,18 @@ bin/envpull --remove <env>/<n>   remove a version's file and its digest file, if
 
 ## Building on the desktop
 
-A local build is optional, since CI builds every version. In WSL, with Docker Desktop:
+A local build is optional, since CI builds every version. In WSL, with Docker Desktop running:
 
 ```
-envs/build-container.sh microct/1 iris-env-build:local
-Xvfb :99 -ac &
-DISPLAY=:99 envs/check-container.sh iris-env-build:local microct/1
+HOME=$(mktemp -d) envs/build-container.sh microct/1 iris-env-build:local
+HOME=$(mktemp -d) envs/check-container.sh iris-env-build:local microct/1
 ```
 
-Docker Desktop's Windows credential helper breaks the base pull unless the build runs with a home folder that lacks it, such as `HOME=$(mktemp -d)`.
+The same check runs on a published version's container, pulled by digest: `HOME=$(mktemp -d) docker pull "$(bash -c '. lib/katana.sh; iris_env_ref tools/1')"`, then that reference as the local name.
+
+- **Start Docker Desktop first.** Its WSL `docker`, `/usr/bin/docker`, exists only while it runs, and until then PATH reaches Windows `docker.exe`, which can't mount WSL paths; `check-container.sh` refuses it.
+- **The home folder without Docker's config** keeps Docker Desktop's Windows credential helper, which fails with `A specified logon session does not exist`, out of every pull, the base images and Xvfb's included. A pull piped into `tail` hides that failure behind `tail`'s exit status.
+- **WSL has no Xvfb**, so with no `DISPLAY` set, a napari version's checks start Xvfb in a throwaway `debian:bookworm-slim` container, share its socket through a Docker volume, and remove both on exit.
 
 ## The Python tests
 
