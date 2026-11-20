@@ -207,10 +207,12 @@ code=$?
 # bin/check --changed in a clone of this one, its working tree's edits and
 # untracked files copied in, so it passes every rule over the tree as
 # --changed runs them all (the library copies' rule reads its history).
-# Its tests/bin tests are swapped for three: test_notes.sh names notes.md and
-# fails unless it reads "pass"; test_boom.sh always fails and names nothing
-# changed; test_idle.sh passes and names nothing. A fake uvx stands in for shellcheck, flagging each script it is
-# given, so the run shows which files it checked.
+# Its tests/bin tests are swapped for three: test_notes.sh names notes.md
+# and fails unless it reads "pass"; test_boom.sh always fails; test_idle.sh
+# passes and is there so a change to two tests leaves one uncovered. Each
+# names bin/check, as every real test does, and nothing else changed. A
+# fake uvx stands in for shellcheck, flagging each script it is given, so
+# the run shows which files it checked.
 site="$scratch/site"
 mkdir -p "$scratch/path"
 git clone -q --shared . "$site"
@@ -218,9 +220,9 @@ git clone -q --shared . "$site"
     tar --null -T - -cf - | tar -xf - -C "$site"
 git diff -z --name-only --diff-filter=D HEAD | (cd "$site" && xargs -0 -r rm -f --)
 rm "$site"/tests/bin/test_*.sh
-printf '#!/bin/bash\n# bin/check name: notes test\ngrep -q pass notes.md || echo "notes.md: no pass"\n' > "$site/tests/bin/test_notes.sh"
-printf '#!/bin/bash\n# bin/check name: boom test\necho boom\n' > "$site/tests/bin/test_boom.sh"
-printf '#!/bin/bash\n# bin/check name: idle test\ntrue\n' > "$site/tests/bin/test_idle.sh"
+printf '#!/bin/bash\n# bin/check name: notes test\n# so bin/check can run it\ngrep -q pass notes.md || echo "notes.md: no pass"\n' > "$site/tests/bin/test_notes.sh"
+printf '#!/bin/bash\n# bin/check name: boom test\n# so bin/check can run it\necho boom\n' > "$site/tests/bin/test_boom.sh"
+printf '#!/bin/bash\n# bin/check name: idle test\n# so bin/check can run it\ntrue\n' > "$site/tests/bin/test_idle.sh"
 printf '#!/bin/bash\necho old\n' > "$site/bin/old-tool"
 echo 'start' > "$site/notes.md"
 printf '#!/bin/bash\ncat > /dev/null\necho "-:1:1: checked"\n' > "$scratch/path/uvx"
@@ -280,12 +282,12 @@ git -C "$site" checkout -q -- tests/bin/test_boom.sh notes.md
 # --changed after a bin/check edit ran all 61 tests in 5 minutes, then the
 # full run again).
 case="every test covered"
-for t in "$site"/tests/bin/test_*.sh; do echo '# more' >> "$t"; done
+echo '# more' >> "$site/bin/check"
 changed
 [ "$code" = 2 ] || fail "--changed $case: exit $code, not 2"
-grep -qF "run bin/check" <<< "$out" || fail "--changed $case: no line sending the run to bin/check: $out"
-! grep -q "^FAIL: " <<< "$out" || fail "--changed $case: ran a check: $out"
-git -C "$site" checkout -q -- tests/bin
+grep -qF "run bin/check, or bin/check <text>" <<< "$out" || fail "--changed $case: no line sending the run to bin/check: $out"
+! grep -q "^FAIL: \|^tests/bin tests run" <<< "$out" || fail "--changed $case: ran a check: $out"
+git -C "$site" checkout -q -- bin/check
 
 # A rule over the tree runs whatever changed, no test naming the page.
 # origin/main moves up to the committed notes.md, so the page is the only
