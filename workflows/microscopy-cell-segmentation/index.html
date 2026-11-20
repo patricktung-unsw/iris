@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Cell Segmentation — IRIS</title>
+  <title>Nuclei Segmentation (U-Net) — IRIS</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="../../assets/iris.css">
@@ -17,18 +17,22 @@
   <a href="../../#workflows" class="nav-back">← Back to catalogue</a>
 </nav>
 <div class="page">
-  <div class="breadcrumb"><a href="../../">IRIS</a> / <a href="../../#workflows">Workflows</a> / <a href="../../#kglmf">KGLMF</a> / Cell Segmentation</div>
+  <div class="breadcrumb"><a href="../../">IRIS</a> / <a href="../../#workflows">Workflows</a> / <a href="../../#kglmf">KGLMF</a> / Nuclei Segmentation (U-Net)</div>
   <span class="wf-domain imaging">Imaging</span>
-  <h1 class="wf-title">Cell Segmentation</h1>
-  <p class="wf-desc">Segment cells and nuclei in fluorescence microscopy images and measure each one, such as its size, shape and intensity, so a study can compare cell populations across conditions.</p>
+  <h1 class="wf-title">Nuclei Segmentation (U-Net)</h1>
+  <p class="wf-desc">Label every image in a set of fluorescence microscopy images as background, nucleus or nucleus edge. IRIS will train a 2D U-Net on your training pairs and segment each image, recording each run so you can view the labels over the images and compare runs side by side.</p>
+  <div class="demonstration-notice"><strong>Demonstration workflow.</strong> This workflow will show what IRIS can do for KGLMF, the Katharina Gaus Light Microscopy Facility. It is a demonstration on public data that did not come from KGLMF, and it has not been validated on the lab's images.</div>
   <span class="run-note"><strong>Planned.</strong> This workflow has no form yet, so it cannot be run. This page describes what it will do.</span>
   <h2>What it will take and produce</h2>
   <table class="param-table">
     <thead><tr><th></th><th>Description</th></tr></thead>
-    <tbody><tr><td>Input</td><td>Fluorescence microscopy images, transferred to your scratch.</td></tr><tr><td>Output</td><td>A cell and nucleus mask for each image and a table of each cell's measurements, with the run recorded.</td></tr></tbody>
+    <tbody><tr><td>Input</td><td>Fluorescence microscopy images of nuclei, with some of them labelled to train on, transferred to your scratch.</td></tr><tr><td>Output</td><td>A label for every pixel of every image, marking background, nucleus or nucleus edge, with the run recorded so you can view the labels over the images and compare runs.</td></tr></tbody>
   </table>
+  <h2>Its data</h2>
+  <p class="wf-desc">The demonstration will train on <a href="https://bbbc.broadinstitute.org/BBBC039" target="_blank">BBBC039</a>, a public collection of fluorescence images of U2OS nuclei. BBBC039's recommended citation is:</p>
+  <p class="wf-desc">We used image set BBBC039v1 Caicedo et al. 2018, available from the Broad Bioimage Benchmark Collection [Ljosa et al., Nature Methods, 2012].</p>
   <h2>Not settled yet</h2>
-  <p class="wf-desc">The method, its parameters and its environment are settled when this workflow is built.</p>
+  <p class="wf-desc">Its parameters and its environment are settled when this workflow is built.</p>
 </div>
 <footer>
   <span>IRIS · UNSW ResTech</span>

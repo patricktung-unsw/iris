@@ -86,6 +86,10 @@ _Avoid_: Group, team, facility
 The single microCT workflow every IRIS v1 design decision is tested against.
 _Avoid_: Demo, example workflow
 
+**Demonstration workflow**:
+A workflow that shows what IRIS can do for a lab on public data that did not come from that lab, and says so on its page.
+_Avoid_: Demo, sample workflow
+
 **Form**:
 The OpenComposer definition of a workflow on Katana OnDemand, where the researcher sets parameters and submits.
 _Avoid_: App, template
