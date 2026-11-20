@@ -22,7 +22,10 @@
 #                       actionlint, ruff and the Python tests where they
 #                       apply; it notes each changed file no test names,
 #                       and names the tests/bin tests it ran on its last
-#                       line, or on the line before FAILED: if one failed
+#                       line, or on the line before FAILED: if one failed;
+#                       when every tests/bin test covers a changed file,
+#                       as for a change to bin/check, it runs nothing and
+#                       exits 2, sending the run to a full bin/check
 # Neither records a pass: commit on a full run.
 #
 # A full run that passes records the tree it checked for .githooks/pre-push
@@ -72,6 +75,20 @@ if [ "$only" = --changed ]; then
             untested) echo "NOTE: no tests/bin test names $value" ;;
         esac
     done <<< "$out"
+    # A change every tests/bin test covers, as a change to bin/check is,
+    # since each test names it, takes as long as a full run and records no
+    # pass: #241's --changed ran all 61 in 5 minutes, then the full run
+    # ran them again.
+    all=0 covered=0
+    for t in tests/bin/test_*.sh; do
+        [ -f "$t" ] || continue
+        all=$((all + 1))
+        [ -z "${wanted[$t]-}" ] || covered=$((covered + 1))
+    done
+    if [ "$all" -gt 0 ] && [ "$covered" = "$all" ]; then
+        echo "Every tests/bin test covers a file changed since $since, so --changed would take as long as a full run and record no pass: run bin/check, or bin/check <text> for the checks you changed."
+        exit 2
+    fi
 fi
 failed=0
 failures=()

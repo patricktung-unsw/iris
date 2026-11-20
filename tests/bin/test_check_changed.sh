@@ -3,7 +3,8 @@
 # throwaway repo with its own origin/main, then bin/check --changed itself
 # in a scratch site tree: the tests it runs and the names it gives them,
 # its shellcheck of changed scripts only, every rule over the tree, a
-# check name it lacks, and no pass recorded for .githooks/pre-push.
+# check name it lacks, no pass recorded for .githooks/pre-push, and a
+# change every test covers sent to a full run.
 # Prints each failed case and nothing on success, so bin/check can run it.
 #
 #   tests/bin/test_check_changed.sh
@@ -206,9 +207,9 @@ code=$?
 # bin/check --changed in a clone of this one, its working tree's edits and
 # untracked files copied in, so it passes every rule over the tree as
 # --changed runs them all (the library copies' rule reads its history).
-# Its tests/bin tests are swapped for two: test_notes.sh names notes.md and
+# Its tests/bin tests are swapped for three: test_notes.sh names notes.md and
 # fails unless it reads "pass"; test_boom.sh always fails and names nothing
-# changed. A fake uvx stands in for shellcheck, flagging each script it is
+# changed; test_idle.sh passes and names nothing. A fake uvx stands in for shellcheck, flagging each script it is
 # given, so the run shows which files it checked.
 site="$scratch/site"
 mkdir -p "$scratch/path"
@@ -219,6 +220,7 @@ git diff -z --name-only --diff-filter=D HEAD | (cd "$site" && xargs -0 -r rm -f 
 rm "$site"/tests/bin/test_*.sh
 printf '#!/bin/bash\n# bin/check name: notes test\ngrep -q pass notes.md || echo "notes.md: no pass"\n' > "$site/tests/bin/test_notes.sh"
 printf '#!/bin/bash\n# bin/check name: boom test\necho boom\n' > "$site/tests/bin/test_boom.sh"
+printf '#!/bin/bash\n# bin/check name: idle test\ntrue\n' > "$site/tests/bin/test_idle.sh"
 printf '#!/bin/bash\necho old\n' > "$site/bin/old-tool"
 echo 'start' > "$site/notes.md"
 printf '#!/bin/bash\ncat > /dev/null\necho "-:1:1: checked"\n' > "$scratch/path/uvx"
@@ -271,6 +273,19 @@ ran_fail "boom test"
 ran_fail "notes test"
 grep -qxF "tests/bin tests run: boom test, notes test" <<< "$out" || fail "--changed $case: both tests not named in order"
 git -C "$site" checkout -q -- tests/bin/test_boom.sh notes.md
+
+# A change every tests/bin test covers, as a change to bin/check is, would
+# take as long as a full run and record no pass, so --changed runs no
+# check and sends the run to a full one (the retro of #241's session, whose
+# --changed after a bin/check edit ran all 61 tests in 5 minutes, then the
+# full run again).
+case="every test covered"
+for t in "$site"/tests/bin/test_*.sh; do echo '# more' >> "$t"; done
+changed
+[ "$code" = 2 ] || fail "--changed $case: exit $code, not 2"
+grep -qF "run bin/check" <<< "$out" || fail "--changed $case: no line sending the run to bin/check: $out"
+! grep -q "^FAIL: " <<< "$out" || fail "--changed $case: ran a check: $out"
+git -C "$site" checkout -q -- tests/bin
 
 # A rule over the tree runs whatever changed, no test naming the page.
 # origin/main moves up to the committed notes.md, so the page is the only
