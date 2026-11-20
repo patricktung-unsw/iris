@@ -93,11 +93,19 @@ HOME=$(mktemp -d) envs/build-container.sh microct/1 iris-env-build:local
 HOME=$(mktemp -d) envs/check-container.sh iris-env-build:local microct/1
 ```
 
-The same check runs on a published version's container, pulled by digest: `HOME=$(mktemp -d) docker pull "$(bash -c '. lib/katana.sh; iris_env_ref tools/1')"`, then that reference as the local name.
+The same check runs on a published version's container, pulled by digest:
 
-- **Start Docker Desktop first.** Its WSL `docker`, `/usr/bin/docker`, exists only while it runs, and until then PATH reaches Windows `docker.exe`, which can't mount WSL paths; `check-container.sh` refuses it.
-- **The home folder without Docker's config** keeps Docker Desktop's Windows credential helper, which fails with `A specified logon session does not exist`, out of every pull, the base images and Xvfb's included. A pull piped into `tail` hides that failure behind `tail`'s exit status.
-- **WSL has no Xvfb**, so with no `DISPLAY` set, a napari version's checks start Xvfb in a throwaway `debian:bookworm-slim` container, share its socket through a Docker volume, and remove both on exit.
+```
+ref=$(bash -c '. lib/katana.sh; iris_env_ref tools/1')
+HOME=$(mktemp -d) docker pull "$ref"
+HOME=$(mktemp -d) envs/check-container.sh "$ref" tools/1
+```
+
+Seen on the desktop, 2026-11-21:
+
+- **Start Docker Desktop first.** Its WSL `docker`, `/usr/bin/docker`, exists only while it runs, and until then PATH reaches Windows `docker.exe`, which can't mount WSL paths. `check-container.sh` refuses it; `build-container.sh` doesn't check.
+- **The home folder without Docker's config** keeps Docker Desktop's Windows credential helper, which fails with `A specified logon session does not exist`, out of every pull, the base images and Xvfb's included.
+- **WSL has no Xvfb**, and WSLg's `DISPLAY=:0` is a socket Docker Desktop's containers can't reach, so in WSL a napari version's checks start Xvfb in a throwaway `debian:bookworm-slim` container, share its socket through a Docker volume, and remove both on exit.
 
 ## The Python tests
 

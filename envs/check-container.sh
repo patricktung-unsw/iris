@@ -4,7 +4,7 @@
 #
 #   [DISPLAY=<X display open to any client>] envs/check-container.sh <local name> <env>/<n>
 #
-# CI passes its own Xvfb's DISPLAY. With no DISPLAY, as in WSL, which has
+# CI passes its own Xvfb's DISPLAY. With no DISPLAY, or in WSL, which has
 # no Xvfb, a napari version's checks start one in a throwaway container
 # and remove it on exit (envs/README.md's Building on the desktop).
 #
@@ -50,10 +50,10 @@ fi
 
 # The X socket folder the checks mount: the host's, or the throwaway
 # Xvfb's volume.
-X11=/tmp/.X11-unix
+x11_src=/tmp/.X11-unix
 
 in_container() {
-    docker run --rm -v "$ENVS:/recipe:ro" -v "$X11:/tmp/.X11-unix" \
+    docker run --rm -v "$ENVS:/recipe:ro" -v "$x11_src:/tmp/.X11-unix" \
         -e DISPLAY -e MLFLOW_DISABLE_AGENT_HINT=1 "$NAME" "$@"
 }
 
@@ -80,15 +80,18 @@ if [ -z "$QT" ]; then
     exit 0
 fi
 
-if [ -z "${DISPLAY:-}" ]; then
-    X11="iris-check-x11-$$"
+# WSL's own DISPLAY, WSLg's :0, is a socket Docker Desktop's containers
+# can't reach, so WSL always takes the throwaway Xvfb.
+if [ -z "${DISPLAY:-}" ] || [ -n "${WSL_DISTRO_NAME:-}" ]; then
+    x11_src="iris-check-x11-$$"
     xvfb="iris-check-xvfb-$$"
-    trap 'docker rm -f "$xvfb" >/dev/null 2>&1; docker volume rm "$X11" >/dev/null 2>&1' EXIT
+    trap 'docker rm -f "$xvfb" >/dev/null 2>&1; docker volume rm "$x11_src" >/dev/null 2>&1' EXIT
     echo "== Xvfb in a throwaway container ($xvfb)"
-    docker run -d --name "$xvfb" -v "$X11:/tmp/.X11-unix" debian:bookworm-slim sh -c \
+    docker run -d --name "$xvfb" -v "$x11_src:/tmp/.X11-unix" debian:bookworm-slim sh -c \
         'apt-get update -q >/dev/null && apt-get install -yq xvfb >/dev/null && exec Xvfb :99 -ac -screen 0 1280x1024x24' >/dev/null
+    up=
     for _ in $(seq 60); do
-        docker exec "$xvfb" test -S /tmp/.X11-unix/X99 2>/dev/null && break
+        if docker exec "$xvfb" test -S /tmp/.X11-unix/X99 2>/dev/null; then up=1; break; fi
         if [ "$(docker inspect -f '{{.State.Running}}' "$xvfb")" != true ]; then
             docker logs "$xvfb"
             echo "FAILED: Xvfb's container $xvfb stopped (its log above)."
@@ -96,7 +99,7 @@ if [ -z "${DISPLAY:-}" ]; then
         fi
         sleep 5
     done
-    docker exec "$xvfb" test -S /tmp/.X11-unix/X99 || { echo "FAILED: Xvfb in $xvfb made no display in 5 minutes."; exit 1; }
+    [ -n "$up" ] || { echo "FAILED: Xvfb in $xvfb made no display in 5 minutes."; exit 1; }
     export DISPLAY=:99
 fi
 
