@@ -3,8 +3,10 @@
 # lib/katana.sh: the map ends up holding exactly the entries given, the
 # tools version is set when asked, and each helper fails, naming the file,
 # when the map or the tools version line isn't there, so a fixture can't
-# keep the real map by mistake (#200). Prints each failed case and nothing
-# on success, so bin/check can run it.
+# keep the real map by mistake (#200); and, with SIGPIPE ignored, on a copy
+# padded past a pipe's buffer, the helpers still pass and print nothing on
+# stderr (#239). Prints each failed case and nothing on success, so
+# bin/check can run it.
 #
 #   tests/bin/test_digest_map.sh
 #
@@ -62,3 +64,45 @@ cp lib/katana.sh "$f"
 out="$(digest_map_add "$f" ct/9=unpublished 2>&1)" || fail "digest_map_add refused a real lib/katana.sh: $out"
 [ "$(map_of "$f")" = "$(printf '    [ct/9]=unpublished\n'; map_of lib/katana.sh)" ] ||
     { fail "digest_map_add's map isn't the line plus the real map:"; map_of "$f" | sed 's/^/  /'; }
+
+# With SIGPIPE ignored, a writer whose reader exits early prints "Broken
+# pipe" on stderr rather than dying silently, which fails any test that
+# prints it (#239: once in CI, where what made sed see the closed pipe is
+# still unknown). The trap below reproduces that every time: the padded
+# copy holds far more than a pipe's buffer inside the map and after its
+# ")", so a helper whose reader stops at its first match always leaves its
+# writer blocked on a closed pipe, rather than only now and then.
+# padded <file>: lib/katana.sh with 4,000 extra map entries and 4,000
+# comment lines after the map's ")".
+padded() {
+    awk '{ print }
+        $0 == "declare -gA IRIS_ENV_DIGESTS=(" { for (i = 0; i < 4000; i++) printf "    [pad/%d]=unpublished\n", i; in_map = 1 }
+        in_map && $0 == ")" { for (i = 0; i < 4000; i++) printf "# padding line %d, past the digest map\n", i; in_map = 0 }' \
+        lib/katana.sh > "$1"
+}
+# sigpipe_ignored <name> <cmd>...: runs <cmd> with SIGPIPE ignored, leaving
+# its stdout in $out and returning its status, and fails <name> if it
+# printed anything on stderr.
+sigpipe_ignored() {
+    local name="$1" err="$scratch/stderr" rc
+    shift
+    out="$(trap '' PIPE; "$@" 2> "$err")"
+    rc=$?
+    [ ! -s "$err" ] || { fail "$name printed on stderr with SIGPIPE ignored:"; sed 's/^/  /' "$err"; }
+    return "$rc"
+}
+padded "$f"
+sigpipe_ignored _digest_map_open _digest_map_open test "$f" ||
+    fail "_digest_map_open refused a padded lib/katana.sh with SIGPIPE ignored: $out"
+padded "$f"
+sigpipe_ignored digest_map_add digest_map_add "$f" ct/9=unpublished ||
+    fail "digest_map_add refused a padded lib/katana.sh with SIGPIPE ignored: $out"
+padded "$f"
+sigpipe_ignored digest_map digest_map "$f" "ct/1=$a" ||
+    fail "digest_map refused a padded lib/katana.sh with SIGPIPE ignored: $out"
+padded "$f"
+grep -vx ')' "$f" > "$f.open" && mv "$f.open" "$f"
+sigpipe_ignored "_digest_map_open on an unclosed map" _digest_map_open test "$f" &&
+    fail "_digest_map_open passed on a padded map with no closing )"
+[ "$out" = "test: $f's digest map has no closing ) line" ] ||
+    fail "_digest_map_open's unclosed-map failure with SIGPIPE ignored isn't its message: $out"

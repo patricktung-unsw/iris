@@ -12,7 +12,8 @@
 # end up holding exactly what was asked, it prints why, naming <file>, and
 # returns 1, so no fixture keeps the real map's versions by mistake.
 # The digest map's opening line in lib/katana.sh, which the helpers below
-# match whole. Its characters are literal in a sed basic regex.
+# match whole. Its characters are literal in a sed basic regex, which
+# _digest_map_lines reads it as.
 _DIGEST_MAP_OPEN='declare -gA IRIS_ENV_DIGESTS=('
 
 digest_map() {
@@ -49,7 +50,9 @@ digest_map_add() {
     _digest_map_open digest_map_add "$file" || return 1
     OPEN_="$_DIGEST_MAP_OPEN" LINE_="$line" awk '{ print } $0 == ENVIRON["OPEN_"] { print ENVIRON["LINE_"] }' \
         "$file" > "$file.digest-map" && mv "$file.digest-map" "$file" || return 1
-    if ! _digest_map_lines "$file" | grep -qxF -- "$line"; then
+    # A here-string, not a pipe: grep -q stops at its first match, and a
+    # writer still holding output would then meet a closed pipe (#239).
+    if ! grep -qxF -- "$line" <<< "$(_digest_map_lines "$file")"; then
         echo "digest_map_add: $file's digest map didn't take $2"
         return 1
     fi
@@ -62,7 +65,12 @@ _digest_map_open() {
         echo "$1: $2 has no '$_DIGEST_MAP_OPEN' line to replace"
         return 1
     fi
-    if ! sed -n "/^$_DIGEST_MAP_OPEN\$/,\$p" "$2" | grep -qx ')'; then
+    # One reader of the file itself, so no writer is left holding output
+    # when the match is found (#239).
+    if ! OPEN_="$_DIGEST_MAP_OPEN" awk '
+        in_map && $0 == ")" { found = 1; exit }
+        $0 == ENVIRON["OPEN_"] { in_map = 1 }
+        END { exit !found }' "$2"; then
         echo "$1: $2's digest map has no closing ) line"
         return 1
     fi
