@@ -209,10 +209,10 @@ has "envrun --container with no name" "$out" "usage:"
 # it) is retried once with DOCKER_CONFIG at an empty config of its own,
 # which the public package needs no login for, and that config is removed
 # afterwards (#247). The fake docker's pull fails on the credential error
-# #247 saw
-# unless DOCKER_CONFIG holds a config.json of {}; with FAKE_PULL_ERROR it
-# fails with that error instead, whatever the config, and with
-# FAKE_RETRY_ERROR it fails with that error under any DOCKER_CONFIG.
+# #247 saw, or on FAKE_CRED_ERROR, unless DOCKER_CONFIG holds a
+# config.json of {}; with FAKE_PULL_ERROR it fails with that error
+# instead, whatever the config, and with FAKE_RETRY_ERROR it fails with
+# that error under any DOCKER_CONFIG.
 cat > "$fake/docker" <<'EOS'
 #!/bin/bash
 dir="$(dirname "$0")"
@@ -224,21 +224,33 @@ case "$1" in
         if [ -n "${FAKE_PULL_ERROR-}" ]; then echo "$FAKE_PULL_ERROR" >&2; exit 1; fi
         if [ -n "${FAKE_RETRY_ERROR-}" ] && [ -n "${DOCKER_CONFIG-}" ]; then echo "$FAKE_RETRY_ERROR" >&2; exit 1; fi
         if [ "$(cat "${DOCKER_CONFIG:-/nonexistent}/config.json" 2>/dev/null)" != "{}" ]; then
-            echo 'Error getting credentials - err: exit status 1, out: `A specified logon session does not exist. It may already have been terminated.`' >&2
+            echo "${FAKE_CRED_ERROR:-Error getting credentials - err: exit status 1, out: \`A specified logon session does not exist. It may already have been terminated.\`}" >&2
             exit 1
         fi
         touch "$dir/pulled" ;;
 esac
 EOS
-rm -f "$fake/docker.log" "$fake/pulled" "$fake/configs"
-out="$(run IRIS_CONTAINER_RUNTIME=docker -- --no-network microct/1 true)" ||
-    { echo "docker pull with a failing credential helper: exit non-zero"; echo "$out" | sed 's/^/  /'; }
-[ "$(grep -c '^\[pull\]' "$fake/docker.log" 2>/dev/null)" = 2 ] ||
-    { echo "docker pull with a failing credential helper: not pulled twice"; log docker | sed 's/^/  /'; }
-has "docker pull with a failing credential helper" "$(log docker)" "[run][--rm]"
-retry_config="$(cat "$fake/configs" 2>/dev/null)"
-[ -n "$retry_config" ] && [ ! -e "$retry_config" ] ||
-    echo "docker pull with a failing credential helper: no retry config, or it is still there: ${retry_config:-none}"
+# cred_case <case> [<error>]: a pull failing on a credential error, #247's
+# or <error>, is retried once, the command runs, and the retry's config
+# is gone.
+cred_case() {
+    local out retry_config
+    rm -f "$fake/docker.log" "$fake/pulled" "$fake/configs"
+    out="$(run IRIS_CONTAINER_RUNTIME=docker ${2:+FAKE_CRED_ERROR="$2"} -- --no-network microct/1 true)" ||
+        { echo "$1: exit non-zero"; echo "$out" | sed 's/^/  /'; }
+    [ "$(grep -c '^\[pull\]' "$fake/docker.log" 2>/dev/null)" = 2 ] ||
+        { echo "$1: not pulled twice"; log docker | sed 's/^/  /'; }
+    has "$1" "$(log docker)" "[run][--rm]"
+    retry_config="$(cat "$fake/configs" 2>/dev/null)"
+    [ -n "$retry_config" ] && [ ! -e "$retry_config" ] ||
+        echo "$1: no retry config, or it is still there: ${retry_config:-none}"
+}
+cred_case "docker pull with a failing credential helper"
+# Docker's lowercase wording, which `docker pull` printed on the desktop
+# on 2026-11-21 with DOCKER_CONFIG holding
+# {"credsStore":"nonexistent-helper"}, a helper that isn't installed.
+cred_case "docker pull with a missing credential helper" \
+    'error getting credentials - err: exec: "docker-credential-nonexistent-helper": executable file not found in $PATH, out: ``'
 # Any other pull failure is not retried: the run fails with that pull's
 # error and runs nothing.
 rm -f "$fake/docker.log" "$fake/pulled" "$fake/configs"

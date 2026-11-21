@@ -1397,7 +1397,17 @@ check "actionlint" uvx --quiet --from actionlint-py==1.7.12.25 --with "$shellche
 # for the envrun time limit test, which runs real containers: a
 # test prints its failed cases and nothing on success. Each runs under the
 # name its "# bin/check name: <name>" line gives, or its path if it has
-# none, so a new test runs with no other edit.
+# none, so a new test runs with no other edit. Each runs under env -i,
+# keeping only test_env, so a variable the caller set (DOCKER_CONFIG,
+# an IRIS_* override) can't pass or fail it: #247's test first read the
+# caller's DOCKER_CONFIG, which review caught. A test that needs another
+# variable sets it itself. USER stays for the tests that build
+# /srv/scratch/$USER paths, LANG since the Ruby form tests the new
+# workflow and check-changed tests run read UTF-8 files as US-ASCII
+# without it, and GITHUB_ACTIONS since the envrun time limit test takes
+# CI's path on it.
+test_env=(HOME="$HOME" PATH="$PATH" USER="${USER-}" TMPDIR="${TMPDIR:-/tmp}" LANG="${LANG-}")
+[ -z "${GITHUB_ACTIONS-}" ] || test_env+=(GITHUB_ACTIONS="$GITHUB_ACTIONS")
 for t in tests/bin/test_*.sh; do
     [ -f "$t" ] || continue
     n=$(tr -d '\r' < "$t" | sed -n 's/^# bin\/check name: //p' | sed -n 1p)
@@ -1407,7 +1417,7 @@ for t in tests/bin/test_*.sh; do
         wanted[$name]=1
         tests_run+=("$name")
     fi
-    check "$name" bash "$t"
+    check "$name" env -i "${test_env[@]}" bash "$t"
 done
 
 # Mechanical Python checks only; ruff.toml holds the rule set.
