@@ -115,6 +115,7 @@ Seen on the desktop, 2026-11-21:
 
 - **On the desktop**, in WSL's Apptainer, which Katana has too. The first run pulls the version by digest into `~/.cache/iris/envs/<hex>.sif`, about 4.7 GB, which takes some minutes; later runs start at once. The pull needs no login.
 - **In CI**, in Docker (`.github/workflows/check.yml`), pulling with no login, on IRIS's own runs and a fork's alike.
+- **Under Docker anywhere** (in CI, without Apptainer, or with `IRIS_CONTAINER_RUNTIME=docker`), a container Docker doesn't hold yet is pulled first with the user's Docker login, if any, which keeps a login working for a package that is still private, as `iris-env` was until 2026-11-18. If that pull fails because Docker couldn't get a credential, as when `~/.docker/config.json`'s `credsStore` names Docker Desktop's Windows helper and no one is signed in to Windows, it pulls once more with `DOCKER_CONFIG` at an empty config of its own, then removes that config. Any other failure, or the retry's, fails the run with that pull's error ([#247](https://github.com/unsw-restech/iris/issues/247)).
 - **On a version just built**, `bin/envrun --container <local name> <env>/<n> <command>…` runs it in the container Docker holds under that local name, published or not, pulling nothing: `report-workflows.sh` runs the tests of every workflow pinning an earlier version, any lab's, in it this way.
 
 A workflow whose form pins an unpublished version fails its tests in `bin/check`, since there is no container to run them in yet.

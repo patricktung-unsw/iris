@@ -47,12 +47,13 @@ EOF
 chmod +x "$fake/apptainer" "$fake/docker" "$fake/gh"
 
 # run [<var>=<value>...] -- <arg>...: bin/envrun's output, run from the
-# scratch tree's workflow folder with the fakes first on the PATH.
+# scratch tree's workflow folder with the fakes first on the PATH and no
+# DOCKER_CONFIG of the caller's.
 run() {
     local vars=()
     while [ "$1" != -- ]; do vars+=("$1"); shift; done
     shift
-    (cd "$repo/workflows/seg" && env PATH="$fake:$PATH" IRIS_ENV_CACHE="$cache" "${vars[@]}" ../../bin/envrun "$@" 2>&1)
+    (cd "$repo/workflows/seg" && env -u DOCKER_CONFIG PATH="$fake:$PATH" IRIS_ENV_CACHE="$cache" "${vars[@]}" ../../bin/envrun "$@" 2>&1)
 }
 has() { grep -qF -- "$3" <<< "$2" || { echo "$1: no $3 in"; echo "$2" | sed 's/^/  /'; }; }
 lacks() { grep -qF -- "$3" <<< "$2" && { echo "$1: $3 in"; echo "$2" | sed 's/^/  /'; }; }
@@ -202,3 +203,58 @@ lacks "envrun --container" "$out" "[pull]"
 [ -z "$(log apptainer)" ] || echo "envrun --container: ran apptainer"
 out="$(run -- --container microct/1 python -V)" && echo "envrun --container with no name: exit 0"
 has "envrun --container with no name" "$out" "usage:"
+
+# Under Docker, a pull that fails because Docker's credential helper does
+# (credsStore pointing at a Windows helper with no logon session behind
+# it) is retried once with DOCKER_CONFIG at an empty config of its own,
+# which the public package needs no login for, and that config is removed
+# afterwards (#247). The fake docker's pull fails on the credential error
+# #247 saw
+# unless DOCKER_CONFIG holds a config.json of {}; with FAKE_PULL_ERROR it
+# fails with that error instead, whatever the config, and with
+# FAKE_RETRY_ERROR it fails with that error under any DOCKER_CONFIG.
+cat > "$fake/docker" <<'EOS'
+#!/bin/bash
+dir="$(dirname "$0")"
+printf '[%s]' "$@" >> "$dir/docker.log"; echo "[DOCKER_CONFIG=${DOCKER_CONFIG-}]" >> "$dir/docker.log"
+case "$1" in
+    image) [ -f "$dir/pulled" ] ;;
+    pull)
+        [ -z "${DOCKER_CONFIG-}" ] || echo "$DOCKER_CONFIG" >> "$dir/configs"
+        if [ -n "${FAKE_PULL_ERROR-}" ]; then echo "$FAKE_PULL_ERROR" >&2; exit 1; fi
+        if [ -n "${FAKE_RETRY_ERROR-}" ] && [ -n "${DOCKER_CONFIG-}" ]; then echo "$FAKE_RETRY_ERROR" >&2; exit 1; fi
+        if [ "$(cat "${DOCKER_CONFIG:-/nonexistent}/config.json" 2>/dev/null)" != "{}" ]; then
+            echo 'Error getting credentials - err: exit status 1, out: `A specified logon session does not exist. It may already have been terminated.`' >&2
+            exit 1
+        fi
+        touch "$dir/pulled" ;;
+esac
+EOS
+rm -f "$fake/docker.log" "$fake/pulled" "$fake/configs"
+out="$(run IRIS_CONTAINER_RUNTIME=docker -- --no-network microct/1 true)" ||
+    { echo "docker pull with a failing credential helper: exit non-zero"; echo "$out" | sed 's/^/  /'; }
+[ "$(grep -c '^\[pull\]' "$fake/docker.log" 2>/dev/null)" = 2 ] ||
+    { echo "docker pull with a failing credential helper: not pulled twice"; log docker | sed 's/^/  /'; }
+has "docker pull with a failing credential helper" "$(log docker)" "[run][--rm]"
+retry_config="$(cat "$fake/configs" 2>/dev/null)"
+[ -n "$retry_config" ] && [ ! -e "$retry_config" ] ||
+    echo "docker pull with a failing credential helper: no retry config, or it is still there: ${retry_config:-none}"
+# Any other pull failure is not retried: the run fails with that pull's
+# error and runs nothing.
+rm -f "$fake/docker.log" "$fake/pulled" "$fake/configs"
+out="$(run IRIS_CONTAINER_RUNTIME=docker FAKE_PULL_ERROR="manifest unknown" -- --no-network microct/1 true)" &&
+    echo "docker pull failing on another error: exit 0"
+has "docker pull failing on another error" "$out" "manifest unknown"
+[ "$(grep -c '^\[pull\]' "$fake/docker.log" 2>/dev/null)" = 1 ] ||
+    { echo "docker pull failing on another error: not pulled once"; log docker | sed 's/^/  /'; }
+lacks "docker pull failing on another error" "$(log docker)" "[run]"
+# A retry that fails too fails the run with the retry's error, runs
+# nothing and still removes its config.
+rm -f "$fake/docker.log" "$fake/pulled" "$fake/configs"
+out="$(run IRIS_CONTAINER_RUNTIME=docker FAKE_RETRY_ERROR="denied: no anonymous access" -- --no-network microct/1 true)" &&
+    echo "docker pull whose retry fails: exit 0"
+has "docker pull whose retry fails" "$out" "denied: no anonymous access"
+lacks "docker pull whose retry fails" "$(log docker)" "[run]"
+retry_config="$(cat "$fake/configs" 2>/dev/null)"
+[ -n "$retry_config" ] && [ ! -e "$retry_config" ] ||
+    echo "docker pull whose retry fails: no retry config, or it is still there: ${retry_config:-none}"

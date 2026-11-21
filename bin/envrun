@@ -37,7 +37,9 @@
 # the package is public (#132).
 #
 # Without Apptainer, or with IRIS_CONTAINER_RUNTIME=docker, it runs under
-# `docker run` as this user, as CI does.
+# `docker run` as this user, as CI does. A container Docker doesn't hold is
+# pulled first with the user's Docker login, if any, and, if Docker can't
+# get a credential for it, once more with no login (docker_pull, #247).
 
 set -eo pipefail
 repo="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
@@ -82,8 +84,38 @@ run() {
     exit "$status"
 }
 
+# docker_pull: pulls $ref with the user's Docker login. If that pull fails
+# because Docker couldn't get a credential, as when credsStore names
+# Docker Desktop's Windows helper and no one is signed in to Windows
+# (#247), it pulls once more with DOCKER_CONFIG at an empty config of its
+# own, which the public package needs no login for, then removes that
+# config. Any other failure, or the retry's, exits with that pull's error.
+docker_pull() {
+    local err status=0
+    # The pull's output goes to stderr, its error into err.
+    { err="$(docker pull -q "$ref" 2>&1 >&3)"; } 3>&2 || status=$?
+    [ "$status" != 0 ] || return 0
+    # Docker's wording, seen on the desktop (#247, 2026-11-21): "Error
+    # getting credentials - err: exit status 1, out: `A specified logon
+    # session does not exist. ...`".
+    if ! grep -qi 'error getting credentials' <<< "$err"; then
+        printf '%s\n' "$err" >&2
+        exit "$status"
+    fi
+    echo "envrun: Docker couldn't get a credential for the pull of $version; pulling it again with no login" >&2
+    local nologin_config
+    nologin_config="$(mktemp -d)"
+    trap 'rm -rf "$nologin_config"' EXIT
+    echo '{}' > "$nologin_config/config.json"
+    status=0
+    DOCKER_CONFIG="$nologin_config" docker pull -q "$ref" >&2 || status=$?
+    rm -rf "$nologin_config"
+    trap - EXIT
+    [ "$status" = 0 ] || exit "$status"
+}
+
 if [ "$runtime" = docker ]; then
-    [ -n "$local_name" ] || docker image inspect "$ref" > /dev/null 2>&1 || docker pull -q "$ref" >&2
+    [ -n "$local_name" ] || docker image inspect "$ref" > /dev/null 2>&1 || docker_pull
     net=()
     [ -z "$offline" ] || net=(--network none)
     # The uid has no passwd entry in the container, so USER carries the
