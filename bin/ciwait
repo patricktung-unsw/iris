@@ -1,31 +1,38 @@
 #!/bin/bash
-# Wait for one CI workflow's run of one pushed commit, `check` unless
-# --workflow names another (its file in .github/workflows/ without .yml),
-# then show how it ended, with the failed steps' log if it failed. The last
-# line is the verdict, "ciwait: <workflow> <sha> passed" or "... failed
-# (run <id>)", so a tail of the output still carries it. A passing
-# `containers` run also prints its "Published <tag> as <registry>@<digest>"
-# lines, the digest to pin in lib/katana.sh's digest map.
+# Wait for every run of one CI workflow for one pushed commit, `check`
+# unless --workflow names another (its file in .github/workflows/ without
+# .yml), then show how each ended, with the failed steps' log of any that
+# failed. Every run counts, whatever its event: a branch's push run, its
+# PR's pull_request run, which alone tests a detached merge commit (#250's
+# failure went unseen on three PRs), and main's push run. When the commit
+# is origin/main's tip, main's push run must appear, so a branch's finished
+# runs can't stand in for it. The runs are listed again after each wait, so
+# one that appears late is waited for too; a PR's pull_request run
+# appears only once the PR is open, so run it after `gh pr create`. The last line is the verdict,
+# "ciwait: <workflow> <sha> passed" or "... failed (run <id>[, <id>])", so
+# a tail of the output still carries it. A passing `containers` run also
+# prints its "Published <tag> as <registry>@<digest>" lines, the digest to
+# pin in lib/katana.sh's digest map.
 #
 #   bin/ciwait [--workflow <name>] [<commit>]        (default check, HEAD)
 #   bin/ciwait --workflow containers 93d3a39
 #   bin/ciwait 93d3a39 --workflow containers      (the same)
 #
-# Exits with the run's result (0 passed, 1 failed), or 2 if the commit isn't
-# on origin or no run for it appears within two minutes. The run is matched
-# by headSha: the desktop's gh 2.4.0 has no `gh run list --commit`. Every
-# gh call names unsw-restech/iris (bin/github-repo.sh), not the current
-# directory's repo, so a run from the fork's clone waits on iris's CI (#207).
+# Exits 0 when every run passed, 1 when any failed, or 2 if the commit
+# isn't on origin or no run for it (none of main's push, at main's tip)
+# appears within two minutes. Runs are matched by headSha. Every gh call
+# names unsw-restech/iris (bin/github-repo.sh), not the current directory's
+# repo, so a run from the fork's clone waits on iris's CI (#207).
 
 cd "$(dirname "$(readlink -f "$0")")/.." || exit 1
 # shellcheck source=bin/github-repo.sh
 . bin/github-repo.sh || exit 2
 repo="$IRIS_GITHUB_REPO"
 
-# One of the run's logs (--log or --log-failed), as plain lines: no job and
-# step columns, byte-order mark or timestamp.
+# One of run $1's logs ($2: --log or --log-failed), as plain lines: no job
+# and step columns, byte-order mark or timestamp.
 clean_log() {
-    gh run view "$id" -R "$repo" "$1" | cut -f3- | sed 's/^\xEF\xBB\xBF//; s/^[0-9T:.-]*Z //'
+    gh run view "$1" -R "$repo" "$2" | cut -f3- | sed 's/^\xEF\xBB\xBF//; s/^[0-9T:.-]*Z //'
 }
 
 usage() { echo "usage: bin/ciwait [--workflow <name in .github/workflows/>] [<commit>]" >&2; exit 2; }
@@ -47,27 +54,62 @@ if [ -z "$(git branch -r --contains "$sha" 2>/dev/null)" ]; then
     exit 2
 fi
 
-id=""
+# The workflow's runs of $sha not yet in $seen, one "<id> <event> <branch>"
+# line each. --commit filters on GitHub's side, so no run of the commit
+# falls outside --limit however many runs other commits have had since.
+seen=" "
+unseen() {
+    gh run list -R "$repo" --workflow "$workflow.yml" --commit "$sha" --limit 20 \
+        --json databaseId,headSha,event,headBranch \
+        --jq ".[] | select(.headSha == \"$sha\") | \"\(.databaseId) \(.event) \(.headBranch)\"" |
+        while read -r id rest; do
+            case "$seen" in *" $id "*) ;; *) echo "$id $rest" ;; esac
+        done
+    return "${PIPESTATUS[0]}"
+}
+
+# At origin/main's tip, wait for main's push run itself.
+main_tip=""
+[ "$sha" = "$(git rev-parse origin/main)" ] && main_tip=1
+list="" found=""
 for _ in $(seq 24); do
-    id="$(gh run list -R "$repo" --workflow "$workflow.yml" --limit 20 --json databaseId,headSha \
-        --jq ".[] | select(.headSha == \"$sha\") | .databaseId" | sed -n 1p)" || exit 2
-    [ -n "$id" ] && break
+    list="$(unseen)" || exit 2
+    if [ -n "$list" ] && { [ -z "$main_tip" ] || grep -q " push main\$" <<< "$list"; }; then found=1; break; fi
     sleep 5
 done
-[ -n "$id" ] || { echo "ciwait: no $workflow run for ${sha:0:7} after 2 min" >&2; exit 2; }
-
-echo "== $workflow run $id for ${sha:0:7}"
-gh run watch "$id" -R "$repo" --exit-status --interval 15 > /dev/null 2>&1
-status=$?
-gh run view "$id" -R "$repo"
-if [ $status -ne 0 ]; then
-    clean_log --log-failed | tail -40
-    status=1
-    echo "ciwait: $workflow ${sha:0:7} failed (run $id)"
-else
-    # Only a run on main publishes; a branch's run builds and checks.
-    [ "$workflow" != containers ] || clean_log --log | grep '^Published .* as ' ||
-        echo "No Published line: this run published nothing."
-    echo "ciwait: $workflow ${sha:0:7} passed"
+if [ -z "$found" ]; then
+    if [ -n "$list" ]; then
+        echo "ciwait: no $workflow run of main's push for ${sha:0:7} after 2 min" >&2
+    else
+        echo "ciwait: no $workflow run for ${sha:0:7} after 2 min" >&2
+    fi
+    exit 2
 fi
-exit $status
+
+failed=""
+while [ -n "$list" ]; do
+    while read -r id event branch; do
+        seen="$seen$id "
+        echo "== $workflow run $id ($event, $branch) for ${sha:0:7}"
+        gh run watch "$id" -R "$repo" --exit-status --interval 15 > /dev/null 2>&1
+        rc=$?
+        gh run view "$id" -R "$repo"
+        if [ $rc -ne 0 ]; then
+            clean_log "$id" --log-failed | tail -40
+            failed="${failed:+$failed, }$id"
+        elif [ "$workflow" = containers ]; then
+            # Only a run on main publishes; a branch's run builds and checks.
+            clean_log "$id" --log | grep '^Published .* as ' ||
+                echo "No Published line: this run published nothing."
+        fi
+    done <<< "$list"
+    # Runs not yet waited for, such as a pull_request run that appeared
+    # while the push run was being watched.
+    list="$(unseen)" || exit 2
+done
+
+if [ -n "$failed" ]; then
+    echo "ciwait: $workflow ${sha:0:7} failed (run $failed)"
+    exit 1
+fi
+echo "ciwait: $workflow ${sha:0:7} passed"

@@ -11,11 +11,14 @@ cd "$(dirname "$(readlink -f "$0")")/../.." || exit 1
 fake="$(mktemp -d)"
 trap 'rm -rf "$fake"' EXIT
 
-# The fake lists one run, 7, of workflow $fake/workflow for HEAD's commit;
-# watch exits with $fake/conclusion (0 without one); view --log holds a
-# publish line among others. Each call must name unsw-restech/iris, not the
-# current directory's repo, or the fake rejects it (#207); it then drops
-# the flag, so the cases below read the arguments ciwait gave otherwise.
+# The fake lists the runs in $fake/runs, "<id> <event> <branch>" lines, as
+# workflow $fake/workflow's runs of the commit --commit names; watch exits
+# with $fake/conclusion (0 without one), or 1 for a run with a
+# $fake/fail-<id>, and moves $fake/late's runs into $fake/runs, as GitHub
+# lists a run that starts mid-wait; view --log holds a publish line among
+# others. Each call must name unsw-restech/iris, not the current
+# directory's repo, or the fake rejects it (#207); it then drops the flag,
+# so the cases below read the arguments ciwait gave otherwise.
 mkdir "$fake/bin"
 cat > "$fake/bin/gh" <<'FAKE'
 #!/bin/bash
@@ -29,8 +32,12 @@ done
 set -- "${args[@]}"
 case "$1 $2" in
     "run list")
-        [ "$4" = "$(cat "$dir/workflow").yml" ] && cat "$dir/sha" ;;
-    "run watch") exit "$(cat "$dir/conclusion" 2>/dev/null || echo 0)" ;;
+        [ "$5 $6" = "--commit $(cat "$dir/sha")" ] || { echo "fake gh: run list without --commit <HEAD>: $*" >&2; exit 1; }
+        if [ "$4" = "$(cat "$dir/workflow").yml" ]; then cat "$dir/runs"; fi ;;
+    "run watch")
+        if [ -f "$dir/late" ]; then cat "$dir/late" >> "$dir/runs"; rm "$dir/late"; fi
+        [ ! -f "$dir/fail-$3" ] || exit 1
+        exit "$(cat "$dir/conclusion" 2>/dev/null || echo 0)" ;;
     "run view")
         if [ "$4" = --log ]; then
             printf 'publish\tPush\t2026-11-09T01:00:00.0Z %s\n' \
@@ -39,15 +46,16 @@ case "$1 $2" in
         elif [ "$4" = --log-failed ]; then
             printf 'check\tRun\t2026-11-09T01:00:00.0Z the failing step\n'
         else
-            echo "run 7 summary"
+            echo "run $3 summary"
         fi ;;
 esac
 FAKE
 printf '#!/bin/sh\n' > "$fake/bin/sleep"
 chmod +x "$fake/bin/gh" "$fake/bin/sleep"
-# The fake's --jq stands in for the real filter: it prints the run id only
-# when the workflow matches.
-echo 7 > "$fake/sha"
+# The fake's --jq stands in for the real filter: it prints the runs only
+# when the workflow matches. HEAD is origin/main's tip, so main's push run
+# is among them.
+echo "7 push main" > "$fake/runs"
 
 repo="$fake/repo"
 mkdir -p "$repo/bin" "$repo/.github/workflows"
@@ -59,6 +67,7 @@ git -C "$repo" add -A
 git -C "$repo" -c user.name=t -c user.email=t@t commit -qm fixture
 git -C "$repo" remote add origin "$fake/origin.git"
 git -C "$repo" push -q origin HEAD:refs/heads/main 2> /dev/null
+git -C "$repo" rev-parse HEAD > "$fake/sha"
 sha="$(git -C "$repo" rev-parse --short HEAD)"
 run() { (cd "$repo" && PATH="$fake/bin:$PATH" bin/ciwait "$@" 2>&1); }
 fail() { echo "ciwait $1"; }
@@ -107,3 +116,49 @@ grep -qF "no containers run for $sha" <<< "$out" || fail "no containers run: did
 
 out="$(run --workflow nonesuch)"; rc=$?
 [ "$rc" = 2 ] && grep -qF usage: <<< "$out" || fail "unknown workflow: exit $rc, expected 2 with usage"
+
+# Every run of the commit is waited for, whatever its event: a failing
+# pull_request run fails it, beside passing push runs (#250).
+printf '%s\n' "7 push main" "8 pull_request 9-fix" "9 push 9-fix" > "$fake/runs"
+touch "$fake/fail-8"
+out="$(run)"; rc=$?
+[ "$rc" = 1 ] || fail "failing pull_request run: exit $rc, expected 1"
+for id in 7 8 9; do
+    grep -q "^== check run $id " <<< "$out" || fail "failing pull_request run: didn't wait for run $id"
+done
+grep -qx "== check run 8 (pull_request, 9-fix) for $sha" <<< "$out" || fail "failing pull_request run: didn't name its event and branch"
+grep -qx 'the failing step' <<< "$out" || fail "failing pull_request run: didn't print the failed log"
+[ "$(tail -1 <<< "$out")" = "ciwait: check $sha failed (run 8)" ] || { fail "failing pull_request run: last line isn't the verdict:"; echo "$out" | sed 's/^/  /'; }
+touch "$fake/fail-9"
+out="$(run)"
+[ "$(tail -1 <<< "$out")" = "ciwait: check $sha failed (run 8, 9)" ] || fail "two failing runs: last line doesn't name both"
+rm "$fake/fail-8" "$fake/fail-9"
+
+# A run that GitHub lists only after the first wait is waited for too.
+echo "7 push main" > "$fake/runs"
+echo "8 pull_request 9-fix" > "$fake/late"
+out="$(run)" || fail "late run: exit $?, expected 0"
+grep -q "^== check run 8 " <<< "$out" || fail "late run: didn't wait for it"
+[ "$(grep -c '^== check run 7 ' <<< "$out")" = 1 ] || fail "late run: waited for run 7 twice"
+echo "7 push main" > "$fake/runs"
+echo "8 pull_request 9-fix" > "$fake/late"
+touch "$fake/fail-8"
+out="$(run)"; rc=$?
+[ "$rc" = 1 ] || fail "failing late run: exit $rc, expected 1"
+[ "$(tail -1 <<< "$out")" = "ciwait: check $sha failed (run 8)" ] || fail "failing late run: last line doesn't name it"
+rm "$fake/fail-8"
+
+# At origin/main's tip, a branch's finished runs don't stand in for main's
+# push run: with none of main's, it waits, then says so.
+printf '%s\n' "8 pull_request 9-fix" "9 push 9-fix" > "$fake/runs"
+out="$(run)"; rc=$?
+[ "$rc" = 2 ] || fail "no main push run: exit $rc, expected 2"
+grep -qF "no check run of main's push for $sha" <<< "$out" || fail "no main push run: didn't say so"
+
+# Off main's tip, a branch's runs are enough.
+git -C "$repo" -c user.name=t -c user.email=t@t commit -q --allow-empty -m branch
+git -C "$repo" push -q origin HEAD:refs/heads/9-fix 2> /dev/null
+git -C "$repo" rev-parse HEAD > "$fake/sha"
+sha="$(git -C "$repo" rev-parse --short HEAD)"
+out="$(run)" || fail "branch commit: exit $?, expected 0"
+[ "$(tail -1 <<< "$out")" = "ciwait: check $sha passed" ] || { fail "branch commit: last line isn't the verdict:"; echo "$out" | sed 's/^/  /'; }

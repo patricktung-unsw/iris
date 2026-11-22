@@ -59,7 +59,7 @@ iris/
 │   ├── avoid-uses                    # List every use of a GLOSSARY.md Avoid word in files or a ticket's text, or of one a branch adds (bin/check runs it)
 │   ├── check                         # Every check to pass before committing
 │   ├── check-passed                  # Record the tree a full bin/check passed on; say whether a commit's tree passed (pre-push runs it)
-│   ├── ciwait                        # Wait for a pushed commit's CI run, check or containers (desktop)
+│   ├── ciwait                        # Wait for a pushed commit's CI runs, check or containers (desktop)
 │   ├── exec-bits                     # List the scripts run by path git's index doesn't hold as 100755, untracked ones included (bin/check and pre-commit run it)
 │   ├── envpull                       # Pull the containers live forms pin onto Katana; list those nothing pins; --own pulls an author's into their own scratch (desktop)
 │   ├── envpull-dm.sh                 # envpull's side on the data mover
