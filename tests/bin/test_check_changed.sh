@@ -215,7 +215,11 @@ code=$?
 # the run shows which files it checked.
 site="$scratch/site"
 mkdir -p "$scratch/path"
-git clone -q --shared . "$site"
+# A pull_request run in CI sits on a detached merge commit, and CI's git
+# 2.56.1 prints the detached-HEAD advice when it clones one, despite -q,
+# which bin/check reads as this test's failure; the desktop's 2.34.1
+# prints none (#250).
+git -c advice.detachedHead=false clone -q --shared . "$site"
 { git diff -z --name-only --diff-filter=d HEAD; git ls-files -z --others --exclude-standard; } |
     tar --null -T - -cf - | tar -xf - -C "$site"
 git diff -z --name-only --diff-filter=D HEAD | (cd "$site" && xargs -0 -r rm -f --)
