@@ -1,0 +1,109 @@
+#!/bin/bash
+# Show that lib/tests/form_helper.rb renders each form as a commit of the
+# IRIS fork of OpenComposer does: serve this clone's workflows/ under that
+# commit, submit hello-world and microct-2d-segmentation through a real
+# browser, once on their defaults and once with fields changed (a
+# checkbox, time, mail_events and more), and compare each script the
+# fork hands qsub with the helper's for the same fields, byte for byte.
+# Run it on the commit a fork move brings, before bringing the helper and
+# its header's commit to it (bin/ocpull), and again once they're brought.
+#
+#   bin/helper-compare <fork-ref>                 the fork clone ../OpenComposer
+#   bin/helper-compare --repo <path> <fork-ref>   another clone of the fork
+#
+# <fork-ref> is any commit the fork clone has, e.g. origin/main after a
+# git fetch there. Prints "same: <form> <case>" for each case that matches,
+# and for each that doesn't, "DIFFERENT: <form> <case>" and a unified diff
+# of the helper's script against the fork's ("\ No newline at end of file"
+# marks a final-newline difference, #167's), or "REFUSED:" with the
+# message the fork showed instead of submitting.
+#
+# It runs in a user and mount namespace of its own (unshare), so a tmpfs
+# can stand in for /srv, holding the scratch folders the forms' check:
+# reads, and the fork writes the scripts there, and an overlay on
+# /usr/share can hold a stand-in for Katana's modulecmd, without which the
+# fork can't show hello-world's form; and in a PID namespace, so its
+# server and browser end with it. The commit is extracted with git
+# archive into a temporary folder, which the instance runs from and which
+# is removed on the way out, on success, failure or interrupt; nothing is
+# added to the fork clone. The instance is started by the fork's own
+# browser-test code at that commit (misc/tests/browser/instance.py), with
+# a stand-in qsub; bin/helper-compare.py drives the browser.
+#
+# Needs, on the desktop: the fork's test venv, ~/.cache/opencomposer-tests/venv,
+# with Playwright and its Chromium (the fork's misc/tests/run makes both),
+# Chromium's libraries (~/.local/pw-libs, which this puts on
+# LD_LIBRARY_PATH, AGENTS.md's Setup), rackup from the gems in the fork's
+# misc/Gemfile, Ruby, and unprivileged user namespaces.
+# Exits 0 if every case matches, 1 if any differs or was refused, and 2
+# if it couldn't run: a missing need, a ref the fork clone lacks, or an
+# instance or browser that didn't start, each named.
+
+set -uo pipefail
+die() { echo "helper-compare: $*" >&2; exit 2; }
+usage="usage: bin/helper-compare [--repo <path>] <fork-ref>"
+repo=""
+if [ "${1-}" = --repo ]; then
+    [ $# -ge 2 ] || die "$usage"
+    # Made absolute here, before the cd below.
+    repo="$(readlink -f -- "$2")"
+    shift 2
+fi
+[ $# = 1 ] || die "$usage"
+ref="$1"
+cd "$(dirname "$(readlink -f "$0")")/.." || exit 2
+[ -n "$repo" ] || repo="$(dirname "$PWD")/OpenComposer"
+
+git -C "$repo" rev-parse --git-dir > /dev/null 2>&1 || die "no clone of the fork at $repo: give one with --repo"
+commit="$(git -C "$repo" rev-parse --verify -q "$ref^{commit}")" ||
+    die "$repo has no commit $ref: fetch it there (git -C $repo fetch origin)"
+venv="${XDG_CACHE_HOME:-$HOME/.cache}/opencomposer-tests/venv"
+"$venv/bin/python" -c 'import playwright, yaml' 2> /dev/null ||
+    die "no Playwright in the fork's test venv, $venv: run the fork's misc/tests/run once to make it"
+command -v ruby > /dev/null || die "no ruby on the PATH (sudo apt install ruby)"
+PATH="$PATH:$(ruby -e 'print Gem.user_dir')/bin"  # rackup from a --user-install, as the fork's misc/tests/env.sh adds it
+command -v rackup > /dev/null || die "no rackup: install the gems in the fork's misc/Gemfile (gem install --user-install)"
+[ -d /srv ] || die "no /srv to mount the stand-in scratch on"
+unshare -rm true 2> /dev/null || die "unshare -rm fails: this needs unprivileged user namespaces"
+pwlibs="$HOME/.local/pw-libs/root/usr/lib/x86_64-linux-gnu"
+[ ! -d "$pwlibs" ] || export LD_LIBRARY_PATH="$pwlibs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+
+tmp="$(mktemp -d "${TMPDIR:-/tmp}/helper-compare.XXXXXX")"
+pid=""
+cleanup() {
+    if [ -n "$pid" ]; then
+        # unshare --fork ignores TERM while its child runs (a TERM to it
+        # let a run finish, seen on the desktop on 2026-11-22), so kill the
+        # child, the namespace's first process, which ends all in it.
+        pkill -KILL -P "$pid" 2> /dev/null
+        wait "$pid" 2> /dev/null
+    fi
+    rm -rf "$tmp"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM HUP
+
+mkdir "$tmp/fork" "$tmp/work"
+git -C "$repo" archive "$commit" | tar -x -C "$tmp/fork" || die "could not extract $commit from $repo"
+[ -f "$tmp/fork/misc/tests/browser/instance.py" ] ||
+    die "$commit has no misc/tests/browser/instance.py, which starts the instance"
+echo "Comparing lib/tests/form_helper.rb with the fork at $commit."
+# Run in the background and waited for, so a TERM or an interrupt reaches
+# the trap at once; --kill-child ends the namespace if unshare itself dies.
+# In it, /srv is a tmpfs, and /usr/share an overlay whose changes go to a
+# tmpfs on $tmp/ns, so the driver can add the stand-in modulecmd there.
+# TMPDIR is $tmp's too, so Chromium's profile goes when $tmp does.
+mkdir "$tmp/ns" "$tmp/tmp"
+TMPDIR="$tmp/tmp" unshare -rm --fork --pid --mount-proc --kill-child bash -c '
+    ns="$1"; shift
+    mount -t tmpfs helper-compare /srv &&
+    mount -t tmpfs helper-compare "$ns" && mkdir "$ns/up" "$ns/work" &&
+    mount -t overlay helper-compare -o "lowerdir=/usr/share,upperdir=$ns/up,workdir=$ns/work" /usr/share &&
+    exec "$@"' bash "$tmp/ns" \
+    "$venv/bin/python" bin/helper-compare.py "$tmp/fork" "$commit" "$PWD/workflows" "$tmp/work" &
+pid=$!
+wait "$pid"
+code=$?
+pid=""
+exit "$code"

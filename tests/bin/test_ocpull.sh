@@ -161,7 +161,7 @@ listed_before_apply() {
 }
 # The form test helper renders as A, not the tip C: the listing says so up
 # front, just before the --apply line, rather than --apply after the deploy.
-listed_before_apply helper-behind "ocpull: lib/tests/form_helper.rb renders as $A; bring it, and its header's commit, to $C, and commit that before pushing, since --apply exits 1 after the deploy until it does."
+listed_before_apply helper-behind "ocpull: lib/tests/form_helper.rb renders as $A; bring it, and its header's commit, to $C (bin/helper-compare $C shows where its rendering differs, and passes once none does), and commit that before pushing, since --apply exits 1 after the deploy until it does."
 
 # --apply moves both to the commit listed, each keeping its own manifest.yml,
 # and passes when the form test helper already renders as that commit.

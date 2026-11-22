@@ -21,7 +21,7 @@ The IRIS instance and the test instance each have a checkout of the fork, `OpenC
 
 Moving them deploys OpenComposer itself to both instances, so they move together, forward along the fork's `main`:
 
-1. Run `bin/ocpull` to list what a move would deploy to each.
+1. Run `bin/ocpull` to list what a move would deploy to each. If it warns that `lib/tests/form_helper.rb` renders as another commit, run `bin/helper-compare <sha>` on its `--apply` line's commit, bring the helper and its header's commit to that commit until it passes, and commit that before the move.
 2. Get the IRIS maintainer's go-ahead, naming both paths and quoting verbatim every commit it lists.
 3. Run the `bin/ocpull --apply <sha>` line it prints.
 

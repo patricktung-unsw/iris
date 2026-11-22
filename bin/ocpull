@@ -23,7 +23,8 @@
 # checkouts no longer run. The listing warns of that first, just before
 # its --apply line, when the header names a commit other than that line's,
 # so the helper's bump goes in before bin/check and bin/katana-test run
-# rather than after the deploy (#179's retro).
+# rather than after the deploy (#179's retro). Both name bin/helper-compare,
+# which shows whether the helper renders as a fork commit does (#187).
 #
 # The IRIS maintainer's dev install, a third checkout of the fork in their
 # home folder (lib/katana.sh), stays on the instances' commit too, but
@@ -92,7 +93,7 @@ if [ $# -eq 0 ]; then
     esac
     echo
     read_helper_commit "$tip" ||
-        echo "ocpull: lib/tests/form_helper.rb renders as ${helper_commit:-no commit its header names}; bring it, and its header's commit, to $tip, and commit that before pushing, since --apply exits 1 after the deploy until it does."
+        echo "ocpull: lib/tests/form_helper.rb renders as ${helper_commit:-no commit its header names}; bring it, and its header's commit, to $tip (bin/helper-compare $tip shows where its rendering differs, and passes once none does), and commit that before pushing, since --apply exits 1 after the deploy until it does."
     printf '%s\n' "${listing##*$'\n'}"
     out=$(readable)
     case $? in
@@ -104,7 +105,7 @@ elif [ $# -eq 2 ] && [ "$1" = --apply ] && [[ "$2" =~ ^[0-9a-f]{7,40}$ ]]; then
     remote apply "$2" || exit
     rc=0
     if ! read_helper_commit "$2"; then
-        echo "ocpull: deployed, but lib/tests/form_helper.rb still renders as ${helper_commit:-no commit its header names}; bring it, and its header's commit, to $2." >&2
+        echo "ocpull: deployed, but lib/tests/form_helper.rb still renders as ${helper_commit:-no commit its header names}; bring it, and its header's commit, to $2 (bin/helper-compare $2 shows where its rendering differs, and passes once none does)." >&2
         rc=1
     fi
     readable

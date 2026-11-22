@@ -79,6 +79,7 @@ iris/
 │   ├── owner-mentions                # The comment the owner-mention Action posts on a PR (CI)
 │   ├── libcopy                       # Copy the library's job side into a workflow's lib/, recording the commit; check every copy (bin/check runs it)
 │   ├── ocpull                        # Show, then deploy, what moving the fork's two checkouts to its main brings the instances (desktop)
+│   ├── helper-compare(.py)           # Show the form test helper renders as a fork commit does, submitting the forms through it in a browser (desktop)
 │   ├── ocpull-checkouts.sh           # ocpull's side on Katana: list a move, or move both checkouts or neither
 │   ├── pilot-readable.py             # List what pilot testers can't read in the system clone or a fork checkout (syspull and ocpull run it)
 │   ├── prune-merged                  # List, then remove, the local branches and worktrees whose work is already in origin/main (desktop)
