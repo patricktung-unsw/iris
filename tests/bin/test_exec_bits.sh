@@ -1,11 +1,11 @@
 #!/bin/bash
 # bin/exec-bits and .githooks/pre-commit in a scratch repo: a script run by
-# path that git's index holds as 100644 is listed, and the commit that
-# stages it is refused with the command that fixes it, then goes through
-# once the bit is set. core.fileMode is off on the Windows mount, so chmod
-# alone records nothing; this catches it at the commit, not minutes later
-# in a full bin/check (#200's retro). Prints each failed case and nothing
-# on success, so bin/check can run it.
+# path that git's index holds as 100644, or that is untracked, is listed,
+# and the commit that stages it is refused with the command that fixes it,
+# then goes through once the bit is set. core.fileMode is off on the
+# Windows mount, so chmod alone records nothing; this catches it at the
+# commit, not minutes later in a full bin/check (#200's retro). Prints
+# each failed case and nothing on success, so bin/check can run it.
 #
 #   tests/bin/test_exec_bits.sh
 #
@@ -53,3 +53,26 @@ git -C "$repo" commit -qm new > /dev/null 2>&1 || fail "pre-commit refused once 
 printf 'x=1\n' > "$repo/tests/bin/lib.sh"
 git -C "$repo" add tests/bin/lib.sh
 git -C "$repo" commit -qm lib > /dev/null 2>&1 || fail "pre-commit refused a sourced file left 100644"
+
+# An untracked script is listed before any git add, as #187's was not until
+# a second full bin/check; a commit of other files goes through beside it.
+# git add -N then update-index sets its bit, as bin/check's hints say.
+printf '#!/bin/bash\n' > "$repo/bin/new-tool"
+out="$(cd "$repo" && bin/exec-bits)"
+[ "$out" = bin/new-tool ] || fail "bin/exec-bits listed '$out' for an untracked script, expected bin/new-tool"
+printf 'y=1\n' > "$repo/tests/bin/lib2.sh"
+git -C "$repo" add tests/bin/lib2.sh
+git -C "$repo" commit -qm lib2 > /dev/null 2>&1 || fail "pre-commit refused a commit over an untracked script it doesn't hold"
+printf '#!/bin/bash\n' > "$repo/tests/bin/test_other.sh"
+git -C "$repo" add tests/bin/test_other.sh
+out="$(git -C "$repo" commit -qm other 2>&1)" && fail "pre-commit let a 100644 test through beside an untracked script"
+grep -qF 'tests/bin/test_other.sh' <<< "$out" || fail "pre-commit's refusal beside an untracked script doesn't name the staged one: $out"
+grep -qF 'bin/new-tool' <<< "$out" && fail "pre-commit's refusal names the untracked script it doesn't hold: $out"
+git -C "$repo" update-index --chmod=+x tests/bin/test_other.sh
+git -C "$repo" commit -qm other > /dev/null 2>&1 || fail "pre-commit refused once the staged test's bit was set"
+git -C "$repo" add -N bin/new-tool
+out="$(git -C "$repo" commit -qm tool 2>&1)" && fail "pre-commit let a script added with -N through at 100644"
+grep -qF 'git update-index --chmod=+x bin/new-tool' <<< "$out" ||
+    fail "pre-commit's refusal of a script added with -N doesn't give the fix: $out"
+git -C "$repo" update-index --chmod=+x bin/new-tool
+[ -z "$(cd "$repo" && bin/exec-bits)" ] || fail "bin/exec-bits still lists a script added with -N and set 100755"

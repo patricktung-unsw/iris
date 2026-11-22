@@ -60,7 +60,7 @@ iris/
 │   ├── check                         # Every check to pass before committing
 │   ├── check-passed                  # Record the tree a full bin/check passed on; say whether a commit's tree passed (pre-push runs it)
 │   ├── ciwait                        # Wait for a pushed commit's CI run, check or containers (desktop)
-│   ├── exec-bits                     # List the scripts run by path git's index doesn't hold as 100755 (bin/check and pre-commit run it)
+│   ├── exec-bits                     # List the scripts run by path git's index doesn't hold as 100755, untracked ones included (bin/check and pre-commit run it)
 │   ├── envpull                       # Pull the containers live forms pin onto Katana; list those nothing pins; --own pulls an author's into their own scratch (desktop)
 │   ├── envpull-dm.sh                 # envpull's side on the data mover
 │   ├── envrun                        # Run a command in an environment version's container: bin/check's Python tests (desktop, CI)

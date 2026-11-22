@@ -627,7 +627,7 @@ check "manifest descriptions hold no <" manifest_descriptions
 # why and holds the list, and .githooks/pre-commit refuses a commit it
 # prints for.
 # tests/bin/test_exec_bits.sh runs both on a fixture repo.
-check "scripts run by path are 100755 (git update-index --chmod=+x)" bin/exec-bits
+check "exec bits: scripts run by path are 100755 (git update-index --chmod=+x, after git add -N for an untracked one)" bin/exec-bits
 
 # gh takes the current directory's repo unless told, so from the fork's
 # clone it reaches unsw-restech/OpenComposer (#179's retro, #207). Every
