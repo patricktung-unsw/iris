@@ -17,18 +17,20 @@ trap 'rm -rf "$fake"' EXIT
 # $fake/fail-<id>, and moves $fake/late's runs into $fake/runs, as GitHub
 # lists a run that starts mid-wait; view --log holds a publish line among
 # others. Each call must name unsw-restech/iris, not the current
-# directory's repo, or the fake rejects it (#207); it then drops the flag,
-# so the cases below read the arguments ciwait gave otherwise.
+# directory's repo, or the fake rejects it (#207), or the repo in
+# $fake/ghrepo when there is one; it then drops the flag, so the cases
+# below read the arguments ciwait gave otherwise.
 mkdir "$fake/bin"
 cat > "$fake/bin/gh" <<'FAKE'
 #!/bin/bash
 dir="$(cd "$(dirname "$0")/.." && pwd)"
+want="$(cat "$dir/ghrepo" 2> /dev/null || echo unsw-restech/iris)"
 args=() named=""
 while [ $# -gt 0 ]; do
-    if [ "$1" = -R ] && [ "${2-}" = unsw-restech/iris ]; then named=1; shift 2
+    if [ "$1" = -R ] && [ "${2-}" = "$want" ]; then named=1; shift 2
     else args+=("$1"); shift; fi
 done
-[ -n "$named" ] || { echo "fake gh: no -R unsw-restech/iris: ${args[*]}" >&2; exit 1; }
+[ -n "$named" ] || { echo "fake gh: no -R $want: ${args[*]}" >&2; exit 1; }
 set -- "${args[@]}"
 case "$1 $2" in
     "run list")
@@ -162,3 +164,47 @@ git -C "$repo" rev-parse HEAD > "$fake/sha"
 sha="$(git -C "$repo" rev-parse --short HEAD)"
 out="$(run)" || fail "branch commit: exit $?, expected 0"
 [ "$(tail -1 <<< "$out")" = "ciwait: check $sha passed" ] || { fail "branch commit: last line isn't the verdict:"; echo "$out" | sed 's/^/  /'; }
+
+# --repo waits on another clone's CI: its commit, its origin/main and its
+# only workflow, under the GitHub repo its origin's URL names, resolving a
+# relative path from the caller's directory. The fork's origin is a GitHub
+# URL that insteadOf points at a local bare repo, so it fetches offline.
+fork="$fake/OpenComposer"
+mkdir -p "$fork/.github/workflows"
+touch "$fork/.github/workflows/tests.yml"
+git init -q --bare "$fake/fork.git"
+git -C "$fork" init -q
+git -C "$fork" config url."$fake/fork.git".insteadOf https://github.com/unsw-restech/OpenComposer.git
+git -C "$fork" remote add origin https://github.com/unsw-restech/OpenComposer.git
+git -C "$fork" add -A
+git -C "$fork" -c user.name=t -c user.email=t@t commit -qm fork
+git -C "$fork" push -q origin HEAD:refs/heads/main 2> /dev/null
+git -C "$fork" rev-parse HEAD > "$fake/sha"
+fsha="$(git -C "$fork" rev-parse --short HEAD)"
+echo unsw-restech/OpenComposer > "$fake/ghrepo"
+echo tests > "$fake/workflow"
+echo "7 push main" > "$fake/runs"
+out="$(run --repo ../OpenComposer)" || { fail "--repo: exit $?, expected 0:"; echo "$out" | sed 's/^/  /'; }
+[ "$(tail -1 <<< "$out")" = "ciwait: tests $fsha passed" ] || { fail "--repo: last line isn't the fork's tests verdict:"; echo "$out" | sed 's/^/  /'; }
+printf '%s\n' "7 push main" "8 pull_request 9-fix" > "$fake/runs"
+touch "$fake/fail-8"
+out="$(run --repo ../OpenComposer)"; rc=$?
+[ "$rc" = 1 ] && [ "$(tail -1 <<< "$out")" = "ciwait: tests $fsha failed (run 8)" ] ||
+    { fail "--repo, failing pull_request run: exit $rc, expected 1 naming run 8:"; echo "$out" | sed 's/^/  /'; }
+rm "$fake/fail-8"
+
+# A repo with neither check.yml nor a single workflow needs --workflow.
+touch "$fork/.github/workflows/other.yml"
+out="$(run --repo ../OpenComposer)"; rc=$?
+[ "$rc" = 2 ] && grep -qF "name it with --workflow" <<< "$out" || fail "--repo, two workflows: exit $rc, expected 2 asking for --workflow"
+echo "7 push main" > "$fake/runs"
+out="$(run --repo ../OpenComposer --workflow tests)" || fail "--repo --workflow tests: exit $?, expected 0"
+rm "$fork/.github/workflows/other.yml"
+
+# A path outside any repo, or an origin that isn't on GitHub, says so.
+mkdir "$fake/plain"
+out="$(run --repo ../plain)"; rc=$?
+[ "$rc" = 2 ] && grep -qF "ciwait: ../plain isn't in a git repo" <<< "$out" || fail "--repo outside a repo: exit $rc, expected 2 saying so"
+git -C "$fork" remote set-url origin "$fake/fork.git"
+out="$(run --repo ../OpenComposer)"; rc=$?
+[ "$rc" = 2 ] && grep -qF "isn't a GitHub repo" <<< "$out" || fail "--repo, local origin: exit $rc, expected 2 saying so"

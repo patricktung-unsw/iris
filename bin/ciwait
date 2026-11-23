@@ -14,20 +14,65 @@
 # prints its "Published <tag> as <registry>@<digest>" lines, the digest to
 # pin in lib/katana.sh's digest map.
 #
-#   bin/ciwait [--workflow <name>] [<commit>]        (default check, HEAD)
+#   bin/ciwait [--repo <clone>] [--workflow <name>] [<commit>]
 #   bin/ciwait --workflow containers 93d3a39
 #   bin/ciwait 93d3a39 --workflow containers      (the same)
+#   bin/ciwait --repo ../OpenComposer 7355ac8     (the fork's tests runs)
+#
+# The commit defaults to HEAD, and the workflow to `check`, or to a repo's
+# only workflow when it has no check.yml, as the fork has only tests.yml.
 #
 # Exits 0 when every run passed, 1 when any failed, or 2 if the commit
 # isn't on origin or no run for it (none of main's push, at main's tip)
 # appears within two minutes. Runs are matched by headSha. Every gh call
 # names unsw-restech/iris (bin/github-repo.sh), not the current directory's
-# repo, so a run from the fork's clone waits on iris's CI (#207).
+# repo, so a run from the fork's clone waits on iris's CI (#207). --repo
+# waits instead on the CI of the clone or worktree <clone> names, reading
+# its commit, origin/main and workflows there and its GitHub repo from its
+# origin's URL: a session waiting on the fork's CI by hand watched only the
+# first run it listed, #250's blind spot (#176's retro).
+
+usage() { echo "usage: bin/ciwait [--repo <clone>] [--workflow <name in .github/workflows/>] [<commit>]" >&2; exit 2; }
+workflow=""
+commit=""
+clone=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --workflow) [ $# -ge 2 ] || usage; workflow="$2"; shift 2 ;;
+        --repo)
+            [ $# -ge 2 ] && [ -z "$clone" ] || usage
+            # Resolved before the cd below, so a relative path is the caller's.
+            clone="$(git -C "$2" rev-parse --show-toplevel 2> /dev/null)" ||
+                { echo "ciwait: $2 isn't in a git repo" >&2; exit 2; }
+            shift 2 ;;
+        -*) usage ;;
+        *) [ -z "$commit" ] || usage; commit="$1"; shift ;;
+    esac
+done
 
 cd "$(dirname "$(readlink -f "$0")")/.." || exit 1
 # shellcheck source=bin/github-repo.sh
 . bin/github-repo.sh || exit 2
 repo="$IRIS_GITHUB_REPO"
+if [ -n "$clone" ]; then
+    cd "$clone" || exit 2
+    # The URL as configured, before any url.<base>.insteadOf rewrite.
+    url="$(git config --get remote.origin.url)"
+    repo="$(sed -nE 's#^(https://github\.com/|git@github\.com:)([^/]+/[^/]+)$#\2#p' <<< "${url%.git}")"
+    [ -n "$repo" ] || { echo "ciwait: $clone's origin, ${url:-none}, isn't a GitHub repo" >&2; exit 2; }
+fi
+if [ -z "$workflow" ]; then
+    if [ -f .github/workflows/check.yml ]; then
+        workflow=check
+    else
+        set -- .github/workflows/*.yml
+        if [ $# != 1 ] || [ ! -f "$1" ]; then
+            echo "ciwait: $PWD has no check.yml and not one workflow; name it with --workflow" >&2
+            usage
+        fi
+        workflow="$(basename "$1" .yml)"
+    fi
+fi
 
 # One of run $1's logs ($2: --log or --log-failed), as plain lines: no job
 # and step columns, byte-order mark or timestamp.
@@ -35,16 +80,6 @@ clean_log() {
     gh run view "$1" -R "$repo" "$2" | cut -f3- | sed 's/^\xEF\xBB\xBF//; s/^[0-9T:.-]*Z //'
 }
 
-usage() { echo "usage: bin/ciwait [--workflow <name in .github/workflows/>] [<commit>]" >&2; exit 2; }
-workflow=check
-commit=""
-while [ $# -gt 0 ]; do
-    case "$1" in
-        --workflow) [ $# -ge 2 ] || usage; workflow="$2"; shift 2 ;;
-        -*) usage ;;
-        *) [ -z "$commit" ] || usage; commit="$1"; shift ;;
-    esac
-done
 [ -f ".github/workflows/$workflow.yml" ] || usage
 git fetch -q origin || exit 2
 sha="$(git rev-parse "${commit:-HEAD}")" || exit 2
