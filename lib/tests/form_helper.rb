@@ -1,5 +1,5 @@
 # Render a form.yml.erb the way the IRIS fork of OpenComposer does at
-# c50a682, the commit bin/ocpull keeps the IRIS instance's and the test
+# a0ddbcf, the commit bin/ocpull keeps the IRIS instance's and the test
 # instance's checkouts on, and the dev install runs (#170), for tests and
 # for submitting a job without the browser. Every workflow's form tests use
 # it. Moving the checkouts to a commit that changes what follows means
