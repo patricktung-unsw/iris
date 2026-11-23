@@ -853,22 +853,32 @@ lab_sections() {
 check "cards sit in a lab section their page's breadcrumb links" lab_sections
 
 # The lab tiles at the top of the catalogue are hand-edited: each lab
-# section has one, linking its id, whose "N active · M planned" counts its
-# Active and Planned cards, so a new card or a changed status can't leave a
-# tile stale. tests/bin/test_lab_tiles.sh runs it on fixture trees.
+# section has exactly one, linking its id, whose "N active · M planned"
+# counts its Active and Planned cards, so a new card or a changed status
+# can't leave a tile stale, and the tiles run in the lab sections' order.
+# The order compares only the sections that have a tile, each by its first
+# one, so a missing, stray or second tile fails once, on its own line.
+# tests/bin/test_lab_tiles.sh runs it on fixture trees.
 lab_tiles() {
     awk -F'\t' '
         FILENAME == ARGV[1] { lab[$1] = 1; order[++n] = $1; next }
         FILENAME == ARGV[2] { if ($3 == "Active") a[$2]++; else if ($3 == "Planned") p[$2]++; next }
         {
-            tiled[$1] = 1
             if ($1 == "?") { print "index.html: a lab tile has no href=\"#<lab section id>\""; next }
             if (!($1 in lab)) { print "index.html: a lab tile links #" $1 ", which no lab section has"; next }
+            if ($1 in tiled) { print "index.html: two lab tiles link #" $1; next }
+            tiled[$1] = 1; tile_order = tile_order " " $1
             if ($2 == "-") { print "index.html: the " $1 " tile has no \"N active · M planned\" counts"; next }
             if ($2 != a[$1] + 0) print "index.html: the " $1 " tile says " $2 " active; its section has " a[$1] + 0
             if ($3 != p[$1] + 0) print "index.html: the " $1 " tile says " $3 " planned; its section has " p[$1] + 0
         }
-        END { for (i = 1; i <= n; i++) if (!(order[i] in tiled)) print "index.html: lab section " order[i] " has no lab tile" }
+        END {
+            for (i = 1; i <= n; i++)
+                if (!(order[i] in tiled)) print "index.html: lab section " order[i] " has no lab tile"
+                else lab_order = lab_order " " order[i]
+            if (tile_order != lab_order)
+                print "index.html: the lab tiles'\'' order (" substr(tile_order, 2) ") differs from the lab sections'\'' (" substr(lab_order, 2) ")"
+        }
     ' <(labs) <(cards) <(tiles)
 }
 check "lab tiles count their lab sections" lab_tiles
