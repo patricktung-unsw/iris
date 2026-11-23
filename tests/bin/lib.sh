@@ -1,41 +1,38 @@
 # Sourced from the repo root by the fixture tests of bin/check's site
 # checks, which build scratch trees each holding a copy of bin/check, which
 # checks the tree it sits in, and by every test that gives a scratch copy of
-# lib/katana.sh a digest map of its own.
+# lib/katana.sh a digest map or a lab table of its own.
+
+# The opening lines of lib/katana.sh's digest map and lab table, which the
+# helpers below match whole.
+_DIGEST_MAP_OPEN='declare -gA IRIS_ENV_DIGESTS=('
+_LAB_TABLE_OPEN='declare -gA IRIS_LAB_ENVS=('
 
 # digest_map <file> [--tools <env>/<n>] [<env>/<n>=<value>]...: replaces the
 # whole digest map (IRIS_ENV_DIGESTS) in <file>, a scratch copy of
 # lib/katana.sh, with one "    [<env>/<n>]=<value>" line per entry, in the
 # order given, and with --tools sets IRIS_TOOLS_ENV_VERSION to <env>/<n>.
-# It leaves the rest of the file alone. If the map, its closing ")" or,
-# with --tools, the tools version line isn't there, or the file doesn't
-# end up holding exactly what was asked, it prints why, naming <file>, and
-# returns 1, so no fixture keeps the real map's versions by mistake.
-# The digest map's opening line in lib/katana.sh, which the helpers below
-# match whole. Its characters are literal in a sed basic regex, which
-# _digest_map_lines reads it as.
-_DIGEST_MAP_OPEN='declare -gA IRIS_ENV_DIGESTS=('
-
+# It leaves the rest of the file alone. If an entry isn't <key>=<value>, as
+# _table_set says, or the map, its closing ")" or, with --tools, the tools
+# version line isn't there, or the file doesn't end up holding exactly what
+# was asked, it prints why, naming <file>, and returns 1, so no fixture
+# keeps the real map's versions by mistake.
 digest_map() {
-    local file="$1" tools="" e lines=""
+    local file="$1" tools=""
     shift
     if [ "${1-}" = --tools ]; then tools="$2"; shift 2; fi
-    for e in "$@"; do lines+="    [${e%%=*}]=${e#*=}"$'\n'; done
+    # Checked here as well as in _table_set, so a missing map fails before
+    # the tools line check below, as it did before #211.
     _digest_map_open digest_map "$file" || return 1
     if [ -n "$tools" ] && ! grep -q '^IRIS_TOOLS_ENV_VERSION=' "$file"; then
         echo "digest_map: $file has no IRIS_TOOLS_ENV_VERSION= line to set"
         return 1
     fi
-    OPEN_="$_DIGEST_MAP_OPEN" LINES_="$lines" TOOLS_="$tools" awk '
-        in_map { if ($0 == ")") { in_map = 0; printf "%s", ENVIRON["LINES_"]; print }; next }
-        $0 == ENVIRON["OPEN_"] { print; in_map = 1; next }
-        ENVIRON["TOOLS_"] != "" && /^IRIS_TOOLS_ENV_VERSION=/ { print "IRIS_TOOLS_ENV_VERSION=" ENVIRON["TOOLS_"]; next }
-        { print }' "$file" > "$file.digest-map" && mv "$file.digest-map" "$file" || return 1
-    if [ "$(_digest_map_lines "$file")" != "${lines%$'\n'}" ]; then
-        echo "digest_map: $file's digest map isn't the entries given: $*"
-        return 1
-    fi
-    if [ -n "$tools" ] && ! grep -qxF "IRIS_TOOLS_ENV_VERSION=$tools" "$file"; then
+    _table_set digest_map "$file" "$_DIGEST_MAP_OPEN" "digest map" "$@" || return 1
+    [ -n "$tools" ] || return 0
+    TOOLS_="$tools" awk '/^IRIS_TOOLS_ENV_VERSION=/ { print "IRIS_TOOLS_ENV_VERSION=" ENVIRON["TOOLS_"]; next } { print }' \
+        "$file" > "$file.digest-map" && mv "$file.digest-map" "$file" || return 1
+    if ! grep -qxF "IRIS_TOOLS_ENV_VERSION=$tools" "$file"; then
         echo "digest_map: $file's tools version isn't $tools"
         return 1
     fi
@@ -43,42 +40,107 @@ digest_map() {
 
 # digest_map_add <file> <env>/<n>=<value>: adds "    [<env>/<n>]=<value>"
 # as the first line of <file>'s digest map, keeping the rest, and fails as
-# digest_map does, naming <file>, if the map isn't there or the line
-# didn't go in.
+# digest_map does, naming <file>, if the entry isn't <key>=<value>, the map
+# isn't there or the line didn't go in.
 digest_map_add() {
-    local file="$1" line="    [${2%%=*}]=${2#*=}"
+    local file="$1" line
+    line="$(_table_entries digest_map_add "$file" "$2")" || { echo "$line"; return 1; }
     _digest_map_open digest_map_add "$file" || return 1
     OPEN_="$_DIGEST_MAP_OPEN" LINE_="$line" awk '{ print } $0 == ENVIRON["OPEN_"] { print ENVIRON["LINE_"] }' \
         "$file" > "$file.digest-map" && mv "$file.digest-map" "$file" || return 1
     # A here-string, not a pipe: grep -q stops at its first match, and a
     # writer still holding output would then meet a closed pipe (#239).
-    if ! grep -qxF -- "$line" <<< "$(_digest_map_lines "$file")"; then
+    if ! grep -qxF -- "$line" <<< "$(_table_lines "$file" "$_DIGEST_MAP_OPEN")"; then
         echo "digest_map_add: $file's digest map didn't take $2"
         return 1
     fi
 }
 
+# lab_table <file> [<lab>=<env>/<n>]...: replaces the whole lab table
+# (IRIS_LAB_ENVS) in <file>, a scratch copy of lib/katana.sh, with one
+# "    [<lab>]=<env>/<n>" line per entry, in the order given, leaving the
+# rest of the file alone. If an entry isn't <key>=<value>, as _table_set
+# says, or the table or its closing ")" isn't there, or the table doesn't
+# end up holding exactly the entries given, it prints why, naming <file>,
+# and returns 1, so no fixture keeps the real table's labs by mistake.
+lab_table() {
+    local file="$1"
+    shift
+    _table_set lab_table "$file" "$_LAB_TABLE_OPEN" "lab table" "$@"
+}
+
 # _digest_map_open <caller> <file>: fails, naming <caller> and <file>,
 # unless <file> has the map's opening line and a ")" line after it.
 _digest_map_open() {
-    if ! grep -qxF "$_DIGEST_MAP_OPEN" "$2"; then
-        echo "$1: $2 has no '$_DIGEST_MAP_OPEN' line to replace"
-        return 1
-    fi
-    # One reader of the file itself, so no writer is left holding output
-    # when the match is found (#239).
-    if ! OPEN_="$_DIGEST_MAP_OPEN" awk '
-        in_map && $0 == ")" { found = 1; exit }
-        $0 == ENVIRON["OPEN_"] { in_map = 1 }
-        END { exit !found }' "$2"; then
-        echo "$1: $2's digest map has no closing ) line"
+    _table_open "$1" "$2" "$_DIGEST_MAP_OPEN" "digest map"
+}
+
+# _table_set <caller> <file> <open> <noun> [<key>=<value>]...: the core of
+# digest_map and lab_table. It replaces the lines between <file>'s <open>
+# line and the ")" line after it with one "    [<key>]=<value>" line per
+# entry, then checks the table holds exactly those lines. Each entry is
+# shaped as _table_entries says, the key bare, as lib/katana.sh writes it
+# inside its brackets. On any failure it
+# prints why, naming <caller>, <file> and, for a misshapen entry, the
+# entry, and returns 1; a misshapen entry or a missing table leaves <file>
+# unwritten.
+_table_set() {
+    local caller="$1" file="$2" open="$3" noun="$4" lines
+    shift 4
+    lines="$(_table_entries "$caller" "$file" "$@")" || { echo "$lines"; return 1; }
+    _table_open "$caller" "$file" "$open" "$noun" || return 1
+    OPEN_="$open" LINES_="$lines" awk '
+        in_table { if ($0 == ")") { in_table = 0; if (ENVIRON["LINES_"] != "") print ENVIRON["LINES_"]; print }; next }
+        $0 == ENVIRON["OPEN_"] { print; in_table = 1; next }
+        { print }' "$file" > "$file.table" && mv "$file.table" "$file" || return 1
+    if [ "$(_table_lines "$file" "$open")" != "$lines" ]; then
+        echo "$caller: $file's $noun isn't the entries given: $*"
         return 1
     fi
 }
 
-# _digest_map_lines <file>: the lines inside <file>'s digest map.
-_digest_map_lines() {
-    sed -n "/^$_DIGEST_MAP_OPEN\$/,/^)\$/p" "$1" | sed '1d;$d'
+# _table_entries <caller> <file> [<key>=<value>]...: prints one
+# "    [<key>]=<value>" line per entry, or, for the first entry that isn't
+# <key>=<value> with a non-empty <key> holding no [, ] or =, prints why,
+# naming <caller>, the entry and <file>, and returns 1.
+_table_entries() {
+    local caller="$1" file="$2" e key
+    shift 2
+    for e in "$@"; do
+        key="${e%%=*}"
+        if [ "$key" = "$e" ] || [ -z "$key" ] || [[ "$key" == *[][]* ]]; then
+            echo "$caller: '$e' for $file isn't <key>=<value> with no [, ] or = in <key>"
+            return 1
+        fi
+        printf '    [%s]=%s\n' "$key" "${e#*=}"
+    done
+}
+
+# _table_open <caller> <file> <open> <noun>: fails, naming <caller>, <file>
+# and <noun>, unless <file> has the <open> line and a ")" line after it.
+_table_open() {
+    if ! grep -qxF -- "$3" "$2"; then
+        echo "$1: $2 has no '$3' line to replace"
+        return 1
+    fi
+    # One reader of the file itself, so no writer is left holding output
+    # when the match is found (#239).
+    if ! OPEN_="$3" awk '
+        in_table && $0 == ")" { found = 1; exit }
+        $0 == ENVIRON["OPEN_"] { in_table = 1 }
+        END { exit !found }' "$2"; then
+        echo "$1: $2's $4 has no closing ) line"
+        return 1
+    fi
+}
+
+# _table_lines <file> <open>: the lines between <file>'s <open> line and the
+# ")" line after it, read in one pass of the file itself (#239).
+_table_lines() {
+    OPEN_="$2" awk '
+        in_table && $0 == ")" { exit }
+        in_table { print }
+        $0 == ENVIRON["OPEN_"] { in_table = 1 }' "$1"
 }
 
 # expect <pass|fail> <tree> <check name>: runs <tree>/bin/check on the

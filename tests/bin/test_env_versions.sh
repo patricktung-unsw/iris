@@ -33,8 +33,7 @@ make_tree() {
     cp lib/katana.sh "$tree/lib/katana.sh"
     cp envs/build-kind.sh "$tree/envs/build-kind.sh"
     digest_map "$tree/lib/katana.sh" --tools microct/1 microct/1=unpublished || exit 1
-    sed -i '/^declare -gA IRIS_LAB_ENVS=(/,/^)/c\declare -gA IRIS_LAB_ENVS=(\n    [microct-lab]=microct/1\n)' \
-        "$tree/lib/katana.sh"
+    lab_table "$tree/lib/katana.sh" microct-lab=microct/1 || exit 1
     printf '%s\n' 'numpy==2.3.0' 'xarray==2025.6.1' > "$tree/envs/microct/1/requirements.lock"
     printf '%s\n' 'FROM python:3.12-slim' > "$tree/envs/microct/1/Dockerfile"
     git -C "$tree" add -A

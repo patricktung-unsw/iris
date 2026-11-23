@@ -5,8 +5,11 @@
 # when the map or the tools version line isn't there, so a fixture can't
 # keep the real map by mistake (#200); and, with SIGPIPE ignored, on a copy
 # padded past a pipe's buffer, the helpers still pass and print nothing on
-# stderr (#239). Prints each failed case and nothing on success, so
-# bin/check can run it.
+# stderr (#239). Then lab_table, which shares their core, on the lab
+# table: exactly the entries given, and failing, naming the file, with no
+# table or no closing ")"; and all three refusing an entry not shaped
+# <key>=<value> with no [, ] or = in <key>, naming it and the file (#211).
+# Prints each failed case and nothing on success, so bin/check can run it.
 #
 #   tests/bin/test_digest_map.sh
 #
@@ -106,3 +109,49 @@ sigpipe_ignored "_digest_map_open on an unclosed map" _digest_map_open test "$f"
     fail "_digest_map_open passed on a padded map with no closing )"
 [ "$out" = "test: $f's digest map has no closing ) line" ] ||
     fail "_digest_map_open's unclosed-map failure with SIGPIPE ignored isn't its message: $out"
+
+# lab_table: the lab table ends up holding exactly the entries given, in
+# order, the digest map untouched; it fails, naming the file, with no
+# table or no closing ")" (#211).
+# labs_of <file>: the lab table's lines, read here on its own as map_of is.
+labs_of() { sed -n '/^declare -gA IRIS_LAB_ENVS=($/,/^)$/p' "$1" | sed '1d;$d'; }
+cp lib/katana.sh "$f"
+out="$(lab_table "$f" ct-lab=ct/1 mri-lab=mr/2 2>&1)" || fail "lab_table refused a real lib/katana.sh: $out"
+[ -z "$out" ] || fail "lab_table printed on success: $out"
+[ "$(labs_of "$f")" = "$(printf '    [ct-lab]=ct/1\n    [mri-lab]=mr/2')" ] ||
+    { fail "lab table isn't the entries given:"; labs_of "$f" | sed 's/^/  /'; }
+[ "$(map_of "$f")" = "$(map_of lib/katana.sh)" ] || fail "lab_table changed the digest map"
+grep -v '^declare -gA IRIS_LAB_ENVS=(' lib/katana.sh > "$f"
+out="$(lab_table "$f" ct-lab=ct/1 2>&1)" && fail "lab_table passed on a file with no lab table"
+grep -qF -- "$f" <<< "$out" || fail "lab_table's no-table failure doesn't name the file: $out"
+# A file of the table alone, so no other table's ")" can close it.
+printf '%s\n' 'declare -gA IRIS_LAB_ENVS=(' '    [microct-lab]=microct/1' > "$f"
+out="$(lab_table "$f" ct-lab=ct/1 2>&1)" && fail "lab_table passed on a lab table with no closing )"
+grep -qF -- "$f" <<< "$out" || fail "lab_table's unclosed-table failure doesn't name the file: $out"
+grep -qF 'lab table' <<< "$out" || fail "lab_table's unclosed-table failure doesn't name the lab table: $out"
+
+# An entry not shaped <key>=<value>, or with [, ] or = in its key, is
+# refused by every helper, naming the entry and the file, and nothing is
+# written: the old sed callers' [microct/1]=... form gave [[microct/1]]=...,
+# which digest_map's own check accepted (#200's build, in test_envpull).
+# refuses <helper> <entry> [<args>...]: <helper> on a fresh copy fails with
+# <entry>, naming it and the file, and leaves the copy as it was.
+refuses() {
+    local helper="$1" entry="$2"
+    shift 2
+    cp lib/katana.sh "$f"
+    out="$("$helper" "$f" "$@" "$entry" 2>&1)" && { fail "$helper took the entry '$entry'"; return; }
+    grep -qF -- "$f" <<< "$out" || fail "$helper's refusal of '$entry' doesn't name the file: $out"
+    grep -qF -- "$entry" <<< "$out" || fail "$helper's refusal of '$entry' doesn't name the entry: $out"
+    cmp -s "$f" lib/katana.sh || fail "$helper changed the file while refusing '$entry'"
+}
+refuses digest_map "[microct/1]=unpublished"
+refuses digest_map "[microct/1]=unpublished" --tools ct/1
+refuses digest_map microct/1
+refuses digest_map "=unpublished"
+refuses digest_map_add "[ct/9]=unpublished"
+refuses digest_map_add ct/9
+refuses lab_table "[ct-lab]=ct/1"
+refuses lab_table "ct-lab]=ct/1"
+refuses lab_table ct-lab
+refuses lab_table "[mri-lab]=mr/2" ct-lab=ct/1
