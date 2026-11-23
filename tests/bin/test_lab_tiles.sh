@@ -12,7 +12,7 @@ scratch="$(mktemp -d)"
 trap 'rm -rf "$scratch"' EXIT
 . tests/bin/lib.sh
 
-name="lab tiles count their lab sections"
+name="lab tiles match their lab sections"
 stray='    <a href="#nowhere" class="lab-tile"><span class="lab-tile-counts">0 active · 0 planned</span></a>'
 again='    <a href="#ct-lab" class="lab-tile"><span class="lab-tile-counts">1 active · 1 planned</span></a>'
 # Moves the ct-lab tile to the end of the lab tiles, after mr-lab's.
@@ -37,12 +37,13 @@ tiles() {
 tiles pass agree
 tiles fail active "index.html: the ct-lab tile says 2 active; its section has 1" 's/1 active · 1 planned/2 active · 1 planned/'
 tiles fail planned "index.html: the mr-lab tile says 3 planned; its section has 1" 's/0 active · 1 planned/0 active · 3 planned/'
-tiles fail no-tile "index.html: lab section mr-lab has no lab tile" '/href="#mr-lab" class="lab-tile"/,/<\/a>/d' "order"
-tiles fail stray "index.html: a lab tile links #nowhere, which no lab section has" "/<div class=\"lab-tiles\">/a\\$stray" "order"
+tiles fail no-tile "index.html: lab section mr-lab has no lab tile" '/href="#mr-lab" class="lab-tile"/,/<\/a>/d' "lab tiles' order"
+tiles fail stray "index.html: a lab tile links #nowhere, which no lab section has" "/<div class=\"lab-tiles\">/a\\$stray" "lab tiles' order"
 tiles fail order "index.html: the lab tiles' order (mr-lab ct-lab) differs from the lab sections' (ct-lab mr-lab)" "$swap"
-tiles fail duplicate "index.html: two lab tiles link #ct-lab" "/href=\"#mr-lab\" class=\"lab-tile\"/i\\$again" "order"
-tiles fail duplicate-last "index.html: two lab tiles link #ct-lab" "0,/^  <\\/div>\$/{/^  <\\/div>\$/i\\$again
-}" "order"
+tiles fail duplicate "index.html: an extra lab tile links #ct-lab" "/href=\"#mr-lab\" class=\"lab-tile\"/i\\$again" "lab tiles' order"
+# A second ct-lab tile after mr-lab's, last of the lab tiles.
+tiles fail duplicate-last "index.html: an extra lab tile links #ct-lab" "0,/^  <\\/div>\$/{/^  <\\/div>\$/i\\$again
+}" "lab tiles' order"
 tiles fail no-counts "index.html: the ct-lab tile has no \"N active · M planned\" counts" '0,/class="lab-tile-counts"/{/class="lab-tile-counts"/d}'
 
 site_tree "$scratch/crlf" seg:ct-lab:active denoise:ct-lab:planned

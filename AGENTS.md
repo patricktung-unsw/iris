@@ -65,7 +65,7 @@ Pushing `main` is an immediate public deploy to https://docs.restech.unsw.edu.au
 - **Planned cards still link to their pages**, keeping the `.planned` style: full colour like Active cards, with no hover lift (Patrick, 2026-10-28).
 - **No version tags** on cards: nothing versions a workflow, and each run's `commit.txt` records the code it ran (Patrick, 2026-10-22). A workflow page lists its citable versions by DOI, date and commit, never as a version number (ADR-0002).
 
-**Adding a modality or a lab**: CONTRIBUTING's Scaffold step, after an approved proposal. The catalogue has one section per lab and no filter bar or tabs, so every lab shows at once; the lab tiles at its top jump to each lab's section, and `bin/check` holds their counts to its cards.
+**Adding a modality or a lab**: CONTRIBUTING's Scaffold step, after an approved proposal. The catalogue has one section per lab and no filter bar or tabs, so every lab shows at once; the lab tiles at its top jump to each lab's section, and `bin/check` holds them to one tile per lab, in the sections' order, each counting its section's cards.
 
 ## Katana
 

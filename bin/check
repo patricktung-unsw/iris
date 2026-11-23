@@ -866,7 +866,7 @@ lab_tiles() {
         {
             if ($1 == "?") { print "index.html: a lab tile has no href=\"#<lab section id>\""; next }
             if (!($1 in lab)) { print "index.html: a lab tile links #" $1 ", which no lab section has"; next }
-            if ($1 in tiled) { print "index.html: two lab tiles link #" $1; next }
+            if ($1 in tiled) { print "index.html: an extra lab tile links #" $1; next }
             tiled[$1] = 1; tile_order = tile_order " " $1
             if ($2 == "-") { print "index.html: the " $1 " tile has no \"N active · M planned\" counts"; next }
             if ($2 != a[$1] + 0) print "index.html: the " $1 " tile says " $2 " active; its section has " a[$1] + 0
@@ -881,7 +881,7 @@ lab_tiles() {
         }
     ' <(labs) <(cards) <(tiles)
 }
-check "lab tiles count their lab sections" lab_tiles
+check "lab tiles match their lab sections" lab_tiles
 
 # Run and verified means a real job ran from a clone (#53: two forms sat in
 # this tier without one), so a line outside the table cites a job for each
