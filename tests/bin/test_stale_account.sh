@@ -2,9 +2,10 @@
 # bin/check's stale-account rule against throwaway site trees. Each tree
 # gets its own copy of bin/check, which checks the tree it sits in. The
 # rule fails any mention of the stale patricktung-unsw account or the old
-# ares-pages repo, except a digest map line in lib/katana.sh naming that
-# account's own container, which a workflow author's pull request pins
-# until the review batch copies it (#201). Prints each failed case and
+# ares-pages repo, except a digest map line in lib/katana.sh, or a
+# workflow's library copy of it, naming that account's own container,
+# which a workflow author's pull request pins until the review batch
+# copies it (#201). Prints each failed case and
 # nothing on success, so bin/check can run it.
 #
 #   tests/bin/test_stale_account.sh
@@ -34,11 +35,14 @@ case_() {
 }
 
 case_ pass author-pin lib/katana.sh "    [ct/2]=ghcr.io/patricktung-unsw/iris-env@sha256:$hex"
+# A workflow's library copy of lib/katana.sh carries the same line.
+case_ pass author-pin-copy workflows/seg/lib/katana.sh "    [ct/2]=ghcr.io/patricktung-unsw/iris-env@sha256:$hex"
 case_ fail page workflows/seg/index.html '<a href="https://github.com/patricktung-unsw/iris">'
 case_ fail old-repo README.md 'https://github.com/unsw-restech/ares-pages'
 # The exemption is the digest map line alone: in another file, with a
 # short digest, another package or anything after it, the line still fails.
 case_ fail pin-elsewhere bin/notes.sh "    [ct/2]=ghcr.io/patricktung-unsw/iris-env@sha256:$hex"
+case_ fail pin-elsewhere-in-workflow workflows/seg/katana.sh "    [ct/2]=ghcr.io/patricktung-unsw/iris-env@sha256:$hex"
 case_ fail short-digest lib/katana.sh "    [ct/2]=ghcr.io/patricktung-unsw/iris-env@sha256:abc"
 case_ fail other-package lib/katana.sh "    [ct/2]=ghcr.io/patricktung-unsw/other@sha256:$hex"
 case_ fail comment-after lib/katana.sh "    [ct/2]=ghcr.io/patricktung-unsw/iris-env@sha256:$hex  # see patricktung-unsw"
