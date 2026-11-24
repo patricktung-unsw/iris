@@ -5,6 +5,7 @@ Workflows run in environments packaged as containers ([ADR-0008](../docs/adr/000
 | Version | Built from | PyTorch | Compiled GPU archs | Status |
 |---|---|---|---|---|
 | `microct/1` | `imaging/1`'s lock, unchanged, on Python 3.13.2 (closed PR #106's recipe) | `2.10.0+cu128` | `sm_70 sm_75 sm_80 sm_86 sm_90 sm_100 sm_120` | Published 2026-11-07 (containers run 42341886288) |
+| `microct/2` | `microct/1`'s lock plus albumentations and the four packages it needs, every other pin unchanged, built as a layer on `microct/1` ([#201](https://github.com/unsw-restech/iris/issues/201)) | `2.10.0+cu128` | `sm_70 sm_75 sm_80 sm_86 sm_90 sm_100 sm_120` | Published 2026-11-24 to a workflow author's own package, not yet copied (fork containers run 45297424393) |
 | `tools/1` | `microct/1`'s lock without PyTorch and what only it needs, every other pin unchanged, on Python 3.13.2 ([#149](https://github.com/unsw-restech/iris/issues/149)) | none | none | Published 2026-11-11 (containers run 42933065264) |
 
 `torch 2.9.1+cu128` has no `sm_70`, so it would not run on the V100s, and the `cu128` build needs NVIDIA driver 570 or newer: Katana's V100s run 580 and every other GPU node 610. L40S (sm_89) runs the `sm_86` code.
