@@ -425,13 +425,14 @@
     .partner-intro {
       font-size: 16px; font-weight: 300;
       color: var(--text); line-height: 1.7;
-      max-width: 640px; margin-bottom: 32px;
+      max-width: 640px;
     }
     .partner-intro strong { font-weight: 500; color: #fff; }
+    /* The paragraph and its button sit side by side, the button to the
+       right; at 768px and below they stack (see the 768px block). */
     .partner-row {
       display: flex; align-items: center; gap: 48px;
     }
-    .partner-row .partner-intro { margin-bottom: 0; }
     .partner-row .btn { flex-shrink: 0; }
 
     /* ── LAB TILES ── */
@@ -758,8 +759,8 @@
     <span class="section-title">Partner with us</span>
   </div>
   <div class="partner-row">
-  <p class="partner-intro">IRIS is built for UNSW's imaging labs and facilities. If your research needs more than a ready-made workflow, please get in touch: ResTech works with labs on <strong>research collaborations</strong> in imaging and AI methods, supports <strong>grant applications</strong> with letters of support and in-kind contributions, and builds <strong>bespoke workflows</strong> for analyses too complex for a self-serve form.</p>
-  <a href="mailto:patrick.tung@unsw.edu.au" class="btn btn-primary">Get in touch</a>
+    <p class="partner-intro">IRIS is built for UNSW's imaging labs and facilities. If your research needs more than a ready-made workflow, please get in touch: ResTech works with labs on <strong>research collaborations</strong> in imaging and AI methods, supports <strong>grant applications</strong> with letters of support and in-kind contributions, and builds <strong>bespoke workflows</strong> for analyses too complex for a self-serve form.</p>
+    <a href="mailto:patrick.tung@unsw.edu.au" class="btn btn-primary">Get in touch</a>
   </div>
 </section>
 
