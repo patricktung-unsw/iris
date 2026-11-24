@@ -108,10 +108,13 @@ push refs/heads/main "$merged" "$zero" > /dev/null || fail "pre-push: refused a 
 # every other tool does, so the org's own package named in full isn't one.
 mkdir -p "$repo/lib"
 a64=$(printf 'a%.0s' {1..64})
-# map_line <value>: lib/katana.sh with a ct/2 line of <value> in its digest map, committed.
+# map_line <value>: lib/katana.sh with a digest map of ct/1, IRIS's own,
+# and a ct/2 line of <value>, committed. The map is the fixture's own, so a
+# branch whose real map names an author's container, as each author's pull
+# request does, doesn't make every case an author's.
 map_line() {
     cp lib/katana.sh "$repo/lib/katana.sh"
-    digest_map_add "$repo/lib/katana.sh" "ct/2=$1" || exit 1
+    digest_map "$repo/lib/katana.sh" "ct/1=sha256:$a64" "ct/2=$1" || exit 1
     git -C "$repo" add lib/katana.sh; commit -m "ct/2 is $1"
     record
 }
