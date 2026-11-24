@@ -234,7 +234,7 @@ check "pre-transfer repo URL" grep -rn 'github\.com/PatrickTung/iris\|https://pa
 # patricktung-unsw is also a workflow author's account, so a digest map
 # line naming its own container, whole, which an author's pull request pins
 # until the review batch copies it and pre-push refuses on main, passes
-# (#201). Any other mention fails, but in AGENTS.md, this file and the
+# (#201). Any other mention fails, except in AGENTS.md, this file and the
 # rule's own test, which name the account to describe it.
 stale_account() {
     grep -rn 'patricktung-unsw\|ares-pages' . --exclude-dir=.git --exclude=AGENTS.md --exclude=check --exclude=test_stale_account.sh |

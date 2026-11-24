@@ -37,7 +37,7 @@ printf '[%s]' "$@" >> "$dir/apptainer.log"; echo >> "$dir/apptainer.log"
 shift
 authfile=""
 while [[ "$1" == --* ]]; do
-    [ "$1" = --authfile ] && { authfile="$2"; shift; }
+    [ "$1" != --authfile ] || { authfile="$2"; shift; }
     shift
 done
 echo "user=${APPTAINER_DOCKER_USERNAME-} password=${APPTAINER_DOCKER_PASSWORD-} authfile=$(cat "$authfile" 2>/dev/null)" >> "$dir/auth"

@@ -33,8 +33,9 @@
 # With Apptainer, which the desktop's WSL has, as Katana does, the command
 # runs under `apptainer exec --cleanenv` in a container file cached by
 # digest in IRIS_ENV_CACHE (default ~/.cache/iris/envs): the first run
-# pulls it, about 4.7 GB, which takes some minutes, with no login, since
-# the package is public (#132), not even the user's Docker login (#201).
+# pulls it, about 4.7 GB, which takes some minutes, with no login, not
+# even the user's Docker login (#201): IRIS's package is public (#132), and
+# an author's own, which a fork's pin names, is once the author makes it so.
 #
 # Without Apptainer, or with IRIS_CONTAINER_RUNTIME=docker, it runs under
 # `docker run` as this user, as CI does. A container Docker doesn't hold is
