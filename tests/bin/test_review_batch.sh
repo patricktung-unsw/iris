@@ -1,22 +1,26 @@
 #!/bin/bash
 # bin/review-batch against fixture pull request data: a fake `gh` on PATH
 # answers `gh pr list` and `gh pr view` from JSON files as gh prints them,
-# a fake `docker` keeps a fake registry's tags in files, a fake bin/check
-# runs the real bin/libcopy --check, and a throwaway
-# origin holds each PR's head as refs/pull/<n>/head. The listing shows
-# each ready PR with its diff and what it flags, ends with the one --apply
-# line for the batch, and changes nothing: no merge, no push, no container
-# copy, no branch or worktree. --apply merges the batch into a branch and
-# worktree of its own, writes an author's container line as its digest
-# alone, in lib/katana.sh and in a workflow's library copy, and prints
-# the steps that follow, which the test runs, the copy and the push, to
-# see them end where they promise; a copy alone naming a container whose
-# digest main pins is rewritten with nothing to copy. It refuses, leaving
-# nothing behind, a PR that moved or lost ready, a batch made before, a
-# merge that fails and a copy naming a container main won't pin, and a
-# batch bin/check fails, pushing and copying nothing. --copy leaves a
-# tag already at the digest alone and refuses one at another. Prints
-# each failed case and nothing on success, so bin/check can run it.
+# a fake `docker` keeps a fake registry's tags in files, a fake
+# `apptainer` under the real bin/envrun writes the container file a pull
+# names, a fake bin/check runs the real bin/libcopy --check, and a
+# throwaway origin holds each PR's head as refs/pull/<n>/head. The listing
+# shows each ready PR with its diff and what it flags, ends with the one
+# --apply line for the batch, and changes nothing: no merge, no push, no
+# container copy, no branch or worktree. --apply merges the batch into a
+# branch and worktree of its own, writes an author's container line as its
+# digest alone, in lib/katana.sh and in a workflow's library copy, having
+# first pulled an author's container into bin/envrun's cache by the
+# author's ref unless the cache holds it, and prints the steps that
+# follow, which the test runs, the copy and the push, to see them end
+# where they promise; a copy alone naming a container whose digest main
+# pins is rewritten with nothing to copy. It refuses, leaving nothing
+# behind, a PR that moved or lost ready, a batch made before, a merge that
+# fails, a pull that fails, an author's container under Docker, and a copy
+# naming a container main won't pin, and a batch bin/check fails, pushing
+# and copying nothing. --copy leaves a tag already at the digest alone and
+# refuses one at another. Prints each failed case and nothing on success,
+# so bin/check can run it.
 #
 #   tests/bin/test_review_batch.sh
 #
@@ -74,6 +78,24 @@ case "$3" in
 esac
 EOF
 printf '#!/bin/bash\necho "ssh $*" >> "$(dirname "$0")/../calls"\nexit 1\n' > "$fake/bin/ssh"
+# apptainer, under the real bin/envrun: `pull ... <file> docker://<ref>`
+# writes <file>, or fails as Apptainer 1.5.0's pull of a digest ghcr.io
+# lacks did on the desktop (2026-11-25) when $fake/pull-fails exists, and
+# `exec` runs nothing.
+cat > "$fake/bin/apptainer" <<'EOF'
+#!/bin/bash
+dir="$(dirname "$0")/.."
+echo "apptainer $*" >> "$dir/calls"
+case "$1" in
+    pull)
+        ref="${!#}"
+        ref="${ref#docker://}"
+        [ ! -e "$dir/pull-fails" ] || { echo "FATAL:   While making image from oci registry: error fetching image to cache: failed to get checksum for docker://$ref: reading manifest ${ref#*@} in ${ref%@*}: manifest unknown" >&2; exit 255; }
+        echo "container of ${!#}" > "${@: -2:1}" ;;
+    exec) ;;
+    *) exit 1 ;;
+esac
+EOF
 chmod +x "$fake/bin/"*
 
 a64=$(printf 'a%.0s' {1..64}) b64=$(printf 'b%.0s' {1..64})
@@ -86,7 +108,7 @@ commit() { git -C "$src" add -A && git -C "$src" commit -qm "$1"; }
 # or bin/libcopy --check prints a problem, and a bin/katana-test whose
 # --tested says the batch needs no run.
 mkdir -p "$src/bin" "$src/lib/iris" "$src/workflows/seg/src" "$src/envs/ct/1"
-cp bin/review-batch bin/outside-folder bin/github-repo.sh bin/libcopy "$src/bin/"
+cp bin/review-batch bin/outside-folder bin/github-repo.sh bin/libcopy bin/envrun "$src/bin/"
 for f in iris-job.sh iris/__init__.py iris/dataset.py iris/labels.py iris/record.py iris/rundir.py iris/volume.py; do
     echo "# lib/$f" > "$src/lib/$f"
 done
@@ -186,7 +208,10 @@ failures=0
 fail() { echo "$*"; failures=1; }
 # run <arg>...: bin/review-batch in the clone with the fakes on PATH, into
 # $out and $rc.
-run() { rm -f "$fake/calls"; out="$(PATH="$fake/bin:$PATH" "$clone/bin/review-batch" "$@" 2>&1)"; rc=$?; }
+# bin/envrun's cache is $fake/cache, and it picks Apptainer, the fake's,
+# unless IRIS_CONTAINER_RUNTIME says otherwise.
+unset IRIS_CONTAINER_RUNTIME
+run() { rm -f "$fake/calls"; out="$(IRIS_ENV_CACHE="$fake/cache" PATH="$fake/bin:$PATH" "$clone/bin/review-batch" "$@" 2>&1)"; rc=$?; }
 has() { grep -qF -- "$1" <<< "$out" || fail "review-batch ${2:-listing}: output lacks '$1'"; }
 lacks() { ! grep -qF -- "$1" <<< "$out" || fail "review-batch ${2:-listing}: output has '$1'"; }
 show() { [ "$failures" = 0 ] || echo "$out" | sed 's/^/  /'; failures=0; }
@@ -346,6 +371,50 @@ has "nothing merged, and the batch's worktree and branch are removed" copy-unpin
 left copy-unpinned
 show
 
+# Under Docker, a batch with an author's container is refused before any
+# merge, since only Apptainer's cache, keyed by the hex alone, runs it
+# under the org's ref before its copy. One without goes ahead.
+IRIS_CONTAINER_RUNTIME=docker run --apply "12:${pr12:0:12}" "7:${pr7:0:12}"
+[ "$rc" = 1 ] || fail "review-batch docker: exit $rc, expected 1"
+has "#7 names ghcr.io/alice-lab/iris-env@sha256:$a64 for ct/2, and the batch's bin/check needs Apptainer" docker
+has "nothing merged" docker
+! grep -q '^apptainer' "$fake/calls" || fail "review-batch docker: ran apptainer"
+left docker
+show
+IRIS_CONTAINER_RUNTIME=docker run --apply "12:${pr12:0:12}"
+[ "$rc" = 0 ] || fail "review-batch docker-no-author: exit $rc, expected 0"
+has "bin/check passed on the batch" docker-no-author
+git -C "$clone" worktree remove --force "$wt"
+git -C "$clone" branch -q -D "$branch"
+left docker-no-author
+show
+
+# #7's author's container already in bin/envrun's cache: nothing pulled.
+mkdir -p "$fake/cache"
+echo "container of ct/2" > "$fake/cache/$a64.sif"
+run --apply "7:${pr7:0:12}"
+[ "$rc" = 0 ] || fail "review-batch cached: exit $rc, expected 0"
+! grep -q '^apptainer pull' "$fake/calls" || fail "review-batch cached: pulled $(grep '^apptainer pull' "$fake/calls")"
+git -C "$clone" worktree remove --force "$wt"
+git -C "$clone" branch -q -D "$branch"
+left cached
+show
+
+# A pull of an author's container that fails: the batch is undone, as a
+# failed merge is, with one line naming the version and the author's ref.
+rm -rf "$fake/cache"
+touch "$fake/pull-fails"
+run --apply "7:${pr7:0:12}" "12:${pr12:0:12}"
+[ "$rc" = 1 ] || fail "review-batch pull-fails: exit $rc, expected 1"
+has "the pull of ct/2's container, ghcr.io/alice-lab/iris-env@sha256:$a64, into bin/envrun's cache failed (above); nothing merged, and the batch's worktree and branch are removed" pull-fails
+lacks "Running its bin/check" pull-fails
+[ ! -e "$fake/cache/$a64.sif" ] || fail "review-batch pull-fails: left $a64.sif in the cache"
+left pull-fails
+show
+rm "$fake/pull-fails"
+# Its step, --apply again once the pull works, and the Docker refusal's,
+# --apply with Apptainer, are the batch below.
+
 # The batch, #7 and #12: merged in order on its own branch, #7's author
 # container line written as its digest alone and committed, and the steps
 # printed in order, the copy before the push.
@@ -368,6 +437,15 @@ grep -qx "    \[ct/2\]=sha256:$a64" <(git -C "$clone" show "$tip:workflows/seg/l
 grep -q "workflows/seg/lib/katana.sh" <<< "$(git -C "$clone" log -1 --format=%s "$tip")" || fail "review-batch apply: the rewrite's commit message doesn't name seg's library copy"
 git -C "$wt" diff --quiet HEAD || fail "review-batch apply: left uncommitted changes in $wt"
 has "bin/check passed on the batch" apply
+# With an empty cache, #7's author's container was pulled into it by the
+# author's ref, before the rewrite, and the rewritten line resolves to it:
+# bin/envrun runs ct/2 from the batch's worktree pulling nothing.
+[ "$(grep -c '^apptainer pull' "$fake/calls")" = 1 ] && grep -q "^apptainer pull .* docker://ghcr.io/alice-lab/iris-env@sha256:$a64\$" "$fake/calls" ||
+    fail "review-batch apply: didn't pull the author's container once by its ref: $(grep '^apptainer' "$fake/calls")"
+[ -f "$fake/cache/$a64.sif" ] || fail "review-batch apply: the cache lacks $a64.sif"
+rm -f "$fake/calls"
+(cd "$wt" && IRIS_ENV_CACHE="$fake/cache" PATH="$fake/bin:$PATH" bin/envrun ct/2 true) || fail "review-batch apply: bin/envrun ct/2 failed in the batch"
+! grep -q '^apptainer pull' "$fake/calls" || fail "review-batch apply: the rewritten ct/2 line didn't resolve to the cached file"
 mapfile -t steps < <(sed -nE 's/^  [0-9]+\. //p' <<< "$out")
 want=("bin/review-batch --copy ct/2 ghcr.io/alice-lab/iris-env@sha256:$a64" "bin/syspull" "git push origin $tip:main" "bin/ciwait $tip"
     "ssh katana 'cd ~/iris && git pull --ff-only'" "$wt/bin/envpull" "bin/syspull")

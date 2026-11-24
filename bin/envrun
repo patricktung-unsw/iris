@@ -62,6 +62,7 @@ if [ -n "$local_name" ]; then
     ref="$local_name" runtime=docker
 else
     ref="$(iris_env_ref "$version")"
+    # bin/review-batch's --apply keeps a copy of this choice (#255).
     runtime="${IRIS_CONTAINER_RUNTIME:-$(command -v apptainer > /dev/null && echo apptainer || echo docker)}"
 fi
 

@@ -27,19 +27,32 @@ failed. It fetches origin and each PR's head and changes nothing else.
 at the head named. Then, in a worktree of its own,
 .claude/worktrees/review-batch-<main> in the main clone, on a branch of the
 same name from origin/main, it merges each PR in order (git merge --no-ff),
-rewrites each author's container line in lib/katana.sh, and in each
-workflow's library copy of it, workflows/<slug>/lib/katana.sh, to its
-digest alone, commits that, and runs bin/check there. The copies are
-rewritten in place, not copied again, which would bring in every lib/
-change since the copy was tested; bin/libcopy --check passes that one
-difference (#256). A copy naming an author's container whose digest
-lib/katana.sh doesn't then pin is refused, as a failed merge is, since
-main's copy would pin a container IRIS's package lacks. A merge that fails removes the
-worktree and its branch again. It pushes nothing and copies nothing: it
-prints the rest of the batch, each step one command to run on its own, so
-a permission rule can match it. The yes to the listing is the go-ahead for
-each of them; the system clone's deploy gets its own, from the listing
-bin/syspull prints at the end.
+pulls into bin/envrun's cache each author's container lib/katana.sh then
+names, by the author's ref, rewrites each author's container line in
+lib/katana.sh, and in each workflow's library copy of it,
+workflows/<slug>/lib/katana.sh, to its digest alone, commits that, and runs
+bin/check there. The copies are rewritten in place, not copied again,
+which would bring in every lib/ change since the copy was tested;
+bin/libcopy --check passes that one difference (#256). A copy naming an
+author's container whose digest lib/katana.sh doesn't then pin is refused,
+as a failed merge is, since main's copy would pin a container IRIS's
+package lacks. A merge or a pull that fails removes the worktree and its
+branch again. It pushes nothing and copies nothing: it prints the rest of
+the batch, each step one command to run on its own, so a permission rule
+can match it. The yes to the listing is the go-ahead for each of them; the
+system clone's deploy gets its own, from the listing bin/syspull prints at
+the end.
+
+The pull, bin/envrun <env>/<n> true in the batch's worktree, which pulls
+only a container file the cache lacks, is what lets the batch's bin/check
+run an author's version before --copy makes the org's copy: the cache keys
+a container file by its digest alone, so the rewritten line, the org's
+ref, finds the author's container there (#255). Only Apptainer's cache
+does that, so under Docker (IRIS_CONTAINER_RUNTIME=docker, or no apptainer
+on the PATH, as bin/envrun chooses) a batch with an author's container is
+refused before anything is merged. --copy stays after a passing bin/check,
+so a failed batch never puts a version in IRIS's package, where --copy can
+never move it to another digest.
 
 --copy: copies the container by digest, never rebuilding it, to
 IRIS_ENV_REGISTRY tagged <env>-<n> with docker buildx imagetools, and
@@ -56,6 +69,7 @@ import glob
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 
@@ -149,6 +163,12 @@ def ready_prs():
 def map_lines(text):
     """The digest map lines in text, as {version: value}."""
     return {m.group(1): m.group(2) for m in map(MAP_LINE.match, text.splitlines()) if m}
+
+
+def author_lines(text):
+    """The digest map lines in text naming an author's container, as sorted
+    (version, container) pairs."""
+    return sorted((v, c) for v, c in map_lines(text).items() if author_digest(c))
 
 
 def added_map_lines(base, head):
@@ -246,6 +266,9 @@ def main_clone():
 
 def apply(pairs):
     base = fetch_main()
+    # The runtime bin/envrun picks, a copy of its runtime= line.
+    docker = (os.environ.get("IRIS_CONTAINER_RUNTIME") or
+              ("apptainer" if shutil.which("apptainer") else "docker")) == "docker"
     batch = []
     for n, sha in pairs:
         p = run(["gh", "pr", "view", str(n), "-R", github_repo(), "--json", "number,title,state,labels,headRefOid,baseRefName"],
@@ -268,6 +291,10 @@ def apply(pairs):
         head = fetch_head(n)
         if head != pr["headRefOid"]:
             die("#%d's head fetched as %s, not %s; nothing merged" % (n, head[:12], pr["headRefOid"][:12]))
+        if docker:
+            for v, container in author_lines(git("show", "%s:lib/katana.sh" % head)):
+                die("#%d names %s for %s, and the batch's bin/check needs Apptainer to run an author's version "
+                    "before its copy; nothing merged. Run --apply with Apptainer" % (n, container, v))
         batch.append((n, pr["title"], head))
 
     branch = "review-batch-" + base[:7]
@@ -278,17 +305,29 @@ def apply(pairs):
             "Remove both (git worktree remove, then git branch -D) to make it again" % (branch, wt))
     git("worktree", "add", "-q", "-b", branch, wt, base)
 
-    def undo(msg):
+    def undo(msg, next_step="Run --apply again without it, and close it naming the criterion if it fails one"):
         run(["git", "-C", wt, "merge", "--abort"], check=False)
         run(["git", "worktree", "remove", "--force", wt], check=False)
         run(["git", "branch", "-D", branch], check=False)
-        die(msg + "; nothing merged, and the batch's worktree and branch are removed. "
-            "Run --apply again without it, and close it naming the criterion if it fails one")
+        die(msg + "; nothing merged, and the batch's worktree and branch are removed. " + next_step)
 
     for n, title, head in batch:
         p = subprocess.run(["git", "-C", wt, "merge", "--no-ff", "-q", "-m", "Merge #%d: %s" % (n, title), head])
         if p.returncode != 0:
             undo("the merge of #%d failed (above)" % n)
+
+    # bin/envrun's cache keys a container file by its hex alone, so each
+    # author's container, pulled by the author's ref while lib/katana.sh
+    # still names it, is the file the rewritten line resolves to: the
+    # batch's bin/check runs the version before --copy makes the org's
+    # copy. bin/envrun pulls only a file its cache lacks (#255).
+    with open(os.path.join(wt, "lib", "katana.sh")) as f:
+        authors = author_lines(f.read())
+    for v, container in authors:
+        p = subprocess.run([os.path.join(wt, "bin", "envrun"), v, "true"], cwd=wt)
+        if p.returncode != 0:
+            undo("the pull of %s's container, %s, into bin/envrun's cache failed (above)" % (v, container),
+                 "Run --apply again once the pull works")
 
     def pin_by_digest(path):
         """Rewrites each author's container line in the katana.sh at <path>,
