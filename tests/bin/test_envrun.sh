@@ -43,7 +43,7 @@ done
 echo "user=${APPTAINER_DOCKER_USERNAME-} password=${APPTAINER_DOCKER_PASSWORD-} authfile=$(cat "$authfile" 2>/dev/null)" >> "$dir/auth"
 [ -z "$authfile" ] || echo "$authfile" >> "$dir/authfiles"
 if [ "$(cat "$authfile" 2>/dev/null)" != "{}" ]; then
-    echo 'FATAL:   While making image from oci registry: error fetching image to cache: while building SIF from layers: conveyor failed to get: error getting credentials - err: exit status 1, out: `A specified logon session does not exist. It may already have been terminated.`' >&2
+    echo 'FATAL:   While making image from oci registry: error fetching image to cache: ... conveyor failed to get: error getting credentials - err: exit status 1, out: `A specified logon session does not exist. It may already have been terminated.`' >&2
     exit 255
 fi
 echo "container $2" > "$1"
