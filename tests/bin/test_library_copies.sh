@@ -4,8 +4,10 @@
 # makes passes, and one edited by hand, missing a file, holding a file
 # that isn't the job side's, or recording a commit outside HEAD's history
 # fails, as does an imaging form with no copy, while a lib/ holding only
-# ignored files, or one deeper than a workflow's own, is no copy. Prints
-# each failed case and nothing on success, so bin/check can run it.
+# ignored files, or one deeper than a workflow's own, is no copy. The
+# review batch's rewrite of an author's container line in a copy's
+# katana.sh to its digest alone passes, and any other change there fails.
+# Prints each failed case and nothing on success, so bin/check can run it.
 #
 #   tests/bin/test_library_copies.sh
 #
@@ -160,3 +162,51 @@ printf '%s\n' '* text=auto eol=lf' > "$scratch/crlf/.gitattributes"
 commit crlf
 sed -i 's/$/\r/' "$scratch/crlf/workflows/seg/lib/iris/record.py" "$scratch/crlf/workflows/seg/lib/copied-from"
 expect pass "$scratch/crlf" "$name"
+
+# The review batch rewrites an author's container line in a copy's
+# katana.sh to its digest alone, as it does in lib/katana.sh (#256): that
+# rewrite passes, and any other difference still fails. lib/katana.sh is
+# the real one, with ct/2 an author's container, ct/3 the org's own package
+# named in full, and the lab table holding an author's container too, which
+# is outside the digest map.
+a64=$(printf 'a%.0s' {1..64}) b64=$(printf 'b%.0s' {1..64})
+author="ghcr.io/alice-lab/iris-env@sha256:$a64"
+# rewritten <name> <sed script>: a copy of lib/katana.sh as above, made by
+# bin/libcopy and committed, then <sed script> run on the copy's katana.sh,
+# committed.
+rewritten() {
+    make_tree "$1"
+    cp lib/katana.sh "$scratch/$1/lib/katana.sh"
+    digest_map "$scratch/$1/lib/katana.sh" "ct/1=sha256:$b64" "ct/2=$author" \
+        "ct/3=ghcr.io/unsw-restech/iris-env@sha256:$b64" || exit 1
+    lab_table "$scratch/$1/lib/katana.sh" "ct-lab=$author" || exit 1
+    commit "$1" "ct/2 is an author's"
+    "$scratch/$1/bin/libcopy" seg > /dev/null || echo "$1: bin/libcopy seg failed"
+    commit "$1" "seg's copy"
+    sed -i "$2" "$scratch/$1/workflows/seg/lib/katana.sh"
+    commit "$1" "The copy, rewritten"
+}
+rewritten batch "s|^    \[ct/2\]=.*|    [ct/2]=sha256:$a64|"
+expect pass "$scratch/batch" "$name"
+# The same rewrite with CRLF line ends in the working copy.
+printf '%s\n' '* text=auto eol=lf' > "$scratch/batch/.gitattributes"
+commit batch
+sed -i 's/$/\r/' "$scratch/batch/workflows/seg/lib/katana.sh"
+expect pass "$scratch/batch" "$name"
+# A digest that isn't the author's line's.
+rewritten other-digest "s|^    \[ct/2\]=.*|    [ct/2]=sha256:$b64|"
+expect fail "$scratch/other-digest" "$name"
+# The org's own package named in full is no author's container.
+rewritten org-line "s|^    \[ct/3\]=.*|    [ct/3]=sha256:$b64|"
+expect fail "$scratch/org-line" "$name"
+# The rewrite outside the digest map, in the lab table.
+rewritten outside-map "s|^    \[ct-lab\]=.*|    [ct-lab]=sha256:$a64|"
+expect fail "$scratch/outside-map" "$name"
+# The rewrite with another line changed too.
+rewritten and-more "s|^    \[ct/2\]=.*|    [ct/2]=sha256:$a64|; s|^IRIS_ENV_REGISTRY=.*|&x|"
+expect fail "$scratch/and-more" "$name"
+# The rewrite with the file's last newline dropped.
+rewritten no-newline "s|^    \[ct/2\]=.*|    [ct/2]=sha256:$a64|"
+truncate -s -1 "$scratch/no-newline/workflows/seg/lib/katana.sh"
+commit no-newline
+expect fail "$scratch/no-newline" "$name"

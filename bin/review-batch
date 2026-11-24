@@ -27,8 +27,14 @@ failed. It fetches origin and each PR's head and changes nothing else.
 at the head named. Then, in a worktree of its own,
 .claude/worktrees/review-batch-<main> in the main clone, on a branch of the
 same name from origin/main, it merges each PR in order (git merge --no-ff),
-rewrites each author's container line in lib/katana.sh to its digest alone,
-commits that, and runs bin/check there. A merge that fails removes the
+rewrites each author's container line in lib/katana.sh, and in each
+workflow's library copy of it, workflows/<slug>/lib/katana.sh, to its
+digest alone, commits that, and runs bin/check there. The copies are
+rewritten in place, not copied again, which would bring in every lib/
+change since the copy was tested; bin/libcopy --check passes that one
+difference (#256). A copy naming an author's container whose digest
+lib/katana.sh doesn't then pin is refused, as a failed merge is, since
+main's copy would pin a container IRIS's package lacks. A merge that fails removes the
 worktree and its branch again. It pushes nothing and copies nothing: it
 prints the rest of the batch, each step one command to run on its own, so
 a permission rule can match it. The yes to the listing is the go-ahead for
@@ -46,6 +52,7 @@ owners (AGENTS.md, Org rights).
 
 Exit 0 done; 1 refused or failed, saying why; 2 usage, or gh or git failed.
 """
+import glob
 import json
 import os
 import re
@@ -283,23 +290,54 @@ def apply(pairs):
         if p.returncode != 0:
             undo("the merge of #%d failed (above)" % n)
 
-    katana = os.path.join(wt, "lib", "katana.sh")
-    with open(katana) as f:
-        lines = f.read().split("\n")
-    copies = []
-    for i, line in enumerate(lines):
-        m = MAP_LINE.match(line)
-        digest = m and author_digest(m.group(2))
-        if digest:
-            copies.append((m.group(1), m.group(2)))
-            lines[i] = "    [%s]=%s" % (m.group(1), digest)
-    if copies:
-        with open(katana, "w") as f:
-            f.write("\n".join(lines))
-        msg = ("The review batch copies %s into %s by digest, so the digest map pins %s by its digest alone"
-               % (", ".join("%s's container" % v for v, _ in copies), registry(),
-                  " and ".join("%s" % v for v, _ in copies)))
-        p = subprocess.run(["git", "-C", wt, "commit", "-q", "-m", msg, "--", "lib/katana.sh"])
+    def pin_by_digest(path):
+        """Rewrites each author's container line in the katana.sh at <path>,
+        relative to the batch's worktree, to its digest alone, and returns
+        the (version, container) pairs it rewrote and the file's lines
+        after."""
+        with open(os.path.join(wt, path)) as f:
+            lines = f.read().split("\n")
+        found = []
+        for i, line in enumerate(lines):
+            m = MAP_LINE.match(line)
+            digest = m and author_digest(m.group(2))
+            if digest:
+                found.append((m.group(1), m.group(2)))
+                lines[i] = "    [%s]=%s" % (m.group(1), digest)
+        if found:
+            with open(os.path.join(wt, path), "w") as f:
+                f.write("\n".join(lines))
+        return found, lines
+
+    copies, lines = pin_by_digest("lib/katana.sh")
+    pinned = map_lines("\n".join(lines))
+    rewritten = ["lib/katana.sh"] if copies else []
+    in_copies = []
+    for path in sorted(glob.glob(os.path.join(wt, "workflows", "*", "lib", "katana.sh"))):
+        path = os.path.relpath(path, wt)
+        found = pin_by_digest(path)[0]
+        # Each must be a container IRIS's package holds after the batch:
+        # one it copies, or one main already pins, by its digest.
+        for v, container in found:
+            if pinned.get(v) != author_digest(container):
+                undo("%s names %s for %s, which lib/katana.sh doesn't pin by its digest, so main's copy would "
+                     "pin a container IRIS's package lacks; its author copies the library again (bin/libcopy)"
+                     % (path, container, v))
+        if found:
+            rewritten.append(path)
+            in_copies += [v for v, _ in found if v not in in_copies]
+    if rewritten:
+        copied = [p for p in rewritten if p != "lib/katana.sh"]
+        if copies:
+            msg = ("The review batch copies %s into %s by digest, so the digest map pins %s by its digest alone"
+                   % (", ".join("%s's container" % v for v, _ in copies), registry(),
+                      " and ".join("%s" % v for v, _ in copies)))
+            if copied:
+                msg += ", in lib/katana.sh and %s" % " and ".join(copied)
+        else:
+            msg = ("The review batch pins %s by its digest alone in %s, as lib/katana.sh already does"
+                   % (" and ".join(sorted(in_copies)), " and ".join(copied)))
+        p = subprocess.run(["git", "-C", wt, "commit", "-q", "-m", msg, "--"] + rewritten)
         if p.returncode != 0:
             undo("committing the digest map's rewrite failed (above)")
     tip = git("rev-parse", "HEAD", cwd=wt).strip()

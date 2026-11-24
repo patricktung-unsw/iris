@@ -1,19 +1,22 @@
 #!/bin/bash
 # bin/review-batch against fixture pull request data: a fake `gh` on PATH
 # answers `gh pr list` and `gh pr view` from JSON files as gh prints them,
-# a fake `docker` keeps a fake registry's tags in files, and a throwaway
+# a fake `docker` keeps a fake registry's tags in files, a fake bin/check
+# runs the real bin/libcopy --check, and a throwaway
 # origin holds each PR's head as refs/pull/<n>/head. The listing shows
 # each ready PR with its diff and what it flags, ends with the one --apply
 # line for the batch, and changes nothing: no merge, no push, no container
 # copy, no branch or worktree. --apply merges the batch into a branch and
 # worktree of its own, writes an author's container line as its digest
-# alone, and prints the steps that follow, which the test runs, the copy
-# and the push, to see them end where they promise; it refuses, leaving
-# nothing behind, a PR that moved or lost ready, a batch made before, and
-# a merge that fails, and a batch bin/check fails, pushing and copying
-# nothing. --copy leaves a tag already at the digest alone and refuses
-# one at another. Prints each failed case and nothing on success, so
-# bin/check can run it.
+# alone, in lib/katana.sh and in a workflow's library copy, and prints
+# the steps that follow, which the test runs, the copy and the push, to
+# see them end where they promise; a copy alone naming a container whose
+# digest main pins is rewritten with nothing to copy. It refuses, leaving
+# nothing behind, a PR that moved or lost ready, a batch made before, a
+# merge that fails and a copy naming a container main won't pin, and a
+# batch bin/check fails, pushing and copying nothing. --copy leaves a
+# tag already at the digest alone and refuses one at another. Prints
+# each failed case and nothing on success, so bin/check can run it.
 #
 #   tests/bin/test_review_batch.sh
 #
@@ -78,12 +81,22 @@ src="$fake/src" clone="$fake/iris"
 commit() { git -C "$src" add -A && git -C "$src" commit -qm "$1"; }
 
 # main: the ct-lab section with seg's card, the seg workflow, the lab
-# table [ct-lab]=ct/1, ct/1's recipe, the tools under test, and a
-# bin/check that fails when RB_CHECK_FAIL is set and a bin/katana-test
-# whose --tested says the batch needs no run.
-mkdir -p "$src/bin" "$src/lib" "$src/workflows/seg/src" "$src/envs/ct/1"
-cp bin/review-batch bin/outside-folder bin/github-repo.sh "$src/bin/"
-printf '#!/bin/bash\n[ -z "${RB_CHECK_FAIL-}" ] || { echo "check: FAILED"; exit 1; }\necho "All checks passed."\n' > "$src/bin/check"
+# table [ct-lab]=ct/1, ct/1's recipe, the rest of the job side as stubs,
+# the tools under test, a bin/check that fails when RB_CHECK_FAIL is set
+# or bin/libcopy --check prints a problem, and a bin/katana-test whose
+# --tested says the batch needs no run.
+mkdir -p "$src/bin" "$src/lib/iris" "$src/workflows/seg/src" "$src/envs/ct/1"
+cp bin/review-batch bin/outside-folder bin/github-repo.sh bin/libcopy "$src/bin/"
+for f in iris-job.sh iris/__init__.py iris/dataset.py iris/labels.py iris/record.py iris/rundir.py iris/volume.py; do
+    echo "# lib/$f" > "$src/lib/$f"
+done
+cat > "$src/bin/check" <<'EOF'
+#!/bin/bash
+[ -z "${RB_CHECK_FAIL-}" ] || { echo "check: FAILED"; exit 1; }
+copies="$("$(dirname "$0")/libcopy" --check)"
+[ -z "$copies" ] || { echo "$copies"; echo "check: FAILED"; exit 1; }
+echo "All checks passed."
+EOF
 printf '#!/bin/bash\n[ "$1" = --tested ]\n' > "$src/bin/katana-test"
 chmod +x "$src/bin/check" "$src/bin/katana-test"
 cp lib/katana.sh "$src/lib/"
@@ -98,7 +111,8 @@ git init -q -b main "$src"
 commit main
 
 # PR 7: seg's next code in ct/2, an author's container, with a run proof
-# whose digest isn't the one the map names.
+# whose digest isn't the one the map names, and seg's library copy made
+# after it, so the copy names the author's container too.
 git -C "$src" checkout -q -b pr7
 echo "print(2)" > "$src/workflows/seg/src/run.py"
 mkdir -p "$src/envs/ct/2"
@@ -107,6 +121,9 @@ sed -i 's|^    \[ct/1\]=.*|&\n    [ct/2]=ghcr.io/alice-lab/iris-env@sha256:'"$a6
 printf '{"format": 1, "workflow": "seg", "environment": {"version": "ct/2", "digest": "sha256:%s"}}\n' "$b64" \
     > "$src/workflows/seg/run-proof.json"
 commit "seg on ct/2"
+"$src/bin/libcopy" seg > /dev/null || exit 1
+grep -q alice-lab "$src/workflows/seg/lib/katana.sh" || { echo "review-batch fixture: seg's copy lacks the author's line"; exit 1; }
+commit "seg's library copy"
 pr7=$(git -C "$src" rev-parse HEAD)
 
 # PR 9: a page edit and a README edit, which bin/outside-folder flags,
@@ -125,10 +142,28 @@ git -C "$src" checkout -q -b pr12 main
 echo "<h1>seg, again</h1>" > "$src/workflows/seg/index.html"
 commit "seg's heading"
 pr12=$(git -C "$src" rev-parse HEAD)
+
+# PRs 14 and 15: seg's library copy made while lib/katana.sh named an
+# author's container for ct/1, then lib/katana.sh back to ct/1's digest
+# alone, as main pins it. #14's copy names the container of that digest,
+# which IRIS's package holds; #15's names another, which it doesn't.
+copy_only() { # copy_only <number> <hex>
+    git -C "$src" checkout -q -b "pr$1" main
+    sed -i "s|^    \[ct/1\]=.*|    [ct/1]=ghcr.io/alice-lab/iris-env@sha256:$2|" "$src/lib/katana.sh"
+    commit "ct/1 as alice-lab's"
+    "$src/bin/libcopy" seg > /dev/null || exit 1
+    commit "seg's library copy"
+    sed -i "s|^    \[ct/1\]=.*|    [ct/1]=sha256:$b64|" "$src/lib/katana.sh"
+    commit "ct/1 by its digest"
+}
+copy_only 14 "$b64"
+pr14=$(git -C "$src" rev-parse HEAD)
+copy_only 15 "$a64"
+pr15=$(git -C "$src" rev-parse HEAD)
 git -C "$src" checkout -q main
 
 git clone -q --bare "$src" "$fake/origin.git"
-for n in 7 9 12; do git -C "$src" push -q "$fake/origin.git" "pr$n:refs/pull/$n/head"; done
+for n in 7 9 12 14 15; do git -C "$src" push -q "$fake/origin.git" "pr$n:refs/pull/$n/head"; done
 git clone -q "$fake/origin.git" "$clone"
 
 # pr <number> <head> <title> <login> <mergeable> [<label>...]: one PR as
@@ -230,6 +265,7 @@ left() {
     ! grep -q '^docker' "$fake/calls" 2> /dev/null || fail "review-batch $1: ran docker"
 }
 view 7 "$pr7" ready; view 9 "$pr9" ready outside-folder; view 12 "$pr12" ready
+view 14 "$pr14" ready; view 15 "$pr15" ready
 
 # A PR whose head moved since the listing, or that lost ready: refused
 # before anything is merged.
@@ -284,6 +320,32 @@ git -C "$clone" branch -q -D "$branch" || fail "review-batch check-fails: its 'g
 left check-fails
 show
 
+# Only a library copy names an author's container, one whose digest
+# lib/katana.sh already pins: the copy pins it by its digest alone, the
+# commit says so, and there is nothing to copy.
+run --apply "14:${pr14:0:12}"
+[ "$rc" = 0 ] || fail "review-batch copy-only: exit $rc, expected 0"
+tip=$(git -C "$clone" rev-parse -q --verify "refs/heads/$branch") || fail "review-batch copy-only: no branch $branch"
+grep -qx "    \[ct/1\]=sha256:$b64" <(git -C "$clone" show "$tip:workflows/seg/lib/katana.sh") ||
+    fail "review-batch copy-only: seg's library copy doesn't pin ct/1 by its digest alone"
+[ "$(git -C "$clone" log -1 --format=%s "$tip")" = "The review batch pins ct/1 by its digest alone in workflows/seg/lib/katana.sh, as lib/katana.sh already does" ] ||
+    fail "review-batch copy-only: the rewrite's commit message is '$(git -C "$clone" log -1 --format=%s "$tip")'"
+has "bin/check passed on the batch" copy-only
+lacks "--copy" copy-only
+git -C "$clone" worktree remove --force "$wt"
+git -C "$clone" branch -q -D "$branch"
+left copy-only
+show
+
+# A library copy naming an author's container lib/katana.sh doesn't pin,
+# whose digest IRIS's package would lack: refused, naming the copy.
+run --apply "15:${pr15:0:12}"
+[ "$rc" = 1 ] || fail "review-batch copy-unpinned: exit $rc, expected 1"
+has "workflows/seg/lib/katana.sh names ghcr.io/alice-lab/iris-env@sha256:$a64 for ct/1" copy-unpinned
+has "nothing merged, and the batch's worktree and branch are removed" copy-unpinned
+left copy-unpinned
+show
+
 # The batch, #7 and #12: merged in order on its own branch, #7's author
 # container line written as its digest alone and committed, and the steps
 # printed in order, the copy before the push.
@@ -297,6 +359,13 @@ grep -q "copies ct/2's container" <<< "$(git -C "$clone" log -1 --format=%s "$ti
 grep -qx "    \[ct/2\]=sha256:$a64" <(git -C "$clone" show "$tip:lib/katana.sh") ||
     fail "review-batch apply: the batch's digest map doesn't pin ct/2 by its digest alone"
 ! grep -q alice-lab <<< "$(git -C "$clone" show "$tip:lib/katana.sh")" || fail "review-batch apply: the batch's digest map still names the author's container"
+# seg's library copy too, in the same commit, which the copy rule passes.
+grep -qx "    \[ct/2\]=sha256:$a64" <(git -C "$clone" show "$tip:workflows/seg/lib/katana.sh") ||
+    fail "review-batch apply: seg's library copy doesn't pin ct/2 by its digest alone"
+! grep -q alice-lab <<< "$(git -C "$clone" show "$tip:workflows/seg/lib/katana.sh")" || fail "review-batch apply: seg's library copy still names the author's container"
+[ "$(git -C "$clone" diff --name-only "$tip^" "$tip" | sort)" = "$(printf '%s\n' lib/katana.sh workflows/seg/lib/katana.sh)" ] ||
+    fail "review-batch apply: the rewrite's commit changes $(git -C "$clone" diff --name-only "$tip^" "$tip" | tr '\n' ' ')"
+grep -q "workflows/seg/lib/katana.sh" <<< "$(git -C "$clone" log -1 --format=%s "$tip")" || fail "review-batch apply: the rewrite's commit message doesn't name seg's library copy"
 git -C "$wt" diff --quiet HEAD || fail "review-batch apply: left uncommitted changes in $wt"
 has "bin/check passed on the batch" apply
 mapfile -t steps < <(sed -nE 's/^  [0-9]+\. //p' <<< "$out")
