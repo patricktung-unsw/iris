@@ -33,6 +33,10 @@
 # merged, not rebased or squashed: the check fails a recorded commit
 # outside HEAD's history, so copy again after rewriting a branch. It reads
 # history, so it needs a full clone; CI checks out full history.
+#
+# CONTRIBUTING.md's "The library's two sides" states what --check fails
+# and passes for workflow authors: change that section in the same
+# commit as a change to what --check fails or passes.
 
 cd "$(dirname "$(readlink -f "$0")")/.." || exit 1
 
