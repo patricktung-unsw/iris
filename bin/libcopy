@@ -18,6 +18,14 @@
 #                          commit it records, or records a commit outside
 #                          HEAD's history; bin/check runs it
 #
+# One difference is no hand edit: in the copy's katana.sh, a digest map
+# line naming a workflow author's container at that commit, as
+# lib/katana.sh's iris_is_author_env knows one, may be its digest alone,
+# "    [<env>/<n>]=sha256:<hex>" with the same <hex>. bin/review-batch
+# --apply writes it so, as in lib/katana.sh, since main never names an
+# author's container (#256); copying again instead would bring in every
+# lib/ change since the copy was tested.
+#
 # The commit recorded is the last one that changed the job side at HEAD,
 # whose job side is HEAD's, so a copy made on a branch that leaves lib/
 # alone records a commit already on main. A branch that changes lib/
@@ -25,6 +33,10 @@
 # merged, not rebased or squashed: the check fails a recorded commit
 # outside HEAD's history, so copy again after rewriting a branch. It reads
 # history, so it needs a full clone; CI checks out full history.
+#
+# CONTRIBUTING.md's "The library's two sides" states what --check fails
+# and passes for workflow authors: change that section in the same
+# commit as a change to what --check fails or passes.
 
 cd "$(dirname "$(readlink -f "$0")")/.." || exit 1
 
@@ -33,6 +45,29 @@ JOB_SIDE=(iris-job.sh katana.sh iris/__init__.py iris/dataset.py iris/labels.py 
 RECORD=copied-from
 
 die() { echo "libcopy: $*" >&2; exit 1; }
+
+# The digest map's opening line and its lines, as lib/katana.sh writes them.
+MAP_OPEN='declare -gA IRIS_ENV_DIGESTS=('
+MAP_LINE='^(    \[[^]]+\]=)([^[:space:]]+)$'
+
+# without_authors: standard input, a katana.sh, with each digest map line
+# naming an author's container written as its digest alone, and every
+# other byte as it was, a last line with no newline included.
+without_authors() {
+    local line key value in_map="" nl=$'\n'
+    while IFS= read -r line || { nl=""; [ -n "$line" ]; }; do
+        if [ "$line" = "$MAP_OPEN" ]; then
+            in_map=1
+        elif [ -n "$in_map" ] && [ "$line" = ")" ]; then
+            in_map=""
+        elif [ -n "$in_map" ] && [[ "$line" =~ $MAP_LINE ]]; then
+            # Kept before iris_is_author_env, whose own =~ resets them.
+            key="${BASH_REMATCH[1]}" value="${BASH_REMATCH[2]}"
+            ! iris_is_author_env "$value" || line="$key${value#*@}"
+        fi
+        printf '%s%s' "$line" "$nl"
+    done
+}
 
 copy() {
     local slug="$1" dest="workflows/$1/lib" paths source f
@@ -52,7 +87,7 @@ copy() {
 
 # Each problem with the copy in $1, a workflow's lib/.
 check_copy() {
-    local dir="$1" slug commit f want listed
+    local dir="$1" slug commit f want have listed
     slug="$(basename "$(dirname "$dir")")"
     local again="copy again with bin/libcopy $slug"
     if [ ! -f "$dir/$RECORD" ]; then
@@ -70,11 +105,13 @@ check_copy() {
     fi
     for f in "${JOB_SIDE[@]}"; do
         want="$(git rev-parse -q --verify "$commit:lib/$f")"
+        have="$(git hash-object --path="$dir/$f" "$dir/$f" 2> /dev/null)"
         if [ ! -f "$dir/$f" ]; then
             echo "$dir/$f: missing; $again"
         elif [ -z "$want" ]; then
             echo "$dir/$f: lib/$f is not in $commit; $again"
-        elif [ "$(git hash-object --path="$dir/$f" "$dir/$f")" != "$want" ]; then
+        elif [ "$have" != "$want" ] && { [ "$f" != katana.sh ] ||
+            [ "$have" != "$(git cat-file blob "$want" | without_authors | git hash-object --stdin)" ]; }; then
             echo "$dir/$f: differs from lib/$f at ${commit:0:12}, which $RECORD records. A copy is never edited by hand: change lib/, then $again"
         fi
     done
@@ -87,6 +124,11 @@ check_copy() {
 case "$1" in
     --check)
         [ $# -eq 1 ] || die "usage: bin/libcopy <slug> | bin/libcopy --check"
+        # iris_is_author_env, the one test of an author's container. With
+        # none, no line is an author's, so a copy must match exactly.
+        # shellcheck source=lib/katana.sh
+        . <(tr -d '\r' < lib/katana.sh 2> /dev/null) 2> /dev/null
+        declare -F iris_is_author_env > /dev/null || iris_is_author_env() { false; }
         # Each lib/ git tracks or would add, so one holding only ignored
         # files, as a branch switch leaves __pycache__/ behind, is no copy.
         # A glob pathspec, whose * stops at /, so a src/lib/ is no copy.

@@ -7,12 +7,13 @@
 #   - if it changes the files bin/katana-test tests (its header lists
 #     them), a passing bin/katana-test must have tested them exactly as the
 #     commit holds them (bin/katana-test --tested);
-#   - its lib/katana.sh's digest map must name no workflow author's
-#     container, ghcr.io/<login>/iris-env@sha256:<hex>, as this clone's
-#     lib/katana.sh's iris_is_author_env knows one, which a PR may
-#     carry but main never does: bin/review-batch copies it into IRIS's
-#     package and pins its digest alone before the push. Nothing lets
-#     this one through;
+#   - its lib/katana.sh's digest map, and that of each workflow's library
+#     copy of it, workflows/<slug>/lib/katana.sh (#256), must name no
+#     workflow author's container, ghcr.io/<login>/iris-env@sha256:<hex>,
+#     as this clone's lib/katana.sh's iris_is_author_env knows one, which
+#     a PR may carry but main never does: bin/review-batch copies it into
+#     IRIS's package and pins its digest alone in each before the push.
+#     Nothing lets this one through;
 #   - a bin/syspull listing must have run in this clone against the main
 #     this push replaces, since the last deploy (bin/syspull --listed),
 #     since the push request quotes that listing as the system clone's
@@ -41,14 +42,22 @@ declare -F iris_is_author_env > /dev/null ||
 while read -r _ local_sha remote_ref remote_sha; do
     [ "$remote_ref" = refs/heads/main ] && [ "$local_sha" != "$zero" ] || continue
 
-    authors=""
-    while IFS=$'\t' read -r version value; do
-        ! iris_is_author_env "$value" || authors+="${authors:+$'\n'}$version"
-    done < <(git show "$local_sha:lib/katana.sh" 2> /dev/null | tr -d '\r' |
-        sed -nE 's|^    \[([^]]+)\]=(\S+)$|\1\t\2|p')
-    if [ -n "$authors" ]; then
-        echo "pre-push: ${local_sha:0:7}'s digest map names a workflow author's container for ${authors//$'\n'/, }." >&2
-        echo "  bin/review-batch copies it into IRIS's package and pins its digest alone; push the commit its --apply makes." >&2
+    named=""
+    while IFS= read -r file; do
+        authors=""
+        while IFS=$'\t' read -r version value; do
+            ! iris_is_author_env "$value" || authors+="${authors:+$'\n'}$version"
+        done < <(git show "$local_sha:$file" 2> /dev/null | tr -d '\r' |
+            sed -nE 's|^    \[([^]]+)\]=(\S+)$|\1\t\2|p')
+        [ -n "$authors" ] || continue
+        where="digest map"
+        [ "$file" = lib/katana.sh ] || where="library copy $file's digest map"
+        echo "pre-push: ${local_sha:0:7}'s $where names a workflow author's container for ${authors//$'\n'/, }." >&2
+        named=1
+    done < <(echo lib/katana.sh
+        git ls-tree -r --name-only "$local_sha" -- workflows 2> /dev/null | command grep -E '^workflows/[^/]+/lib/katana\.sh$')
+    if [ -n "$named" ]; then
+        echo "  bin/review-batch copies it into IRIS's package and pins its digest alone, in lib/katana.sh and each library copy; push the commit its --apply makes." >&2
         status=1
     fi
 

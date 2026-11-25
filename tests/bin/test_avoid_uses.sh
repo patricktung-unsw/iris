@@ -1,9 +1,10 @@
 #!/bin/bash
 # bin/avoid-uses, which lists every use of a GLOSSARY.md _Avoid_ word, in
-# files and standard input, and with --new each use in tracked files of a
-# word the _Avoid_ lists gained since origin/main; then bin/check's rule
-# on that, against throwaway trees: #231's glossary commit made "batch" an
-# Avoid word while Review batch still used it.
+# files and standard input, fenced code blocks in Markdown and standard
+# input left out, and with --new, fences included, each use in tracked
+# files of a word the _Avoid_ lists gained since origin/main; then
+# bin/check's rule on that, against throwaway trees: #231's glossary
+# commit made "batch" an Avoid word while Review batch still used it.
 # Prints each failed case and nothing on success, so bin/check can run it.
 #
 #   tests/bin/test_avoid_uses.sh
@@ -50,6 +51,39 @@ case="standard input"
 out="$("$repo/bin/avoid-uses" - < "$repo/text.md")"
 grep -qxF -- "-:3: \"Stack\", the Avoid word of Image set: The STACK of" <<< "$out" || fail "no line for '-'"
 
+# A fenced code block in Markdown or standard input is no use: a fence
+# closes only on its own character, as many or more, and one never closed
+# runs to the end; backticks in a backtick line's info string make it
+# text. Inline code and a file not ending .md are searched as before.
+case="fenced code"
+cat > "$scratch/fenced.md" <<'MDEOF'
+A stack.
+```
+stack inside
+```
+after stack
+~~~~text
+stack
+~~~
+still stack
+~~~~
+An inline `stack`.
+``` x `y`
+stack after a non-fence
+````
+stack to the end
+MDEOF
+cp "$scratch/fenced.md" "$scratch/fenced.txt"
+out="$("$repo/bin/avoid-uses" "$scratch/fenced.md" | cut -d: -f1,2 | sed "s|^$scratch/||")"
+[ "$out" = $'fenced.md:1\nfenced.md:5\nfenced.md:11\nfenced.md:13' ] || fail "listed lines:
+$out"
+out="$("$repo/bin/avoid-uses" - < "$scratch/fenced.md" | cut -d: -f1,2)"
+[ "$out" = $'-:1\n-:5\n-:11\n-:13' ] || fail "standard input listed lines:
+$out"
+out="$("$repo/bin/avoid-uses" "$scratch/fenced.txt" | cut -d: -f1,2 | sed "s|^$scratch/||" | tr '\n' ' ')"
+[ "$out" = "fenced.txt:1 fenced.txt:3 fenced.txt:5 fenced.txt:7 fenced.txt:9 fenced.txt:11 fenced.txt:13 fenced.txt:15 " ] ||
+    fail "a .txt file's uses in fences weren't all listed: $out"
+
 case="a clean file"
 out="$("$repo/bin/avoid-uses" "$repo/clean.md")"; code=$?
 [ "$code" = 0 ] && [ -z "$out" ] || fail "exit $code: $out"
@@ -68,13 +102,15 @@ mkdir -p "$repo/_archive/old" "$repo/docs/adr" "$repo/workflows/w/lib"
 glossary "$repo" "batch"
 sed -i 's/^_Avoid_: Image, container image$/_Avoid_: Image, container image, stack/' "$repo/GLOSSARY.md"
 echo "Review the batch." > "$repo/notes.md"
+printf '%s\n' '```' 'src/  # one batch a run' '```' > "$repo/tree.md"
 echo "An old batch." > "$repo/_archive/old/form.md"
 echo "A decided batch." > "$repo/docs/adr/0001-batch.md"
 echo "# a batch" > "$repo/workflows/w/lib/copy.py"
 commit "$repo" batch
 out="$("$repo/bin/avoid-uses" --new)"; code=$?
 [ "$code" = 1 ] || fail "exit $code, not 1"
-[ "$out" = 'notes.md:1: "batch", the Avoid word of Image set: Review the batch.' ] || fail "listed:
+[ "$out" = 'notes.md:1: "batch", the Avoid word of Image set: Review the batch.
+tree.md:2: "batch", the Avoid word of Image set: src/  # one batch a run' ] || fail "listed, a fenced use included:
 $out"
 
 # Another entry's definition uses the new word; its own _Avoid_ line doesn't.
@@ -83,7 +119,8 @@ sed -i 's/^Moving a dataset to Katana.$/Moving a batch of datasets to Katana./' 
 commit "$repo" glossary-use
 out="$("$repo/bin/avoid-uses" --new)"
 [ "$out" = 'GLOSSARY.md:12: "batch", the Avoid word of Image set: Moving a batch of datasets to Katana.
-notes.md:1: "batch", the Avoid word of Image set: Review the batch.' ] || fail "listed:
+notes.md:1: "batch", the Avoid word of Image set: Review the batch.
+tree.md:2: "batch", the Avoid word of Image set: src/  # one batch a run' ] || fail "listed:
 $out"
 
 # A word two entries list is one line naming both.

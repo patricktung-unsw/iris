@@ -126,3 +126,27 @@ push refs/heads/side "$author" "$merged" > /dev/null || fail "pre-push: refused 
 map_line "ghcr.io/unsw-restech/iris-env@sha256:$a64"
 out="$(push refs/heads/main "$(git -C "$repo" rev-parse HEAD)" "$merged")" ||
     { fail "pre-push: refused the org's own package as an author's container:"; echo "$out" | sed 's/^/  /'; }
+
+# A workflow's library copy of lib/katana.sh never names one on main
+# either (#256), and the refusal names the copy; its digest alone goes
+# through.
+# copy_line <value>: workflows/seg/lib/katana.sh, with a ct/2 line of
+# <value> in its digest map, committed beside a lib/katana.sh with none.
+copy_line() {
+    cp lib/katana.sh "$repo/lib/katana.sh"
+    mkdir -p "$repo/workflows/seg/lib"
+    cp lib/katana.sh "$repo/workflows/seg/lib/katana.sh"
+    digest_map_add "$repo/workflows/seg/lib/katana.sh" "ct/2=$1" || exit 1
+    git -C "$repo" add lib workflows; commit -m "seg's copy has ct/2 as $1"
+    record
+}
+copy_line "ghcr.io/alice-lab/iris-env@sha256:$a64"
+out="$(IRIS_UNCHECKED="CI only" push refs/heads/main "$(git -C "$repo" rev-parse HEAD)" "$merged")" &&
+    fail "pre-push: let an author's container line in a library copy to main"
+grep -qF "workflows/seg/lib/katana.sh" <<< "$out" && grep -qF "ct/2" <<< "$out" ||
+    { fail "pre-push: refusal doesn't name the copy and the version:"; echo "$out" | sed 's/^/  /'; }
+push refs/heads/side "$(git -C "$repo" rev-parse HEAD)" "$merged" > /dev/null ||
+    fail "pre-push: refused an author's container line in a library copy on a branch"
+copy_line "sha256:$a64"
+out="$(push refs/heads/main "$(git -C "$repo" rev-parse HEAD)" "$merged")" ||
+    { fail "pre-push: refused a library copy with the digest alone:"; echo "$out" | sed 's/^/  /'; }

@@ -315,8 +315,10 @@ check "lib/ imports nothing from workflows/" library_imports
 # form sources, made by bin/libcopy and never edited by hand: every imaging
 # form's folder has one, and bin/libcopy --check fails each copy that
 # differs from lib/ at the commit it records in copied-from, or records a
-# commit outside HEAD's history. tests/bin/test_library_copies.sh runs it
-# on fixture repos.
+# commit outside HEAD's history. The one difference it passes is the review
+# batch's: a digest map line in the copy's katana.sh naming an author's
+# container at that commit, written as its digest alone (#256).
+# tests/bin/test_library_copies.sh runs it on fixture repos.
 library_copies() {
     local f d
     for f in $(imaging_forms); do

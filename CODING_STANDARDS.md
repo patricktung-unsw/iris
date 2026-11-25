@@ -33,6 +33,7 @@ Read at review, against a diff. These are the judgement calls; every mechanical 
 ## Tests
 
 - **A fake sends what was seen.** A fake standing in for a real tool or service (a fake `docker`, `gh` or `apptainer` on the `PATH`) prints the output its issue or a real run quoted, verbatim, and keeps every other form the code under test must still handle as a case of its own. Past miss: #247's fake `docker` first sent a daemon error no run had shown, not the `Error getting credentials` the issue quoted, and the review fix swapped in the issue's wording but no case for Docker's lowercase `error getting credentials`, which a `credsStore` helper that isn't installed gives.
+- **A broken-file fixture is written whole when an edit would lean on the rest of the file.** A case for a malformed file writes the whole malformed file when breaking a copy of the real one gives a result that depends on what else the real file holds; an edit whose result holds whatever else the file holds, such as dropping every lone `)` line, stays. Past miss: #211's no-closing-`)` case dropped the lab table's `)` from a copy of `lib/katana.sh`, so it tested the missing `)` only while the lab table was the file's last `( … )` block; review caught it, and the case now writes a file of the table alone.
 
 ## Job code
 

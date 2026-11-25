@@ -63,6 +63,9 @@ if [ -n "$local_name" ]; then
     ref="$local_name" runtime=docker
 else
     ref="$(iris_env_ref "$version")"
+    # bin/review-batch's --apply keeps a copy of this choice (#255);
+    # tests/bin/test_review_batch.sh runs both with apptainer on the PATH
+    # and without, IRIS_CONTAINER_RUNTIME unset.
     runtime="${IRIS_CONTAINER_RUNTIME:-$(command -v apptainer > /dev/null && echo apptainer || echo docker)}"
 fi
 
