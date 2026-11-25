@@ -16,11 +16,11 @@
 # where they promise; a copy alone naming a container whose digest main
 # pins is rewritten with nothing to copy. It refuses, leaving nothing
 # behind, a PR that moved or lost ready, a batch made before, a merge that
-# fails, a pull that fails, an author's container under Docker, and a copy
-# naming a container main won't pin, and a batch bin/check fails, pushing
-# and copying nothing. --copy leaves a tag already at the digest alone and
-# refuses one at another. Prints each failed case and nothing on success,
-# so bin/check can run it.
+# fails, a pull that fails, an author's container under Docker, chosen as
+# bin/envrun chooses it, and a copy naming a container main won't pin, and
+# a batch bin/check fails, pushing and copying nothing. --copy leaves a
+# tag already at the digest alone and refuses one at another. Prints each
+# failed case and nothing on success, so bin/check can run it.
 #
 #   tests/bin/test_review_batch.sh
 #
@@ -209,9 +209,10 @@ fail() { echo "$*"; failures=1; }
 # run <arg>...: bin/review-batch in the clone with the fakes on PATH, into
 # $out and $rc.
 # bin/envrun's cache is $fake/cache, and it picks Apptainer, the fake's,
-# unless IRIS_CONTAINER_RUNTIME says otherwise.
+# unless IRIS_CONTAINER_RUNTIME says otherwise or $run_path, the PATH it
+# runs with if set, has no apptainer.
 unset IRIS_CONTAINER_RUNTIME
-run() { rm -f "$fake/calls"; out="$(IRIS_ENV_CACHE="$fake/cache" PATH="$fake/bin:$PATH" "$clone/bin/review-batch" "$@" 2>&1)"; rc=$?; }
+run() { rm -f "$fake/calls"; out="$(IRIS_ENV_CACHE="$fake/cache" PATH="${run_path:-$fake/bin:$PATH}" "$clone/bin/review-batch" "$@" 2>&1)"; rc=$?; }
 has() { grep -qF -- "$1" <<< "$out" || fail "review-batch ${2:-listing}: output lacks '$1'"; }
 lacks() { ! grep -qF -- "$1" <<< "$out" || fail "review-batch ${2:-listing}: output has '$1'"; }
 show() { [ "$failures" = 0 ] || echo "$out" | sed 's/^/  /'; failures=0; }
@@ -387,6 +388,30 @@ has "bin/check passed on the batch" docker-no-author
 git -C "$clone" worktree remove --force "$wt"
 git -C "$clone" branch -q -D "$branch"
 left docker-no-author
+show
+
+# With IRIS_CONTAINER_RUNTIME unset and no apptainer on the PATH, both
+# copies of the runtime choice, bin/review-batch's and bin/envrun's, pick
+# Docker: the same refusal as above, and bin/envrun asks docker, not
+# apptainer, for main's ct/1: only the calls count, since the fake docker
+# answers nothing but buildx imagetools. $fake/noapp holds a link to every
+# command on the PATH, the fakes first, but apptainer.
+mkdir "$fake/noapp"
+IFS=: read -ra path_dirs <<< "$PATH"
+for d in "$fake/bin" "${path_dirs[@]}"; do
+    for f in "$d"/*; do
+        n="${f##*/}"
+        [ "$n" = apptainer ] || [ -e "$fake/noapp/$n" ] || [ ! -x "$f" ] || [ -d "$f" ] || ln -s "$f" "$fake/noapp/$n"
+    done
+done
+run_path="$fake/noapp" run --apply "12:${pr12:0:12}" "7:${pr7:0:12}"
+[ "$rc" = 1 ] || fail "review-batch no-apptainer: exit $rc, expected 1"
+has "#7 names ghcr.io/alice-lab/iris-env@sha256:$a64 for ct/2, and the batch's bin/check needs Apptainer" no-apptainer
+left no-apptainer
+(cd "$clone" && IRIS_ENV_CACHE="$fake/cache" PATH="$fake/noapp" bin/envrun ct/1 true > /dev/null 2>&1)
+grep -q '^docker image inspect ' "$fake/calls" || fail "review-batch no-apptainer: bin/envrun didn't pick docker: $(cat "$fake/calls")"
+! grep -q '^apptainer' "$fake/calls" || fail "review-batch no-apptainer: bin/envrun ran apptainer"
+rm -f "$fake/calls"
 show
 
 # #7's author's container already in bin/envrun's cache: nothing pulled.

@@ -266,7 +266,9 @@ def main_clone():
 
 def apply(pairs):
     base = fetch_main()
-    # The runtime bin/envrun picks, a copy of its runtime= line.
+    # The runtime bin/envrun picks, a copy of its runtime= line;
+    # tests/bin/test_review_batch.sh runs both with apptainer on the PATH
+    # and without, IRIS_CONTAINER_RUNTIME unset.
     docker = (os.environ.get("IRIS_CONTAINER_RUNTIME") or
               ("apptainer" if shutil.which("apptainer") else "docker")) == "docker"
     batch = []
